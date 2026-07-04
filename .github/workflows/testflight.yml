@@ -58,6 +58,19 @@ jobs:
         working-directory: lunasea
         run: flutter pub get
 
+      - name: Generate Dart code
+        working-directory: lunasea
+        env:
+          BUILD: ${{ github.run_number }}
+          COMMIT: ${{ github.sha }}
+          FLAVOR: beta
+        run: |
+          dart run environment_config:generate
+          dart pub global activate spider
+          dart pub global run spider build
+          dart run build_runner build --delete-conflicting-outputs
+          dart scripts/generate_localization.dart
+
       - name: Pod install
         working-directory: lunasea/ios
         run: pod install
