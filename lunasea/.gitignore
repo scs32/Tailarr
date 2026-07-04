@@ -79,3 +79,8 @@ output/
 debian/DEBIAN/md5sums
 debian/usr/share/lunasea
 *.snap
+
+# Generated Tailscale xcframework (rebuild: cd lunasea/Go && gomobile bind -target ios -o GoLunaSea.xcframework . && cp -R GoLunaSea.xcframework ../ios/)
+Go/GoLunaSea.xcframework/
+ios/GoLunaSea.xcframework/
+ios/Flutter/ephemeral/

@@ -1289,6 +1289,64 @@ class SettingsDialogs {
     );
   }
 
+  Future<Tuple2<bool, String>> editTailscaleAuthKey(
+    BuildContext context, {
+    String prefill = '',
+  }) async {
+    bool _flag = false;
+    final _formKey = GlobalKey<FormState>();
+    final _textController = TextEditingController()..text = prefill;
+
+    void _setValues(bool flag) {
+      if (_formKey.currentState!.validate()) {
+        _flag = flag;
+        Navigator.of(context).pop();
+      }
+    }
+
+    await LunaDialog.dialog(
+      context: context,
+      title: 'Tailscale Auth Key',
+      buttons: [
+        LunaDialog.button(
+          text: 'lunasea.Set'.tr(),
+          onPressed: () => _setValues(true),
+        ),
+      ],
+      content: [
+        LunaDialog.textContent(
+          text: '${LunaUI.TEXT_BULLET} Enter your Tailscale auth key',
+          textAlign: TextAlign.left,
+        ),
+        LunaDialog.textContent(
+          text: '${LunaUI.TEXT_BULLET} Generate one at admin.tailscale.com',
+          textAlign: TextAlign.left,
+        ),
+        LunaDialog.textContent(
+          text: '${LunaUI.TEXT_BULLET} Use a reusable key for best results',
+          textAlign: TextAlign.left,
+        ),
+        Form(
+          key: _formKey,
+          child: LunaDialog.textFormInput(
+            controller: _textController,
+            title: 'Auth Key',
+            obscureText: true,
+            onSubmitted: (_) => _setValues(true),
+            validator: (value) {
+              if (value?.isEmpty ?? true) {
+                return 'Auth key is required';
+              }
+              return null;
+            },
+          ),
+        ),
+      ],
+      contentPadding: LunaDialog.inputTextDialogContentPadding(),
+    );
+    return Tuple2(_flag, _textController.text);
+  }
+
   Future<Tuple2<bool, LunaModule?>> selectBootModule() async {
     final context = LunaState.context;
     bool _flag = false;

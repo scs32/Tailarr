@@ -8,6 +8,7 @@ import 'package:lunasea/router/router.dart';
 import 'package:lunasea/system/cache/image/image_cache.dart';
 import 'package:lunasea/system/cache/memory/memory_store.dart';
 import 'package:lunasea/system/network/network.dart';
+import 'package:lunasea/system/network/tailscale_guard.dart';
 import 'package:lunasea/system/recovery_mode/main.dart';
 import 'package:lunasea/system/window_manager/window_manager.dart';
 import 'package:lunasea/system/platform.dart';
@@ -73,7 +74,10 @@ class LunaBIOS extends StatelessWidget {
                 localizationsDelegates: context.localizationDelegates,
                 supportedLocales: context.supportedLocales,
                 locale: context.locale,
-                builder: DevicePreview.appBuilder,
+                builder: (context, child) => DevicePreview.appBuilder(
+                  context,
+                  TailscaleGuard(child: child),
+                ),
                 darkTheme: theme.activeTheme(),
                 theme: theme.activeTheme(),
                 title: 'LunaSea',

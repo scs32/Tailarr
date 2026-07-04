@@ -1,9 +1,13 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 
 import 'package:lunasea/core.dart';
 import 'package:lunasea/database/tables/bios.dart';
 import 'package:lunasea/modules/settings.dart';
 import 'package:lunasea/system/network/network.dart';
+import 'package:lunasea/system/network/platform/network_io.dart'
+    if (dart.library.html) 'package:lunasea/system/network/platform/network_html.dart';
 import 'package:lunasea/system/platform.dart';
 
 class ConfigurationGeneralRoute extends StatefulWidget {
@@ -75,6 +79,7 @@ class _State extends State<ConfigurationGeneralRoute>
     return [
       LunaHeader(text: 'settings.Network'.tr()),
       _useTLSValidation(),
+      if (IO.isTailscaleSupported) _useTailscale(),
     ];
   }
 
@@ -178,6 +183,73 @@ class _State extends State<ConfigurationGeneralRoute>
           onChanged: (data) {
             _db.update(data);
             if (LunaNetwork.isSupported) LunaNetwork().initialize();
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _useTailscale() {
+    const _dbEnabled = LunaSeaDatabase.TAILSCALE_ENABLED;
+    const _dbAuthKey = LunaSeaDatabase.TAILSCALE_AUTH_KEY;
+
+    return _dbEnabled.listenableBuilder(
+      builder: (context, _) => LunaBlock(
+        title: 'Use Tailscale',
+        body: [
+          TextSpan(text: 'Route .ts.net traffic through Tailscale'),
+        ],
+        trailing: LunaSwitch(
+          value: _dbEnabled.read(),
+          onChanged: (enabled) async {
+            if (enabled) {
+              // Check if we have an auth key
+              String authKey = _dbAuthKey.read();
+              if (authKey.isEmpty) {
+                // Show dialog to get auth key
+                final result = await SettingsDialogs().editTailscaleAuthKey(context);
+                if (!result.item1 || result.item2.isEmpty) {
+                  // User cancelled or didn't enter a key
+                  return;
+                }
+                authKey = result.item2;
+                _dbAuthKey.update(authKey);
+              }
+
+              // Try to start Tailscale
+              try {
+                await IO.startTailscale(authKey);
+                _dbEnabled.update(true);
+                showLunaSuccessSnackBar(
+                  title: 'Tailscale Started',
+                  message: 'Traffic to .ts.net domains will be routed through Tailscale',
+                );
+              } catch (e) {
+                // Failed to start - show error and prompt for new auth key
+                // Clear the auth key so user can try again
+                _dbAuthKey.update('');
+                showLunaErrorSnackBar(
+                  title: 'Failed to Start Tailscale',
+                  message:
+                      '$e — toggle again to enter a new auth key',
+                );
+              }
+            } else {
+              // Stop Tailscale
+              try {
+                await IO.stopTailscale();
+                _dbEnabled.update(false);
+                showLunaInfoSnackBar(
+                  title: 'Tailscale Stopped',
+                  message: 'Traffic routing disabled',
+                );
+              } catch (e) {
+                showLunaErrorSnackBar(
+                  title: 'Failed to Stop Tailscale',
+                  message: e.toString(),
+                );
+              }
+            }
           },
         ),
       ),
