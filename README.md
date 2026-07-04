@@ -7,6 +7,12 @@ Lidarr, SABnzbd, NZBGet and Tautulli — reachable anywhere, exposed nowhere.
   <img src="./branding/replacements/branding_logo.png" alt="Tailarr" width="480">
 </p>
 
+<p align="center">
+  <a href="https://testflight.apple.com/join/m3eyPfSr">
+    <img src="https://img.shields.io/badge/TestFlight-Join_the_Beta-0D96F6?style=for-the-badge&logo=apple&logoColor=white" alt="Join the beta on TestFlight">
+  </a>
+</p>
+
 Tailarr is a fork of the archived [LunaSea](https://github.com/JagandeepBrar/LunaSea)
 project with one defining addition: **an embedded Tailscale node inside the app**.
 
