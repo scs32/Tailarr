@@ -25,6 +25,22 @@ client) directly in the iOS app via a Go → gomobile xcframework:
   blocking "Connecting to Tailscale…" overlay before any request is sent.
 - Toggle lives in **Settings → General → Network → Use Tailscale**.
 
+### Addressing: what routes through the tailnet
+
+When adding a service profile, use one of these host forms:
+
+| Host form | Example | Routed? |
+|---|---|---|
+| MagicDNS FQDN | `sonarr.tail1234.ts.net` | ✅ |
+| Tailscale IPv4 | `100.66.77.18` | ✅ |
+| Tailscale IPv6 | `fd7a:115c:a1e0::…` | ✅ |
+| MagicDNS short name | `sonarr` | ❌ not yet — the app can't distinguish a tailnet short name from a LAN hostname without querying the node's peer list (planned) |
+| LAN / public hosts | `192.168.1.10`, `example.com` | connect directly, bypassing the tailnet (by design) |
+
+Anything not recognized as a Tailscale destination uses the phone's normal
+network path, so mixed setups (some services on the tailnet, some local or
+public) work without configuration.
+
 Architecture: `lunasea/Go/main.go` (tsnet + HTTP CONNECT proxy) →
 `GoLunaSea.xcframework` (gomobile) → Swift MethodChannel bridge
 (`ios/Runner/AppDelegate.swift`) → Dart `findProxy` routing
