@@ -35,7 +35,7 @@ func NewTailscale(stateDir, authKey string) *Tailscale {
 		stateDir: stateDir,
 		server: &tsnet.Server{
 			Dir:       stateDir,
-			Hostname:  "lunasea-mobile",
+			Hostname:  "tailarr",
 			AuthKey:   authKey,
 			Ephemeral: false,
 			Logf: func(format string, args ...any) {
