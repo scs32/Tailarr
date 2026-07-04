@@ -44,7 +44,7 @@ class _State extends State<DashboardRoute> {
 
   PreferredSizeWidget _appBar() {
     return LunaAppBar(
-      title: 'LunaSea',
+      title: 'Tailarr',
       useDrawer: true,
       scrollControllers: HomeNavigationBar.scrollControllers,
       pageController: _pageController,

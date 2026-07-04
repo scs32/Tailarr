@@ -80,7 +80,7 @@ class LunaBIOS extends StatelessWidget {
                 ),
                 darkTheme: theme.activeTheme(),
                 theme: theme.activeTheme(),
-                title: 'LunaSea',
+                title: 'Tailarr',
                 routeInformationProvider: router.routeInformationProvider,
                 routeInformationParser: router.routeInformationParser,
                 routerDelegate: router.routerDelegate,

@@ -86,7 +86,7 @@ flutter_native_splash:
 msix_config:
   architecture: x64
   capabilities: internetClientServer,privateNetworkClientServer
-  display_name: LunaSea
+  display_name: Tailarr
   enable_at_startup: false
   execution_alias: lunasea
   identity_name: app.lunasea.lunasea

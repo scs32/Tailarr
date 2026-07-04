@@ -98,7 +98,7 @@ class IO extends HttpOverrides implements LunaNetwork {
     // Set User-Agent
     PackageInfo.fromPlatform()
         .then((info) => client.userAgent = generateUserAgent(info))
-        .catchError((_) => client.userAgent = 'LunaSea/Unknown');
+        .catchError((_) => client.userAgent = 'Tailarr/Unknown');
 
     return client;
   }

@@ -19,7 +19,7 @@ class InvalidRoutePage extends StatelessWidget {
     return LunaScaffold(
       scaffoldKey: _scaffoldKey,
       appBar: LunaAppBar(
-        title: title ?? 'LunaSea',
+        title: title ?? 'Tailarr',
         scrollControllers: const [],
       ),
       body: LunaMessage.goBack(

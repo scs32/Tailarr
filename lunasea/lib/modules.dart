@@ -304,7 +304,7 @@ extension LunaModuleMetadataExtension on LunaModule {
       case LunaModule.SEARCH:
         return 'Search Newznab Indexers';
       case LunaModule.SETTINGS:
-        return 'Configure LunaSea';
+        return 'Configure Tailarr';
       case LunaModule.SONARR:
         return 'Manage Television Series';
       case LunaModule.TAUTULLI:
@@ -331,7 +331,7 @@ extension LunaModuleMetadataExtension on LunaModule {
       case LunaModule.SABNZBD:
         return 'SABnzbd is a multi-platform binary newsgroup downloader. The program works in the background and simplifies the downloading verifying and extracting of files from Usenet.';
       case LunaModule.SEARCH:
-        return 'LunaSea currently supports all indexers that support the newznab protocol, including NZBHydra2.';
+        return 'Tailarr currently supports all indexers that support the newznab protocol, including NZBHydra2.';
       case LunaModule.SETTINGS:
         return null;
       case LunaModule.SONARR:
@@ -343,7 +343,7 @@ extension LunaModuleMetadataExtension on LunaModule {
       case LunaModule.WAKE_ON_LAN:
         return 'Wake on LAN is an industry standard protocol for waking computers up from a very low power mode remotely by sending a specially constructed packet to the machine.';
       case LunaModule.EXTERNAL_MODULES:
-        return 'LunaSea allows you to add links to additional modules that are not currently supported allowing you to open the module\'s web GUI without having to leave LunaSea!';
+        return 'Tailarr allows you to add links to additional modules that are not currently supported allowing you to open the module\'s web GUI without having to leave Tailarr!';
     }
   }
 }

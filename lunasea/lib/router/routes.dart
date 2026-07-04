@@ -64,7 +64,7 @@ mixin LunaRoutesMixin on Enum {
         if (isModuleEnabled(context)) {
           return builder?.call(context, state) ?? widget!;
         }
-        return NotEnabledPage(module: module?.title ?? 'LunaSea');
+        return NotEnabledPage(module: module?.title ?? 'Tailarr');
       },
     );
   }

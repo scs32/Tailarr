@@ -26,7 +26,7 @@ class IO implements LunaWindowManager {
     await windowManager.ensureInitialized();
     windowManager.waitUntilReadyToShow().then((_) async {
       await setWindowSize();
-      await setWindowTitle('LunaSea');
+      await setWindowTitle('Tailarr');
       windowManager.show();
     });
   }
