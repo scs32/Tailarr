@@ -225,6 +225,7 @@ Went from "shelved / Tailscale fundamentally broken" to shipping. State now:
 - Email LunaSea author (Jagandeep Brar) re: App Store distribution exception.
 - Future projects (SEPARATE sessions/repos): Swiftfin + Tailscale, and a
   garage-controller rewrite to Swift + Tailscale — both use **TailscaleKit**
-  (native Swift), NOT this gomobile/tsnet approach. See
-  `~/projects/tailscale-embedding-playbook.md`.
+  (native Swift), NOT this gomobile/tsnet approach. Handoff artifacts written:
+  `~/projects/tailscale-embedding-playbook.md` (cross-project patterns) and
+  `~/projects/swiftfin/KICKOFF.md` (Swiftfin-specific brief + first prompt).
 - Jellyfin clean-library batch transcode script (hevc_videotoolbox ~5Mbps).
