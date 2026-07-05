@@ -33,19 +33,21 @@ client) directly in the iOS app via a Go → gomobile xcframework:
 
 ### Addressing: what routes through the tailnet
 
-When adding a service profile, use one of these host forms:
+When adding a service profile, address it with one of these host forms. The
+app has no system-wide MagicDNS (that's the point — no VPN profile), so it
+resolves `*.ts.net` names to their tailnet IP from the node's own peer list.
 
-| Host form | Example | Routed? |
+| Host form | Example | Notes |
 |---|---|---|
-| MagicDNS FQDN | `sonarr.tail1234.ts.net` | ✅ |
-| Tailscale IPv4 | `100.66.77.18` | ✅ |
-| Tailscale IPv6 | `fd7a:115c:a1e0::…` | ✅ |
-| MagicDNS short name | `sonarr` | ❌ not yet — the app can't distinguish a tailnet short name from a LAN hostname without querying the node's peer list (planned) |
-| LAN / public hosts | `192.168.1.10`, `example.com` | connect directly, bypassing the tailnet (by design) |
+| MagicDNS FQDN + port | `http://sonarr.tail1234.ts.net:8989` | the service's own port |
+| Tailscale IP + port | `http://100.66.77.18:8989` | IPv4 or IPv6 (`fd7a:115c:a1e0::…`) |
+| MagicDNS FQDN, HTTPS, no port | `https://sonarr.tail1234.ts.net` | when the host is published with [`tailscale serve`](https://tailscale.com/kb/1242/tailscale-serve) (TLS on 443) |
 
-Anything not recognized as a Tailscale destination uses the phone's normal
-network path, so mixed setups (some services on the tailnet, some local or
-public) work without configuration.
+Use the **full** `*.ts.net` name, not a bare MagicDNS short name (`sonarr`):
+the app can't tell a tailnet short name from a LAN hostname, so only the
+qualified name (or a Tailscale IP) is routed through the mesh. Anything else —
+LAN addresses like `192.168.1.10`, public hosts — connects directly, so mixed
+setups work without configuration.
 
 Architecture: `lunasea/Go/main.go` (tsnet + HTTP CONNECT proxy) →
 `GoLunaSea.xcframework` (gomobile) → Swift MethodChannel bridge
