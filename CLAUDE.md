@@ -175,3 +175,56 @@ cd ../ios && pod install
 ## Session Commands
 
 - **"break time"** - Update this CLAUDE.md file with any new context learned during the session, then provide a summary of what was accomplished/discussed.
+
+---
+
+## Session Log — 2026-07-04 (Resurrection + Rebrand + TestFlight)
+
+Went from "shelved / Tailscale fundamentally broken" to shipping. State now:
+
+### Tailscale integration: WORKING on iOS
+- Root cause of the old block was fixed upstream (tsnet os.Executable on iOS,
+  PR #15379, in v1.92.5 which the repo already pinned). See the "Tailscale
+  Integration" section above (rewritten to WORKING).
+- Lifecycle: persistent node (`Ephemeral: false`), blocking `server.Up(ctx)`,
+  `EnsureProxy()` rebinds the listener iOS reclaims on suspend, `TailscaleGuard`
+  widget shows a blocking "Connecting…" overlay on launch/foreground.
+- Routing: `findProxy` sends `*.ts.net` + Tailscale IPs (100.64.0.0/10,
+  fd7a:115c:a1e0::/48) to the proxy. Go proxy resolves `*.ts.net` FQDNs from the
+  peer list (no system MagicDNS on-device). Bare short names NOT supported
+  (indistinguishable from LAN hosts). Node registers as hostname `tailarr`.
+- Human-readable auth errors; rejects `tskey-api-`/`tskey-client-` keys.
+
+### Rebrand: LunaSea → Tailarr
+- Tier 1 strings done (display names, titles, localization, iOS perms, web).
+- Full visual identity from the user's Claude Design project (mesh-tail mark,
+  Signal Cyan #22D3EE on App Ink #32323E, Space Grotesk). Vector sources in
+  `branding/tailarr-src/`, drop-ins in `branding/replacements/`. All platform
+  icons/splash/favicons regenerated. Root README is Tailarr-branded.
+- Bundle ID changed to `com.stephenspeicher.tailarr` (was `.lunasea.dev`).
+  Internal identifiers (package `lunasea`, `Luna*` classes, Hive paths)
+  deliberately UNCHANGED — Tier 3, no user benefit, would wipe settings.
+- iOS caches launch-screen per bundle ID (survives reboots); new bundle ID or
+  app delete is the only reliable way to refresh the splash.
+
+### TestFlight: live pipeline
+- `.github/workflows/testflight.yml` — tag `v*` or manual dispatch → builds Go
+  xcframework + Flutter, cloud-signs, uploads. Working after fixing: gobind
+  install, gitignored codegen (run the 4 dart generate cmds), ASC key needs
+  cloud-managed-cert permission, runner needs newest Xcode.
+- ASC secrets set (ASC_KEY_ID=C9NUZL9HZF, ASC_ISSUER_ID, ASC_KEY_P8). App record
+  "Tailarr" sku=tailarr-001. Public link testflight.apple.com/join/m3eyPfSr,
+  button on README. Build 5 submitted, WAITING_FOR_REVIEW (Apple's clock).
+- ASC API helper pattern in scratchpad (PyJWT ES256) — see memory.
+
+### Paid Apple account confirmed (team 857ZZSY5ZQ, 1-year profiles).
+
+### Pending / next
+- Repo still PRIVATE — user will make public soon after TestFlight goes live
+  (GPL distribution obligation; keep source-on-request in mind meanwhile).
+- Email LunaSea author (Jagandeep Brar) re: App Store distribution exception.
+- Future projects (SEPARATE sessions/repos): Swiftfin + Tailscale, and a
+  garage-controller rewrite to Swift + Tailscale — both use **TailscaleKit**
+  (native Swift), NOT this gomobile/tsnet approach. See
+  `~/projects/tailscale-embedding-playbook.md`.
+- Jellyfin clean-library batch transcode script (hevc_videotoolbox ~5Mbps).
