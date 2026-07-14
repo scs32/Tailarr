@@ -229,3 +229,53 @@ Went from "shelved / Tailscale fundamentally broken" to shipping. State now:
   `~/projects/tailscale-embedding-playbook.md` (cross-project patterns) and
   `~/projects/swiftfin/KICKOFF.md` (Swiftfin-specific brief + first prompt).
 - Jellyfin clean-library batch transcode script (hevc_videotoolbox ~5Mbps).
+
+---
+
+## Session Log — 2026-07-13 (Beta approved, repo public, tailarr.com live)
+
+### TestFlight: APPROVED and public
+- Build 5 externalBuildState=BETA_APPROVED. Public link works:
+  testflight.apple.com/join/m3eyPfSr (verified installed on user's phone).
+  Gotcha: the link's "View in TestFlight" button fails on devices without
+  TestFlight installed — use the Redeem code `m3eyPfSr` path instead.
+- ASC API access from this Mac: key `~/.appstoreconnect/private_keys/AuthKey_C9NUZL9HZF.p8`,
+  KEY_ID=C9NUZL9HZF, ISSUER_ID=aec2db68-0505-4886-832b-c6e1dcd4e0e0,
+  PyJWT ES256 pattern (scripts were in session scratchpad; trivially rewritable).
+
+### Repo is PUBLIC
+- `gh repo edit scs32/Tailarr --visibility public` done (GPL obligation met
+  now that binaries ship). Actions secrets unaffected.
+
+### tailarr.com is LIVE (new repo: scs32/tailarr-site, PRIVATE)
+- Marketing site for the SUITE — **both** halves: `scs32/tailarr-server`
+  (public; ex-"podscale"; Podman pods where every service is its own
+  tailnet device w/ MagicDNS+HTTPS+ACL identity) and this iOS app.
+  User insists the COMBO is the product — keep site copy suite-first.
+- Site: pure static under `public/`, NO build step. Split hero
+  (server card ⇄ animated WireGuard mesh ⇄ phone mockup), duo section,
+  how-it-works, features, security (nmap art), sharing, FAQ, CTA.
+  Local checkout: `~/projects/tailarr-site`.
+- Hosting: Cloudflare Pages project `tailarr-site` (account
+  7b8f91a9a2659b940db927227c638e6c), custom domains tailarr.com +
+  www.tailarr.com active. Deploys are DIRECT UPLOAD from this Mac
+  (dashboard Git-connect was never completed):
+  `npx wrangler pages deploy public --project-name tailarr-site --branch master`
+  (branch≠master ⇒ preview URL, e.g. hero-site.tailarr-site.pages.dev).
+- wrangler OAuth is logged in on this Mac (`wrangler login` done); its token
+  CANNOT edit DNS (no DNS scope) — user adds DNS records in dashboard.
+- Headless-browser gotcha: Chromium/Edge clamps windows to ~500px min width;
+  "mobile" screenshots at 390 are silently 492 — don't chase phantom overflow.
+
+### Cloudflare account facts
+- Zones: tailarr.com, onegrooveoff.com, montyandstevebuildavan.com (all
+  registered AT Cloudflare) + nest.haus (registrar: Squarespace, transfer
+  lock on, expires 2027-03-03 — candidate to transfer; verify .haus support).
+
+### Pending / next
+- Site revision pass (user: "not perfect, publish anyway"): real app
+  screenshots into the phone mockup, copy tuning, proper 1200×630 og-image.
+- Repo-public follow-up: email LunaSea author re: App Store exception.
+- Remote background agents stalled twice building the site (agent wrote
+  great HTML, never finished CSS/JS; finished by hand) — prefer inline
+  builds or babysit agents for this kind of work.
