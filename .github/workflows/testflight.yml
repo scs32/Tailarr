@@ -1,8 +1,10 @@
 name: TestFlight
 
-# Builds the iOS app (including the Go/tsnet xcframework) and uploads it to
+# Builds the iOS app and uploads it to
 # TestFlight, signed with Apple cloud-managed certificates via an App Store
 # Connect API key. No fastlane match / certificate repo required.
+# The Tailscale tsnet xcframework ships prebuilt inside the tailscale_embed
+# plugin (github.com/scs32/tailscale_embed), so no Go toolchain is needed.
 #
 # Required repository secrets:
 #   ASC_KEY_ID      - App Store Connect API key ID
@@ -37,21 +39,6 @@ jobs:
           ls -d /Applications/Xcode_*.app
           sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)/Contents/Developer"
           xcodebuild -version
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.25"
-          cache-dependency-path: lunasea/Go/go.sum
-
-      - name: Build GoLunaSea.xcframework
-        working-directory: lunasea/Go
-        run: |
-          go install golang.org/x/mobile/cmd/gomobile@latest golang.org/x/mobile/cmd/gobind@latest
-          export PATH="$PATH:$(go env GOPATH)/bin"
-          gomobile bind -target ios -o GoLunaSea.xcframework .
-          rm -rf ../ios/GoLunaSea.xcframework
-          cp -R GoLunaSea.xcframework ../ios/
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2

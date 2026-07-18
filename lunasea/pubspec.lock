@@ -1253,6 +1253,15 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.2.0"
+  tailscale_embed:
+    dependency: "direct main"
+    description:
+      path: "."
+      ref: main
+      resolved-ref: f11d76ebee09bfaff849915ea67fd519e8927db9
+      url: "https://github.com/scs32/tailscale_embed.git"
+    source: git
+    version: "0.1.0"
   term_glyph:
     dependency: transitive
     description:

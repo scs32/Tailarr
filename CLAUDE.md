@@ -127,33 +127,21 @@ lib/system/{feature}/platform/
 
 Conditional imports in main file select appropriate implementation.
 
-## Tailscale Integration (WORKING on iOS)
+## Tailscale Integration (WORKING on iOS — now via the `tailscale_embed` plugin)
 
 ### Current State
-**Working end-to-end since 2026-07-04.** The app embeds a Tailscale node via tsnet and routes `.ts.net` traffic through it — no system-wide VPN needed on the phone. The old "cannot find executable path" blocker was fixed upstream in tailscale/tailscale PR #15379 (merged March 2025, v1.82+); the repo pins `tailscale.com v1.92.5`.
+**Working end-to-end since 2026-07-04; extracted into a reusable Flutter plugin on 2026-07-18.** The app embeds a Tailscale node via tsnet and routes tailnet traffic (`*.ts.net`, `100.64.0.0/10`, `fd7a:115c:a1e0::/48`) through it — no system-wide VPN needed on the phone.
 
-### Architecture
-- **Go code** (`lunasea/Go/main.go`) - HTTP CONNECT proxy over `tsnet.Server.Dial`. Node is persistent (`Ephemeral: false`, state in app's Application Support/tailscale) and startup blocks on `server.Up(ctx)` so auth failures surface. `EnsureProxy()` health-checks and rebinds the local listener (iOS reclaims sockets during suspension).
-- **Swift bridge** (`ios/Runner/AppDelegate.swift`) - MethodChannel (`start`/`stop`/`ensure`/`isRunning`/`getPort`); blocking calls dispatched off the main thread.
-- **Dart layer** (`lib/system/network/platform/network_io.dart`) - `findProxy` routes `.ts.net` hosts to the local proxy, reading the port per-request. `network_html.dart`/`network_stub.dart` carry a no-op `IO` facade so other platforms compile.
-- **Lifecycle guard** (`lib/system/network/tailscale_guard.dart`) - mounted in `main.dart`'s MaterialApp builder; on launch/foreground it ensures the node+listener are healthy, showing a blocking "Connecting to Tailscale…" overlay meanwhile.
-- **UI** - Toggle in Settings > General > Network. Auth key is needed exactly once (node identity persists); on auth failure the stored key is cleared and re-toggling prompts again. Single-use keys are fine.
+The whole stack (Go tsnet proxy, Swift MethodChannel bridge, findProxy/HttpOverrides routing, TailscaleGuard lifecycle widget, auth-key validation/friendly errors) now lives in **github.com/scs32/tailscale_embed** (public, GPL-3.0), consumed as a git dependency in `lunasea/pubspec.yaml`. The prebuilt `TailscaleEmbed.xcframework` is checked into that repo, so neither local builds nor CI need a Go toolchain anymore.
 
-### Gotchas
-- **gvisor must match tailscale's own go.mod pin** (`v0.0.0-20250205023644-9414b50a5633` for v1.92.5). A newer gvisor breaks `gomobile bind` with "found packages stack and bridge" errors. Re-sync when bumping tailscale.
-- Newer gomobile requires the tool dependency recorded: `go get -tool golang.org/x/mobile/cmd/gobind`.
-- Only hosts ending in `.ts.net` are routed; Tailscale IPs (100.x) and MagicDNS short names bypass the proxy (future work).
-- The xcframework is **gitignored** (92MB+ binaries, near GitHub's 100MB limit) — rebuild it after clone with the commands below.
+### What remains in this repo
+- `lib/system/network/platform/network_io.dart` — thin `IO` facade over `TailscaleEmbed.instance`; configures the plugin with a `TailscaleConfig` provider reading Hive (`TAILSCALE_ENABLED`/`TAILSCALE_AUTH_KEY`, hostname `tailarr`) and adds Tailarr-specific client config (TLS validation toggle, user agent) via `TailscaleHttpOverrides.install(configureClient: …)`.
+- `lib/main.dart` — mounts the plugin's `TailscaleGuard` in the MaterialApp builder.
+- Settings toggle in Settings > General > Network (uses `TailscaleAuthKeys.typeError`/`friendlyError` from the plugin). Auth key needed exactly once (node identity persists in Application Support/tailscale); single-use keys are fine.
 
-### Build Commands for Go/xcframework
-```bash
-cd lunasea/Go
-go mod tidy
-export PATH="$PATH:$(go env GOPATH)/bin"
-gomobile bind -target ios -o GoLunaSea.xcframework .
-rm -rf ../ios/GoLunaSea.xcframework && cp -R GoLunaSea.xcframework ../ios/
-cd ../ios && pod install
-```
+### Gotchas (now documented in the plugin repo too)
+- **gvisor must match tailscale's own go.mod pin** — a newer gvisor breaks `gomobile bind`. Rebuild recipe: `go/build.sh` in the plugin repo.
+- To bump tailscale: update the plugin repo's `go/go.mod`, run `go/build.sh`, commit the new xcframework there, then `flutter pub upgrade tailscale_embed` here.
 
 ## iOS Development Notes
 
