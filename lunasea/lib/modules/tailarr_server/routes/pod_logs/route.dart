@@ -28,7 +28,9 @@ class _State extends State<PodLogsRoute> with LunaScrollControllerMixin {
 
   void _fetch() {
     final api = context.read<TailarrServerState>().api;
-    setState(() => _logs = api?.getLogs(widget.pod));
+    setState(() {
+      _logs = api?.getLogs(widget.pod);
+    });
   }
 
   @override
