@@ -40,7 +40,10 @@ class IO implements LunaNetwork {
       config: () => TailscaleConfig(
         enabled: LunaSeaDatabase.TAILSCALE_ENABLED.read(),
         authKey: LunaSeaDatabase.TAILSCALE_AUTH_KEY.read(),
-        hostname: 'tailarr',
+        // Not 'tailarr' — that's the tailarr-server controller's hostname;
+        // sharing it risks the app's resolver matching itself for the
+        // server's MagicDNS name.
+        hostname: 'tailarr-app',
       ),
     );
     TailscaleHttpOverrides.install(configureClient: _configureClient);
