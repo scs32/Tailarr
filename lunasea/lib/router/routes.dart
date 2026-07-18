@@ -12,6 +12,7 @@ import 'package:lunasea/router/routes/sabnzbd.dart';
 import 'package:lunasea/router/routes/search.dart';
 import 'package:lunasea/router/routes/settings.dart';
 import 'package:lunasea/router/routes/sonarr.dart';
+import 'package:lunasea/router/routes/tailarr_server.dart';
 import 'package:lunasea/router/routes/tautulli.dart';
 import 'package:lunasea/vendor.dart';
 import 'package:lunasea/widgets/pages/not_enabled.dart';
@@ -27,6 +28,7 @@ enum LunaRoutes {
   search('search', root: SearchRoutes.HOME),
   settings('settings', root: SettingsRoutes.HOME),
   sonarr('sonarr', root: SonarrRoutes.HOME),
+  tailarrServer('tailarr_server', root: TailarrServerRoutes.HOME),
   tautulli('tautulli', root: TautulliRoutes.HOME);
 
   final String key;

@@ -39,6 +39,9 @@ import 'package:lunasea/modules/settings/routes/configuration_sonarr/pages/defau
 import 'package:lunasea/modules/settings/routes/configuration_sonarr/pages/default_pages.dart';
 import 'package:lunasea/modules/settings/routes/configuration_sonarr/pages/headers.dart';
 import 'package:lunasea/modules/settings/routes/configuration_sonarr/route.dart';
+import 'package:lunasea/modules/settings/routes/configuration_tailarr_server/pages/connection_details.dart';
+import 'package:lunasea/modules/settings/routes/configuration_tailarr_server/pages/headers.dart';
+import 'package:lunasea/modules/settings/routes/configuration_tailarr_server/route.dart';
 import 'package:lunasea/modules/settings/routes/configuration_tautulli/pages/connection_details.dart';
 import 'package:lunasea/modules/settings/routes/configuration_tautulli/pages/default_pages.dart';
 import 'package:lunasea/modules/settings/routes/configuration_tautulli/pages/headers.dart';
@@ -92,6 +95,9 @@ enum SettingsRoutes with LunaRoutesMixin {
   CONFIGURATION_SONARR_CONNECTION_DETAILS_HEADERS('headers'),
   CONFIGURATION_SONARR_DEFAULT_OPTIONS('default_options'),
   CONFIGURATION_SONARR_DEFAULT_PAGES('default_pages'),
+  CONFIGURATION_TAILARR_SERVER('tailarr_server'),
+  CONFIGURATION_TAILARR_SERVER_CONNECTION_DETAILS('connection_details'),
+  CONFIGURATION_TAILARR_SERVER_CONNECTION_DETAILS_HEADERS('headers'),
   CONFIGURATION_TAUTULLI('tautulli'),
   CONFIGURATION_TAUTULLI_CONNECTION_DETAILS('connection_details'),
   CONFIGURATION_TAUTULLI_CONNECTION_DETAILS_HEADERS('headers'),
@@ -216,6 +222,18 @@ enum SettingsRoutes with LunaRoutesMixin {
         return route(widget: const ConfigurationSonarrDefaultOptionsRoute());
       case SettingsRoutes.CONFIGURATION_SONARR_DEFAULT_PAGES:
         return route(widget: const ConfigurationSonarrDefaultPagesRoute());
+      case SettingsRoutes.CONFIGURATION_TAILARR_SERVER:
+        return route(widget: const ConfigurationTailarrServerRoute());
+      case SettingsRoutes.CONFIGURATION_TAILARR_SERVER_CONNECTION_DETAILS:
+        return route(
+          widget: const ConfigurationTailarrServerConnectionDetailsRoute(),
+        );
+      case SettingsRoutes
+            .CONFIGURATION_TAILARR_SERVER_CONNECTION_DETAILS_HEADERS:
+        return route(
+          widget:
+              const ConfigurationTailarrServerConnectionDetailsHeadersRoute(),
+        );
       case SettingsRoutes.CONFIGURATION_TAUTULLI:
         return route(widget: const ConfigurationTautulliRoute());
       case SettingsRoutes.CONFIGURATION_TAUTULLI_CONNECTION_DETAILS:
@@ -266,6 +284,7 @@ enum SettingsRoutes with LunaRoutesMixin {
           SettingsRoutes.CONFIGURATION_SABNZBD.routes,
           SettingsRoutes.CONFIGURATION_SEARCH.routes,
           SettingsRoutes.CONFIGURATION_SONARR.routes,
+          SettingsRoutes.CONFIGURATION_TAILARR_SERVER.routes,
           SettingsRoutes.CONFIGURATION_TAUTULLI.routes,
           SettingsRoutes.CONFIGURATION_WAKE_ON_LAN.routes,
         ];
@@ -334,6 +353,15 @@ enum SettingsRoutes with LunaRoutesMixin {
       case SettingsRoutes.CONFIGURATION_SONARR_CONNECTION_DETAILS:
         return [
           SettingsRoutes.CONFIGURATION_SONARR_CONNECTION_DETAILS_HEADERS.routes,
+        ];
+      case SettingsRoutes.CONFIGURATION_TAILARR_SERVER:
+        return [
+          SettingsRoutes.CONFIGURATION_TAILARR_SERVER_CONNECTION_DETAILS.routes,
+        ];
+      case SettingsRoutes.CONFIGURATION_TAILARR_SERVER_CONNECTION_DETAILS:
+        return [
+          SettingsRoutes
+              .CONFIGURATION_TAILARR_SERVER_CONNECTION_DETAILS_HEADERS.routes,
         ];
       case SettingsRoutes.CONFIGURATION_TAUTULLI:
         return [

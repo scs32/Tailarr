@@ -4,6 +4,7 @@ import 'package:lunasea/core.dart';
 import 'package:lunasea/modules/radarr.dart';
 import 'package:lunasea/modules/sonarr.dart';
 import 'package:lunasea/modules/settings.dart';
+import 'package:lunasea/modules/tailarr_server.dart';
 import 'package:lunasea/modules/tautulli.dart';
 
 class SettingsHeaderRoute extends StatefulWidget {
@@ -117,6 +118,8 @@ class _State extends State<SettingsHeaderRoute> with LunaScrollControllerMixin {
         throw Exception('Wake on LAN does not have a headers page');
       case LunaModule.OVERSEERR:
         throw Exception('Overseerr does not have a headers page');
+      case LunaModule.TAILARR_SERVER:
+        return LunaProfile.current.tailarrServerHeaders;
       case LunaModule.TAUTULLI:
         return LunaProfile.current.tautulliHeaders;
     }
@@ -144,6 +147,8 @@ class _State extends State<SettingsHeaderRoute> with LunaScrollControllerMixin {
         throw Exception('Settings does not have a global state');
       case LunaModule.WAKE_ON_LAN:
         throw Exception('Wake on LAN does not have a global state');
+      case LunaModule.TAILARR_SERVER:
+        return context.read<TailarrServerState>().reset();
       case LunaModule.TAUTULLI:
         return context.read<TautulliState>().reset();
       case LunaModule.OVERSEERR:

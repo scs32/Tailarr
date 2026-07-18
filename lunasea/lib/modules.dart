@@ -14,6 +14,7 @@ import 'package:lunasea/modules/sonarr.dart';
 import 'package:lunasea/modules/sabnzbd.dart';
 import 'package:lunasea/modules/nzbget.dart';
 import 'package:lunasea/modules/tautulli.dart';
+import 'package:lunasea/modules/tailarr_server.dart';
 import 'package:lunasea/modules/dashboard/core/state.dart';
 import 'package:lunasea/api/wake_on_lan/wake_on_lan.dart';
 
@@ -29,6 +30,7 @@ const MODULE_SABNZBD_KEY = 'sabnzbd';
 const MODULE_SEARCH_KEY = 'search';
 const MODULE_SETTINGS_KEY = 'settings';
 const MODULE_SONARR_KEY = 'sonarr';
+const MODULE_TAILARR_SERVER_KEY = 'tailarr_server';
 const MODULE_TAUTULLI_KEY = 'tautulli';
 const MODULE_WAKE_ON_LAN_KEY = 'wake_on_lan';
 
@@ -54,6 +56,8 @@ enum LunaModule {
   SETTINGS(MODULE_SETTINGS_KEY),
   @HiveField(8)
   SONARR(MODULE_SONARR_KEY),
+  @HiveField(12)
+  TAILARR_SERVER(MODULE_TAILARR_SERVER_KEY),
   @HiveField(9)
   TAUTULLI(MODULE_TAUTULLI_KEY),
   @HiveField(10)
@@ -82,6 +86,8 @@ enum LunaModule {
         return LunaModule.SONARR;
       case MODULE_OVERSEERR_KEY:
         return LunaModule.OVERSEERR;
+      case MODULE_TAILARR_SERVER_KEY:
+        return LunaModule.TAILARR_SERVER;
       case MODULE_TAUTULLI_KEY:
         return LunaModule.TAUTULLI;
       case MODULE_WAKE_ON_LAN_KEY:
@@ -133,6 +139,8 @@ extension LunaModuleEnablementExtension on LunaModule {
         return !LunaBox.indexers.isEmpty;
       case LunaModule.SONARR:
         return LunaProfile.current.sonarrEnabled;
+      case LunaModule.TAILARR_SERVER:
+        return LunaProfile.current.tailarrServerEnabled;
       case LunaModule.TAUTULLI:
         return LunaProfile.current.tautulliEnabled;
       case LunaModule.WAKE_ON_LAN:
@@ -162,6 +170,8 @@ extension LunaModuleMetadataExtension on LunaModule {
         return 'lunasea.Settings'.tr();
       case LunaModule.SONARR:
         return 'Sonarr';
+      case LunaModule.TAILARR_SERVER:
+        return 'Tailarr Server';
       case LunaModule.TAUTULLI:
         return 'Tautulli';
       case LunaModule.OVERSEERR:
@@ -191,6 +201,8 @@ extension LunaModuleMetadataExtension on LunaModule {
         return Icons.settings_rounded;
       case LunaModule.SONARR:
         return LunaIcons.SONARR;
+      case LunaModule.TAILARR_SERVER:
+        return Icons.dns_rounded;
       case LunaModule.TAUTULLI:
         return LunaIcons.TAUTULLI;
       case LunaModule.OVERSEERR:
@@ -220,6 +232,8 @@ extension LunaModuleMetadataExtension on LunaModule {
         return LunaColours.accent;
       case LunaModule.SONARR:
         return const Color(0xFF3FC6F4);
+      case LunaModule.TAILARR_SERVER:
+        return const Color(0xFF22D3EE);
       case LunaModule.TAUTULLI:
         return const Color(0xFFDBA23A);
       case LunaModule.OVERSEERR:
@@ -249,6 +263,8 @@ extension LunaModuleMetadataExtension on LunaModule {
         return null;
       case LunaModule.SONARR:
         return 'https://sonarr.tv';
+      case LunaModule.TAILARR_SERVER:
+        return 'https://tailarr.com';
       case LunaModule.TAUTULLI:
         return 'https://tautulli.com';
       case LunaModule.OVERSEERR:
@@ -278,6 +294,8 @@ extension LunaModuleMetadataExtension on LunaModule {
         return null;
       case LunaModule.SONARR:
         return 'https://github.com/Sonarr/Sonarr';
+      case LunaModule.TAILARR_SERVER:
+        return 'https://github.com/scs32/tailarr-server';
       case LunaModule.TAUTULLI:
         return 'https://github.com/Tautulli/Tautulli';
       case LunaModule.OVERSEERR:
@@ -307,6 +325,8 @@ extension LunaModuleMetadataExtension on LunaModule {
         return 'Configure Tailarr';
       case LunaModule.SONARR:
         return 'Manage Television Series';
+      case LunaModule.TAILARR_SERVER:
+        return 'Manage Your Homelab Server';
       case LunaModule.TAUTULLI:
         return 'View Plex Activity';
       case LunaModule.OVERSEERR:
@@ -336,6 +356,8 @@ extension LunaModuleMetadataExtension on LunaModule {
         return null;
       case LunaModule.SONARR:
         return 'Sonarr is a PVR for Usenet and BitTorrent users. It can monitor multiple RSS feeds for new episodes of your favorite shows and will grab, sort and rename them. It can also be configured to automatically upgrade the quality of files already downloaded when a better quality format becomes available.';
+      case LunaModule.TAILARR_SERVER:
+        return 'Tailarr Server deploys your self-hosted services as Podman pods where every service is its own Tailscale device — no exposed ports, HTTPS everywhere, reachable only over your tailnet.';
       case LunaModule.TAUTULLI:
         return 'Tautulli is an application that you can run alongside your Plex Media Server to monitor activity and track various statistics. Most importantly, these statistics include what has been watched, who watched it, when and where they watched it, and how it was watched.';
       case LunaModule.OVERSEERR:
@@ -367,6 +389,8 @@ extension LunaModuleRoutingExtension on LunaModule {
         return LunaRoutes.settings.root.path;
       case LunaModule.SONARR:
         return LunaRoutes.sonarr.root.path;
+      case LunaModule.TAILARR_SERVER:
+        return LunaRoutes.tailarrServer.root.path;
       case LunaModule.TAUTULLI:
         return LunaRoutes.tautulli.root.path;
       case LunaModule.OVERSEERR:
@@ -398,6 +422,8 @@ extension LunaModuleRoutingExtension on LunaModule {
         return null;
       case LunaModule.SONARR:
         return SettingsRoutes.CONFIGURATION_SONARR;
+      case LunaModule.TAILARR_SERVER:
+        return SettingsRoutes.CONFIGURATION_TAILARR_SERVER;
       case LunaModule.TAUTULLI:
         return SettingsRoutes.CONFIGURATION_TAUTULLI;
       case LunaModule.WAKE_ON_LAN:
@@ -495,6 +521,8 @@ extension LunaModuleExtension on LunaModule {
         return context.read<SABnzbdState>();
       case LunaModule.OVERSEERR:
         return null;
+      case LunaModule.TAILARR_SERVER:
+        return context.read<TailarrServerState>();
       case LunaModule.TAUTULLI:
         return context.read<TautulliState>();
       case LunaModule.EXTERNAL_MODULES:

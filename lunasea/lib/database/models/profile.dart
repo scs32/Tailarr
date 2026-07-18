@@ -134,6 +134,18 @@ class LunaProfile extends HiveObject {
   Map<String, String> tautulliHeaders;
 
   @JsonKey()
+  @HiveField(44, defaultValue: false)
+  bool tailarrServerEnabled;
+
+  @JsonKey()
+  @HiveField(45, defaultValue: '')
+  String tailarrServerHost;
+
+  @JsonKey()
+  @HiveField(46, defaultValue: <String, String>{})
+  Map<String, String> tailarrServerHeaders;
+
+  @JsonKey()
   @HiveField(40, defaultValue: false)
   bool overseerrEnabled;
 
@@ -180,6 +192,10 @@ class LunaProfile extends HiveObject {
     required this.wakeOnLANEnabled,
     required this.wakeOnLANBroadcastAddress,
     required this.wakeOnLANMACAddress,
+    //Tailarr Server
+    required this.tailarrServerEnabled,
+    required this.tailarrServerHost,
+    required this.tailarrServerHeaders,
     //Tautulli
     required this.tautulliEnabled,
     required this.tautulliHost,
@@ -223,6 +239,10 @@ class LunaProfile extends HiveObject {
     bool? wakeOnLANEnabled,
     String? wakeOnLANBroadcastAddress,
     String? wakeOnLANMACAddress,
+    //Tailarr Server
+    bool? tailarrServerEnabled,
+    String? tailarrServerHost,
+    Map<String, String>? tailarrServerHeaders,
     //Tautulli
     bool? tautulliEnabled,
     String? tautulliHost,
@@ -265,6 +285,10 @@ class LunaProfile extends HiveObject {
       wakeOnLANEnabled: wakeOnLANEnabled ?? false,
       wakeOnLANBroadcastAddress: wakeOnLANBroadcastAddress ?? '',
       wakeOnLANMACAddress: wakeOnLANMACAddress ?? '',
+      // Tailarr Server
+      tailarrServerEnabled: tailarrServerEnabled ?? false,
+      tailarrServerHost: tailarrServerHost ?? '',
+      tailarrServerHeaders: tailarrServerHeaders ?? {},
       // Tautulli
       tautulliEnabled: tautulliEnabled ?? false,
       tautulliHost: tautulliHost ?? '',
