@@ -63,9 +63,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   4. Optional: surface plugin `status()` (hostname/IPs/peers/state) in
      Settings > Network — answers "am I connected?".
   5. Verify: analyzer → live E2E vs test server → in-place phone install.
-  Coordination flag: plugin backlog moves the ~92MB xcframework to GitHub
-  Releases + CocoaPods `script_phase` download — bump deliberately once
-  that ships (touches pod install; lockfile pin protects until then).
+  Coordination flag → SEQUENCE DECIDED (2026-07-19): the plugin should
+  land its framework-distribution change (xcframework → GitHub Releases +
+  CocoaPods script_phase download, checksum-pinned) BEFORE Tailarr bumps —
+  each bump otherwise bakes another ~180MB of binaries into git history
+  (GitHub already warning on push; 100MB hard limit is close). Order:
+  1) plugin ships Releases-based distribution, 2) plugin live-verifies
+  multi-identity with the reusable tailde95ff key, 3) single Tailarr bump
+  adopts everything (identities, onKeyConsumed(identity), status UI).
+  Verify Tailarr CI's pod install fetches the framework fine (needs
+  network at pod-install time — it has it).
 
 - **Share-config flow polish**: Stephen found the import flow "a bit
   wonky" on device (2026-07-19) — revisit UX after TestFlight feedback.
