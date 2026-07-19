@@ -75,13 +75,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   node has ONE identity. Move to per-profile in two stages:
   1. App-only: enabled + auth key become LunaProfile HiveFields (migrate
      existing global values into the current profile).
-  2. Per-profile node identity/tailnet: needs tailscale_embed support for
-     a per-identity state dir on TailscaleConfig (one node state per
-     profile, restart node on profile switch behind TailscaleGuard;
-     rollback-start machinery helps). Kills the juggle-two-installs
-     problem: profile "test" on tailde95ff vs profile "home" on the real
-     tailnet. Coordinate with the tailscale_embed upgrade backlog item —
-     stateDir should ride the same plugin rev.
+  2. Per-profile node identity/tailnet: plugin support SHIPPED
+     (tailscale_embed efc0e02, 2026-07-19): `identity` on TailscaleConfig,
+     legacy state auto-migrates to identities/default (no re-enroll),
+     ensure() restarts on identity change (serialized; guard covers gap),
+     rollback restores the PREVIOUS identity (error carries
+     activeIdentity), status().identity, listIdentities()/deleteIdentity()
+     (IDENTITY_ACTIVE guards the running one). BREAKING in same rev:
+     onKeyConsumed is now `void Function(String identity)`.
+     Tailarr adoption notes:
+     - Identity names must match [A-Za-z0-9][A-Za-z0-9._-]{0,63} and
+       profile names are free-form: do NOT derive by slugification
+       (collisions). Generate once when a profile first enables Tailscale
+       (slug + short random suffix) and STORE on the profile as a new
+       HiveField; profile rename then can't orphan/collide node state.
+     - Profile delete should offer deleteIdentity() cleanup.
+     - Adopt onKeyConsumed(identity) → clear that profile's auth key.
+     - Kills the juggle-two-installs problem: profile "test" on tailde95ff
+       vs profile "home" on the real tailnet.
+     Plugin's live E2E (two identities, switch, rollback, onKeyConsumed)
+     is pending a real auth key — the reusable tailde95ff key works; run
+     it before or with the Tailarr bump.
 
 ## Build Commands
 
