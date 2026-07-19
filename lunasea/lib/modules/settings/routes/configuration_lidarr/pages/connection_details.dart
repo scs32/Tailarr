@@ -38,6 +38,7 @@ class _State extends State<ConfigurationLidarrConnectionDetailsRoute>
     return LunaBottomActionBar(
       actions: [
         _testConnection(),
+        _shareConfiguration(),
       ],
     );
   }
@@ -157,6 +158,23 @@ class _State extends State<ConfigurationLidarrConnectionDetailsRoute>
       body: [TextSpan(text: 'settings.CustomHeadersDescription'.tr())],
       trailing: const LunaIconButton.arrow(),
       onTap: SettingsRoutes.CONFIGURATION_LIDARR_CONNECTION_DETAILS_HEADERS.go,
+    );
+  }
+  Widget _shareConfiguration() {
+    return LunaButton.text(
+      text: 'Share',
+      icon: Icons.ios_share_rounded,
+      onTap: () async {
+        if (LunaProfile.current.lidarrHost.isEmpty) {
+          showLunaErrorSnackBar(
+            title: 'Nothing to Share',
+            message: 'Set a host before sharing this configuration',
+          );
+          return;
+        }
+        await SharedModuleConfiguration.fromProfile(LunaModule.LIDARR)!
+            .share();
+      },
     );
   }
 }

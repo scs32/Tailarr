@@ -39,6 +39,7 @@ class _State extends State<ConfigurationTailarrServerConnectionDetailsRoute>
     return LunaBottomActionBar(
       actions: [
         _testConnection(),
+        _shareConfiguration(),
       ],
     );
   }
@@ -179,6 +180,23 @@ class _State extends State<ConfigurationTailarrServerConnectionDetailsRoute>
       trailing: const LunaIconButton.arrow(),
       onTap: SettingsRoutes
           .CONFIGURATION_TAILARR_SERVER_CONNECTION_DETAILS_HEADERS.go,
+    );
+  }
+  Widget _shareConfiguration() {
+    return LunaButton.text(
+      text: 'Share',
+      icon: Icons.ios_share_rounded,
+      onTap: () async {
+        if (LunaProfile.current.tailarrServerHost.isEmpty) {
+          showLunaErrorSnackBar(
+            title: 'Nothing to Share',
+            message: 'Set a host before sharing this configuration',
+          );
+          return;
+        }
+        await SharedModuleConfiguration.fromProfile(LunaModule.TAILARR_SERVER)!
+            .share();
+      },
     );
   }
 }

@@ -38,6 +38,7 @@ class _State extends State<ConfigurationTautulliConnectionDetailsRoute>
     return LunaBottomActionBar(
       actions: [
         _testConnection(),
+        _shareConfiguration(),
       ],
     );
   }
@@ -153,6 +154,23 @@ class _State extends State<ConfigurationTautulliConnectionDetailsRoute>
       trailing: const LunaIconButton.arrow(),
       onTap:
           SettingsRoutes.CONFIGURATION_TAUTULLI_CONNECTION_DETAILS_HEADERS.go,
+    );
+  }
+  Widget _shareConfiguration() {
+    return LunaButton.text(
+      text: 'Share',
+      icon: Icons.ios_share_rounded,
+      onTap: () async {
+        if (LunaProfile.current.tautulliHost.isEmpty) {
+          showLunaErrorSnackBar(
+            title: 'Nothing to Share',
+            message: 'Set a host before sharing this configuration',
+          );
+          return;
+        }
+        await SharedModuleConfiguration.fromProfile(LunaModule.TAUTULLI)!
+            .share();
+      },
     );
   }
 }

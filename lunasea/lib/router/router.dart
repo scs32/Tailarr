@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:lunasea/modules/settings/routes/import_configuration/route.dart';
 import 'package:lunasea/system/logger.dart';
 import 'package:lunasea/widgets/pages/error_route.dart';
 import 'package:lunasea/router/routes.dart';
@@ -14,7 +15,21 @@ class LunaRouter {
       navigatorKey: navigator,
       errorBuilder: (_, state) => ErrorRoutePage(exception: state.error),
       initialLocation: LunaRoutes.initialLocation,
-      routes: LunaRoutes.values.map((r) => r.root.routes).toList(),
+      routes: [
+        ...LunaRoutes.values.map((r) => r.root.routes),
+        // Shared-configuration deep links: https://tailarr.com/import#payload
+        // (universal link) and tailarr:///import#payload (custom scheme).
+        // The payload rides in the fragment so it never reaches a server;
+        // ?c= is accepted as a fallback for contexts that strip fragments.
+        GoRoute(
+          path: '/import',
+          builder: (context, state) => ImportConfigurationRoute(
+            encoded: state.uri.fragment.isNotEmpty
+                ? state.uri.fragment
+                : state.uri.queryParameters['c'] ?? '',
+          ),
+        ),
+      ],
     );
   }
 

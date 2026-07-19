@@ -16,7 +16,7 @@ class LidarrAPI {
         },
         contentType: Headers.jsonContentType,
         responseType: ResponseType.json,
-        headers: LunaProfile.current.lidarrHeaders,
+        headers: profile.lidarrHeaders,
         followRedirects: true,
         maxRedirects: 5,
       ),
