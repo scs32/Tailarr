@@ -45,6 +45,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   catalog/install wizard, pod busy auto-refresh, diagnose viewer, Kuma
   monitoring, shares management.
 
+- **tailscale_embed upgrade** (planned 2026-07-19; plugin main is at
+  e0d598e, Tailarr pins f11d76e — the initial extraction): nothing breaks
+  (the `TailscaleBackend.start(TailscaleConfig)` breaking change only hits
+  custom backends; new config fields optional; findProxy still
+  tailnet-selective). Plan:
+  1. `flutter pub upgrade tailscale_embed` — free wins: rollback start
+     (bad key no longer kills the working tunnel), redirect relaying,
+     direct dial for non-tailnet destinations.
+  2. Adopt `onKeyConsumed` in `network_io.dart` → delete
+     `TAILSCALE_AUTH_KEY` from Hive once the identity persists (spent
+     plaintext key currently sits in storage forever); Settings key field
+     should read "consumed — identity saved".
+  3. `acceptRoutes` now defaults true: LAN IPs behind peer-advertised
+     subnet routes dial through the tailnet (correct remotely, hairpins
+     at home). Take the default; toggle only if hairpin complaints.
+  4. Optional: surface plugin `status()` (hostname/IPs/peers/state) in
+     Settings > Network — answers "am I connected?".
+  5. Verify: analyzer → live E2E vs test server → in-place phone install.
+  Coordination flag: plugin backlog moves the ~92MB xcframework to GitHub
+  Releases + CocoaPods `script_phase` download — bump deliberately once
+  that ships (touches pod install; lockfile pin protects until then).
+
+- **Share-config flow polish**: Stephen found the import flow "a bit
+  wonky" on device (2026-07-19) — revisit UX after TestFlight feedback.
+
 ## Build Commands
 
 ### Flutter App (from `lunasea/` directory)
