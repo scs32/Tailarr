@@ -173,7 +173,7 @@ class _State extends State<ConfigurationSonarrConnectionDetailsRoute>
           return;
         }
         await SharedModuleConfiguration.fromProfile(LunaModule.SONARR)!
-            .share();
+            .share(context);
       },
     );
   }

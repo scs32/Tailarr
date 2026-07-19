@@ -173,7 +173,7 @@ class _State extends State<ConfigurationLidarrConnectionDetailsRoute>
           return;
         }
         await SharedModuleConfiguration.fromProfile(LunaModule.LIDARR)!
-            .share();
+            .share(context);
       },
     );
   }

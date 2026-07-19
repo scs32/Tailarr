@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lunasea/core.dart';
 import 'package:lunasea/extensions/string/string.dart';
+import 'package:lunasea/modules/settings.dart';
 import 'package:lunasea/modules/tailarr_server.dart';
 import 'package:lunasea/router/routes/tailarr_server.dart';
 import 'package:share_plus/share_plus.dart';
@@ -273,6 +274,8 @@ class _State extends State<UsersRoute> with LunaScrollControllerMixin {
                       icon: Icons.ios_share_rounded,
                       onTap: () async => Share.share(
                         'Your Tailarr access key (install Tailscale, then sign in with this key — expires in 24h):\n\n$key',
+                        sharePositionOrigin:
+                            SharedModuleConfiguration.shareOriginOf(context),
                       ),
                     ),
                   ),

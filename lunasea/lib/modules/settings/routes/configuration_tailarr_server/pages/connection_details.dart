@@ -195,7 +195,7 @@ class _State extends State<ConfigurationTailarrServerConnectionDetailsRoute>
           return;
         }
         await SharedModuleConfiguration.fromProfile(LunaModule.TAILARR_SERVER)!
-            .share();
+            .share(context);
       },
     );
   }

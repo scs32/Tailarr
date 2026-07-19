@@ -177,7 +177,7 @@ class _State extends State<ConfigurationRadarrConnectionDetailsRoute>
           return;
         }
         await SharedModuleConfiguration.fromProfile(LunaModule.RADARR)!
-            .share();
+            .share(context);
       },
     );
   }

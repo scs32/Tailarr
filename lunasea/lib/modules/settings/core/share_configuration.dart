@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:lunasea/core.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -231,10 +232,27 @@ class SharedModuleConfiguration {
     return profile;
   }
 
-  Future<void> share() {
+  /// iOS requires a non-zero [sharePositionOrigin] to anchor the share
+  /// sheet (it throws without one); [shareOriginOf] derives it from the
+  /// calling widget's context.
+  Future<void> share(BuildContext context) {
     return Share.share(
       'Tap to add my ${module.title} to Tailarr — the app opens with '
       'everything filled in:\n\n$link',
+      sharePositionOrigin: shareOriginOf(context),
+    );
+  }
+
+  static Rect shareOriginOf(BuildContext context) {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box != null && box.hasSize) {
+      return box.localToGlobal(Offset.zero) & box.size;
+    }
+    final size = MediaQuery.of(context).size;
+    return Rect.fromCenter(
+      center: Offset(size.width / 2, size.height / 2),
+      width: 1,
+      height: 1,
     );
   }
 }

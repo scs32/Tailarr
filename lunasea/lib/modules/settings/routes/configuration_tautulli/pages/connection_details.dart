@@ -169,7 +169,7 @@ class _State extends State<ConfigurationTautulliConnectionDetailsRoute>
           return;
         }
         await SharedModuleConfiguration.fromProfile(LunaModule.TAUTULLI)!
-            .share();
+            .share(context);
       },
     );
   }

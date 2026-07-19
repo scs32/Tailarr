@@ -164,7 +164,7 @@ class _State extends State<ConfigurationSABnzbdConnectionDetailsRoute>
           return;
         }
         await SharedModuleConfiguration.fromProfile(LunaModule.SABNZBD)!
-            .share();
+            .share(context);
       },
     );
   }

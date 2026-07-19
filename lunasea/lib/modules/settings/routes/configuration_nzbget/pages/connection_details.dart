@@ -185,7 +185,7 @@ class _State extends State<ConfigurationNZBGetConnectionDetailsRoute>
           return;
         }
         await SharedModuleConfiguration.fromProfile(LunaModule.NZBGET)!
-            .share();
+            .share(context);
       },
     );
   }
