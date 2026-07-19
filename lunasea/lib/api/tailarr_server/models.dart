@@ -17,12 +17,18 @@ class TailarrServerInfo {
   final List<String> controllerPods;
   final bool upgradeAvailable;
 
+  /// `tsapi.mode`: 'oauth' | 'token' | null (no credential configured).
+  /// Key minting is gated on 'oauth' — only the tag-owning OAuth client can
+  /// reliably mint tagged enrollment keys.
+  final String? tsapiMode;
+
   const TailarrServerInfo({
     required this.apiVersion,
     required this.version,
     required this.podsDir,
     required this.controllerPods,
     required this.upgradeAvailable,
+    required this.tsapiMode,
   });
 
   factory TailarrServerInfo.fromJson(Map<String, dynamic> json) {
@@ -34,6 +40,7 @@ class TailarrServerInfo {
           .map((e) => e.toString())
           .toList(),
       upgradeAvailable: _bool(json['upgrade_available']),
+      tsapiMode: (json['tsapi'] as Map?)?['mode']?.toString(),
     );
   }
 }

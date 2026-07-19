@@ -183,6 +183,28 @@ class _State extends State<UsersRoute> with LunaScrollControllerMixin {
 
   Future<void> _addUser() async {
     final api = context.read<TailarrServerState>().api;
+    // Minting enrollment keys needs the tag-owning OAuth client — a static
+    // API token acts as a personal credential and can't reliably mint
+    // tagged keys, so the whole path is gated on oauth mode.
+    try {
+      final info = await api!.getInfo();
+      if (info.tsapiMode != 'oauth') {
+        await TailarrServerDialogs().confirmAction(
+          context,
+          title: 'OAuth Client Required',
+          message: info.tsapiMode == 'token'
+              ? 'The server is using a static API token, which cannot mint enrollment keys reliably. Open the Tailarr Server web UI > Settings and switch the credential to an OAuth client, then try again.'
+              : 'Adding users mints tailnet enrollment keys, which requires an OAuth client credential on the server. Open the Tailarr Server web UI > Settings and complete the credential wizard, then try again.',
+          buttonText: 'OK',
+          buttonColor: LunaColours.accent,
+        );
+        return;
+      }
+    } catch (error, stack) {
+      LunaLogger().error('Fetching server info failed', error, stack);
+      showLunaErrorSnackBar(title: 'Add User Failed', error: error);
+      return;
+    }
     final confirmed = await TailarrServerDialogs().confirmAction(
       context,
       title: 'Add User',
@@ -192,7 +214,7 @@ class _State extends State<UsersRoute> with LunaScrollControllerMixin {
       buttonColor: LunaColours.accent,
     );
     if (!confirmed) return;
-    await api!.createUserKey().then((result) {
+    await api.createUserKey().then((result) {
       if (result.ok && result.key.isNotEmpty) {
         _showKeySheet(result.key);
       } else {
