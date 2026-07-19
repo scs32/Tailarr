@@ -1,6 +1,9 @@
 import 'dart:io';
 
+import 'package:lunasea/database/box.dart';
+import 'package:lunasea/database/models/profile.dart';
 import 'package:lunasea/database/tables/lunasea.dart';
+import 'package:lunasea/system/logger.dart';
 import 'package:lunasea/vendor.dart';
 import 'package:tailscale_embed/tailscale_embed.dart';
 import 'package:tailscale_embed/tailscale_embed_io.dart';
@@ -14,12 +17,15 @@ LunaNetwork getNetwork() => IO();
 /// Thin facade over package:tailscale_embed, which owns the embedded node,
 /// the local proxy, and the findProxy routing. This class adds Tailarr's own
 /// client configuration (TLS validation toggle, user agent) on top.
+///
+/// Tailscale settings are PER PROFILE (enabled/auth key/identity live on
+/// [LunaProfile]); the plugin keeps one node state per identity and the
+/// active profile decides which identity runs.
 class IO implements LunaNetwork {
   static TailscaleEmbed get _embed => TailscaleEmbed.instance;
 
-  /// Start the Tailscale proxy. The auth key is read from the configured
-  /// [TailscaleConfig] provider (Hive), which [authKey] has already been
-  /// written to by the settings flow.
+  /// Start the Tailscale proxy. Config (including the auth key) is read
+  /// from the configured provider — the current profile's fields.
   static Future<int> startTailscale(String authKey) => _embed.start();
 
   /// Ensure the Tailscale proxy is up and its listener is healthy, starting
@@ -34,17 +40,67 @@ class IO implements LunaNetwork {
 
   static bool get isTailscaleSupported => _embed.isSupported;
 
+  /// Re-evaluate the provider config after a profile switch: `ensure()`
+  /// restarts the node when the new profile's identity differs, and the
+  /// node stops when the new profile has Tailscale off.
+  static Future<void> syncTailscaleToProfile() async {
+    try {
+      if (LunaProfile.current.tailscaleEnabled) {
+        await _embed.ensure();
+      } else if (await _embed.isRunning()) {
+        await _embed.stop();
+      }
+    } catch (error, stack) {
+      LunaLogger().error('Tailscale profile sync failed', error, stack);
+    }
+  }
+
+  /// Stop the node (when this identity is the active one) and delete its
+  /// on-disk state, allowing a fresh enrollment with a new auth key.
+  static Future<void> forgetTailscaleNode(String identity) async {
+    if (identity.isEmpty) return;
+    try {
+      final active = await _embed.activeIdentity();
+      if (active == identity) await _embed.stop();
+    } catch (_) {}
+    await _embed.deleteIdentity(identity);
+  }
+
   @override
   void initialize() {
     _embed.configure(
-      config: () => TailscaleConfig(
-        enabled: LunaSeaDatabase.TAILSCALE_ENABLED.read(),
-        authKey: LunaSeaDatabase.TAILSCALE_AUTH_KEY.read(),
-        // Not 'tailarr' — that's the tailarr-server controller's hostname;
-        // sharing it risks the app's resolver matching itself for the
-        // server's MagicDNS name.
-        hostname: 'tailarr-app',
-      ),
+      config: () {
+        final profile = LunaProfile.current;
+        final identity = profile.tailscaleIdentity.isEmpty
+            ? 'default'
+            : profile.tailscaleIdentity;
+        return TailscaleConfig(
+          enabled: profile.tailscaleEnabled,
+          authKey: profile.tailscaleAuthKey,
+          identity: identity,
+          // Not 'tailarr' — that's the tailarr-server controller's
+          // hostname; sharing it risks the app's resolver matching itself
+          // for the server's MagicDNS name. Non-default identities get a
+          // suffix so two profiles on the SAME tailnet don't collide.
+          hostname:
+              identity == 'default' ? 'tailarr-app' : 'tailarr-app-$identity',
+        );
+      },
+      // The node's identity is persisted — the plaintext key has no
+      // further use, so drop it from whichever profile owns the identity.
+      onKeyConsumed: (identity) {
+        for (final name in LunaProfile.list) {
+          final profile = LunaBox.profiles.read(name);
+          if (profile == null || profile.tailscaleAuthKey.isEmpty) continue;
+          final owned = profile.tailscaleIdentity.isEmpty
+              ? 'default'
+              : profile.tailscaleIdentity;
+          if (owned == identity) {
+            profile.tailscaleAuthKey = '';
+            profile.save();
+          }
+        }
+      },
     );
     TailscaleHttpOverrides.install(configureClient: _configureClient);
   }

@@ -19,4 +19,8 @@ class IO {
   static Future<bool> isTailscaleRunning() async => false;
 
   static Future<int?> getTailscalePort() async => null;
+
+  static Future<void> syncTailscaleToProfile() async {}
+
+  static Future<void> forgetTailscaleNode(String identity) async {}
 }

@@ -1,7 +1,13 @@
+import 'dart:math';
+
 import 'package:lunasea/database/models/profile.dart';
 import 'package:lunasea/database/box.dart';
 import 'package:lunasea/database/tables/lunasea.dart';
 import 'package:lunasea/system/state.dart';
+// ignore: always_use_package_imports
+import 'package:lunasea/system/network/platform/network_stub.dart'
+    if (dart.library.io) 'package:lunasea/system/network/platform/network_io.dart'
+    if (dart.library.html) 'package:lunasea/system/network/platform/network_html.dart';
 import 'package:lunasea/router/router.dart';
 import 'package:lunasea/system/logger.dart';
 import 'package:lunasea/types/exception.dart';
@@ -9,6 +15,25 @@ import 'package:lunasea/vendor.dart';
 import 'package:lunasea/widgets/ui.dart';
 
 class LunaProfileTools {
+  /// A tailscale_embed identity name for a profile: generated ONCE when the
+  /// profile first enables Tailscale, then stored on the profile. Never
+  /// derive it on the fly — profile names are free-form and renamable, and
+  /// naive slugs collide ("Test!" and "Test?" are both "test"). The random
+  /// suffix keeps generated names unique; identity names must match
+  /// [A-Za-z0-9][A-Za-z0-9._-]{0,63}.
+  static String generateTailscaleIdentity(String profileName) {
+    var slug = profileName
+        .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '-')
+        .replaceAll(RegExp(r'^[^A-Za-z0-9]+'), '');
+    if (slug.length > 24) slug = slug.substring(0, 24);
+
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    final random = Random();
+    final suffix =
+        List.generate(6, (_) => chars[random.nextInt(chars.length)]).join();
+
+    return slug.isEmpty ? 'profile-$suffix' : '$slug-$suffix';
+  }
   bool changeTo(
     String profile, {
     bool showSnackbar = true,
@@ -119,6 +144,10 @@ class LunaProfileTools {
 
     LunaSeaDatabase.ENABLED_PROFILE.update(profile);
     LunaState.reset();
+    // Fire-and-forget: restarts the embedded node when the new profile
+    // uses a different identity (or stops it when disabled); TailscaleGuard
+    // covers the gap in the UI.
+    IO.syncTailscaleToProfile();
   }
 
   Future<void> _create(String profile) async {
@@ -138,7 +167,17 @@ class LunaProfileTools {
       throw ProfileNotFoundException(profile);
     }
 
+    final identity = LunaBox.profiles.read(profile)?.tailscaleIdentity ?? '';
     await LunaBox.profiles.delete(profile);
+
+    // The deleted profile's node state is orphaned — remove it. Best
+    // effort: only the active identity can refuse deletion, and the
+    // active profile can't be removed.
+    if (identity.isNotEmpty) {
+      IO.forgetTailscaleNode(identity).catchError((error, stack) {
+        LunaLogger().error('Orphaned identity cleanup failed', error, stack);
+      });
+    }
   }
 
   Future<void> _rename(String oldProfile, String newProfile) async {

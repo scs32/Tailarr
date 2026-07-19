@@ -48,9 +48,12 @@ void main() {
     await bootstrap();
 
     // ── Configure via the same storage the settings dialogs write ──
-    LunaSeaDatabase.TAILSCALE_AUTH_KEY.update(_authKey);
-    LunaSeaDatabase.TAILSCALE_ENABLED.update(true);
+    // Tailscale is per-profile now; a non-default identity also exercises
+    // the plugin's multi-identity path against a real tailnet.
     final profile = LunaProfile.current;
+    profile.tailscaleEnabled = true;
+    profile.tailscaleAuthKey = _authKey;
+    profile.tailscaleIdentity = 'e2e-test';
     profile.tailarrServerEnabled = true;
     profile.tailarrServerHost = _serverHost;
     await LunaBox.profiles.update(LunaProfile.DEFAULT_PROFILE, profile);

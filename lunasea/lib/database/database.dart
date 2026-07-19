@@ -24,6 +24,30 @@ class LunaDatabase {
   Future<void> open() async {
     await LunaBox.open();
     if (LunaBox.profiles.isEmpty) await bootstrap();
+    migrateGlobalTailscaleToProfile();
+  }
+
+  /// Pre-per-profile installs kept the Tailscale settings in the global
+  /// table. Move them onto the enabled profile with identity 'default' —
+  /// the name tailscale_embed migrates the legacy node state to — so the
+  /// existing enrollment survives the upgrade untouched.
+  void migrateGlobalTailscaleToProfile() {
+    final enabled = LunaSeaDatabase.TAILSCALE_ENABLED.read();
+    final authKey = LunaSeaDatabase.TAILSCALE_AUTH_KEY.read();
+    if (!enabled && authKey.isEmpty) return;
+
+    final profile = LunaBox.profiles.read(
+      LunaSeaDatabase.ENABLED_PROFILE.read(),
+    );
+    if (profile != null) {
+      profile.tailscaleEnabled = enabled;
+      profile.tailscaleAuthKey = authKey;
+      profile.tailscaleIdentity = 'default';
+      profile.save();
+    }
+
+    LunaSeaDatabase.TAILSCALE_ENABLED.update(false);
+    LunaSeaDatabase.TAILSCALE_AUTH_KEY.update('');
   }
 
   Future<void> nuke() async {

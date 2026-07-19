@@ -138,6 +138,23 @@ class LunaProfile extends HiveObject {
   bool tailarrServerEnabled;
 
   @JsonKey()
+  @HiveField(47, defaultValue: false)
+  bool tailscaleEnabled;
+
+  @JsonKey()
+  @HiveField(48, defaultValue: '')
+  String tailscaleAuthKey;
+
+  /// Logical node-identity name passed to tailscale_embed — generated ONCE
+  /// when the profile first enables Tailscale and stored, never derived
+  /// from the (renamable, free-form) profile name. The profile migrated
+  /// from the old global settings owns 'default' (the plugin migrates the
+  /// legacy node state there).
+  @JsonKey()
+  @HiveField(49, defaultValue: '')
+  String tailscaleIdentity;
+
+  @JsonKey()
   @HiveField(45, defaultValue: '')
   String tailarrServerHost;
 
@@ -192,6 +209,10 @@ class LunaProfile extends HiveObject {
     required this.wakeOnLANEnabled,
     required this.wakeOnLANBroadcastAddress,
     required this.wakeOnLANMACAddress,
+    //Tailscale
+    required this.tailscaleEnabled,
+    required this.tailscaleAuthKey,
+    required this.tailscaleIdentity,
     //Tailarr Server
     required this.tailarrServerEnabled,
     required this.tailarrServerHost,
@@ -239,6 +260,10 @@ class LunaProfile extends HiveObject {
     bool? wakeOnLANEnabled,
     String? wakeOnLANBroadcastAddress,
     String? wakeOnLANMACAddress,
+    //Tailscale
+    bool? tailscaleEnabled,
+    String? tailscaleAuthKey,
+    String? tailscaleIdentity,
     //Tailarr Server
     bool? tailarrServerEnabled,
     String? tailarrServerHost,
@@ -285,6 +310,10 @@ class LunaProfile extends HiveObject {
       wakeOnLANEnabled: wakeOnLANEnabled ?? false,
       wakeOnLANBroadcastAddress: wakeOnLANBroadcastAddress ?? '',
       wakeOnLANMACAddress: wakeOnLANMACAddress ?? '',
+      // Tailscale
+      tailscaleEnabled: tailscaleEnabled ?? false,
+      tailscaleAuthKey: tailscaleAuthKey ?? '',
+      tailscaleIdentity: tailscaleIdentity ?? '',
       // Tailarr Server
       tailarrServerEnabled: tailarrServerEnabled ?? false,
       tailarrServerHost: tailarrServerHost ?? '',
