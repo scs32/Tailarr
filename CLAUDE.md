@@ -70,6 +70,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Share-config flow polish**: Stephen found the import flow "a bit
   wonky" on device (2026-07-19) — revisit UX after TestFlight feedback.
 
+- **Per-profile Tailscale** (decided direction 2026-07-19): today
+  TAILSCALE_ENABLED/AUTH_KEY are global (LunaSeaDatabase) and the embedded
+  node has ONE identity. Move to per-profile in two stages:
+  1. App-only: enabled + auth key become LunaProfile HiveFields (migrate
+     existing global values into the current profile).
+  2. Per-profile node identity/tailnet: needs tailscale_embed support for
+     a per-identity state dir on TailscaleConfig (one node state per
+     profile, restart node on profile switch behind TailscaleGuard;
+     rollback-start machinery helps). Kills the juggle-two-installs
+     problem: profile "test" on tailde95ff vs profile "home" on the real
+     tailnet. Coordinate with the tailscale_embed upgrade backlog item —
+     stateDir should ride the same plugin rev.
+
 ## Build Commands
 
 ### Flutter App (from `lunasea/` directory)
