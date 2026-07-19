@@ -305,9 +305,13 @@ Went from "shelved / Tailscale fundamentally broken" to shipping. State now:
   use `flutter run` / `devicectl device install app` to keep them.
 
 ### Pending / next
-- Free disk (chronic ~99%; a staged macOS update snapshot appeared 07-19;
-  candidates the user reserved: Claude vm_bundles 7.8G, Downloads 1.8G,
-  Edge 1.5G) → rerun v2 E2E → install v2 build on phone.
+- Disk: Claude Desktop vm_bundles (7G) deleted + Cowork scheduled tasks
+  disabled at session end → 7.4G free. User is rebooting to install the
+  staged macOS update and continue cleanup. Remaining known candidates:
+  Downloads old tars (~1.8G), Edge (1.5G).
+- **Rerun v2 E2E** (users gate + funnel round-trip — command above; create
+  a sim device first) → then install the v2 build on the phone
+  (in-place, not `flutter install`).
 - Full users-flow E2E once tsapi is configured on the test server.
 - v2 remainder (user's order): controller upgrade screen, install wizard,
   busy auto-refresh, diagnose, monitoring, shares.
