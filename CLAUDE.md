@@ -17,92 +17,42 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Backlog
 
-- **Share Module Configuration** (added 2026-07-19): export a module's
-  connection details from one phone, send by text, tap-to-import on the
-  recipient's Tailarr. Sketch:
-  - *Transport/launch*: universal link on tailarr.com
-    (`https://tailarr.com/import#<base64url-json-payload>`) — opens the app
-    directly on devices with Tailarr (needs Associated Domains entitlement,
-    fine on the paid team, + an `apple-app-site-association` file served
-    from the tailarr-site Cloudflare Pages repo), and falls back to a
-    friendly "get Tailarr" web page for everyone else. Payload in the URL
-    *fragment* so the secret never reaches the server logs. A custom
-    `tailarr://` scheme is the simpler fallback if AASA is a hassle.
-  - *Format*: versioned JSON `{v, modules: {sonarr: {host, key, headers}}}`
-    base64url-encoded. Carrying API keys in a text is inherently
-    sender's-choice; nothing Apple-special is required. Optional hardening
-    later: passphrase-encrypt the payload and share the passphrase out of
-    band.
-  - *Overwrite safeguard*: import screen previews exactly what's inside
-    (module, host, key obfuscated) and flags per-module conflicts —
-    "Sonarr is already configured on profile 'default': Overwrite /
-    Import into new profile / Skip". Never silently replaces.
-  - Suite tie-in: the Tailarr Server module's Users flow already shares an
-    enrollment key; a combined "invite" (tailnet key + module config in one
-    link) is the dream version.
+- **Share-config flow polish**: Stephen found the import flow "a bit
+  wonky" on device (2026-07-19) — revisit UX after TestFlight feedback.
+  (Feature itself SHIPPED in build 6 — see 2026-07-19 session log.)
 
 - **Tailarr Server module v2 remainder**: controller self-upgrade screen,
   catalog/install wizard, pod busy auto-refresh, diagnose viewer, Kuma
   monitoring, shares management.
 
-- **tailscale_embed upgrade** (planned 2026-07-19; plugin main is at
-  e0d598e, Tailarr pins f11d76e — the initial extraction): nothing breaks
-  (the `TailscaleBackend.start(TailscaleConfig)` breaking change only hits
-  custom backends; new config fields optional; findProxy still
-  tailnet-selective). Plan:
-  1. `flutter pub upgrade tailscale_embed` — free wins: rollback start
-     (bad key no longer kills the working tunnel), redirect relaying,
-     direct dial for non-tailnet destinations.
-  2. Adopt `onKeyConsumed` in `network_io.dart` → delete
-     `TAILSCALE_AUTH_KEY` from Hive once the identity persists (spent
-     plaintext key currently sits in storage forever); Settings key field
-     should read "consumed — identity saved".
-  3. `acceptRoutes` now defaults true: LAN IPs behind peer-advertised
-     subnet routes dial through the tailnet (correct remotely, hairpins
-     at home). Take the default; toggle only if hairpin complaints.
-  4. Optional: surface plugin `status()` (hostname/IPs/peers/state) in
-     Settings > Network — answers "am I connected?".
-  5. Verify: analyzer → live E2E vs test server → in-place phone install.
-  Coordination flag → SEQUENCE DECIDED (2026-07-19): the plugin should
-  land its framework-distribution change (xcframework → GitHub Releases +
-  CocoaPods script_phase download, checksum-pinned) BEFORE Tailarr bumps —
-  each bump otherwise bakes another ~180MB of binaries into git history
-  (GitHub already warning on push; 100MB hard limit is close). Order:
-  1) plugin ships Releases-based distribution, 2) plugin live-verifies
-  multi-identity with the reusable tailde95ff key, 3) single Tailarr bump
-  adopts everything (identities, onKeyConsumed(identity), status UI).
-  Verify Tailarr CI's pod install fetches the framework fine (needs
-  network at pod-install time — it has it).
+- **tailscale_embed remainder** (core upgrade DONE 2026-07-19, pinned
+  efc0e02 — identities, onKeyConsumed(identity), rollback all adopted):
+  - Surface plugin `status()` (hostname/IPs/peers/state/identity) in
+    Settings > Network — answers "am I connected?".
+  - BEFORE the next plugin bump: the plugin must ship its
+    framework-distribution change (xcframework → GitHub Releases +
+    CocoaPods script_phase, checksum-pinned) — each bump otherwise bakes
+    ~180MB more binaries into git history (GitHub already warns; a future
+    tailscale rev could cross the 100MB hard limit and block pushes).
+    Then verify Tailarr CI's pod install fetches the framework.
+  - Plugin's own live E2E (two identities, live switch, rollback, key
+    consumption) still pending a real key in the embed session.
 
-- **Share-config flow polish**: Stephen found the import flow "a bit
-  wonky" on device (2026-07-19) — revisit UX after TestFlight feedback.
+- **Live E2E is re-pointed nowhere** (2026-07-19): the test server on this
+  Mac was re-bootstrapped (tailarr-server v0.10.1 OAuth-first flow) onto a
+  NEW tailnet `taila06ea9` as hostname `tailarr` — the reusable tailde95ff
+  key can NO LONGER reach it. To run `integration_test/e2e_test.dart`
+  again, get a key for taila06ea9 that can reach the controller (mind the
+  ACL fences: a minted tag:tailarr-user key may not see the controller
+  API), and update SERVER_HOST to https://tailarr.taila06ea9.ts.net.
 
-- **Per-profile Tailscale** (decided direction 2026-07-19): today
-  TAILSCALE_ENABLED/AUTH_KEY are global (LunaSeaDatabase) and the embedded
-  node has ONE identity. Move to per-profile in two stages:
-  1. App-only: enabled + auth key become LunaProfile HiveFields (migrate
-     existing global values into the current profile).
-  2. Per-profile node identity/tailnet: plugin support SHIPPED
-     (tailscale_embed efc0e02, 2026-07-19): `identity` on TailscaleConfig,
-     legacy state auto-migrates to identities/default (no re-enroll),
-     ensure() restarts on identity change (serialized; guard covers gap),
-     rollback restores the PREVIOUS identity (error carries
-     activeIdentity), status().identity, listIdentities()/deleteIdentity()
-     (IDENTITY_ACTIVE guards the running one). BREAKING in same rev:
-     onKeyConsumed is now `void Function(String identity)`.
-     Tailarr adoption notes:
-     - Identity names must match [A-Za-z0-9][A-Za-z0-9._-]{0,63} and
-       profile names are free-form: do NOT derive by slugification
-       (collisions). Generate once when a profile first enables Tailscale
-       (slug + short random suffix) and STORE on the profile as a new
-       HiveField; profile rename then can't orphan/collide node state.
-     - Profile delete should offer deleteIdentity() cleanup.
-     - Adopt onKeyConsumed(identity) → clear that profile's auth key.
-     - Kills the juggle-two-installs problem: profile "test" on tailde95ff
-       vs profile "home" on the real tailnet.
-     Plugin's live E2E (two identities, switch, rollback, onKeyConsumed)
-     is pending a real auth key — the reusable tailde95ff key works; run
-     it before or with the Tailarr bump.
+- **Suite invite** (dream feature): tailnet enrollment key + module config
+  in ONE link. Share-config payload is versioned with room for an
+  `enroll: {control_url?, key}` field. Pairs with sovereign mode
+  (tailarr-server docs/sovereign-mode-design.md).
+
+- **Sovereign mode** (design only): embedded headscale in tailarr-server —
+  full writeup in that repo's docs/sovereign-mode-design.md (2026-07-19).
 
 ## Build Commands
 
@@ -427,3 +377,105 @@ Went from "shelved / Tailscale fundamentally broken" to shipping. State now:
 - Remote background agents stalled twice building the site (agent wrote
   great HTML, never finished CSS/JS; finished by hand) — prefer inline
   builds or babysit agents for this kind of work.
+
+---
+
+## Session Log — 2026-07-19 (share-config, per-profile Tailscale, TestFlight builds 6+7)
+
+Massive shipping day. Everything below is pushed; **builds 6 and 7 are LIVE
+on TestFlight** (same version string 11.0.0 → instant external availability,
+no review wait; ASC flow: betaAppReviewSubmissions POST + add build to
+Public Beta group 9d6bdfdb-…, both scripted via the ASC API key on this Mac).
+
+### Shipped in the app (scs32/Tailarr master)
+- **Add User OAuth gate** (e5a82054): Add User checks `tsapi.mode` from
+  /api/info (model now parses `tsapi`); non-oauth → warning dialog
+  directing to server Settings. Distinct message for static-token mode.
+- **Share Module Configuration** (d2562fd3 + 8b9a8b2e): per-module Share
+  button on all 7 connection screens → `https://tailarr.com/import#<b64url>`
+  link (payload in FRAGMENT, never hits servers) via share sheet. Deep
+  link (universal link via new `applinks:tailarr.com` entitlement +
+  `tailarr://` scheme, FlutterDeepLinkingEnabled) lands on a dedicated
+  import screen: values shown (key obfuscated), **Test Connection runs
+  against the UNSAVED payload only**, Save warns before replacing an
+  existing config. Tailscale keys structurally unshareable.
+  - Site side (tailarr-site repo): `/.well-known/apple-app-site-association`
+    (+ `_headers` for content-type) + branded `/import` fallback page —
+    LIVE on tailarr.com. ASSOCIATED_DOMAINS capability enabled on App ID
+    PZ6595TXN6 via ASC API.
+  - GOTCHAS found: `tailarr://` links are NOT tappable in iMessage (only
+    https linkifies) — universal link is mandatory for text-message UX.
+    share_plus on current iOS THROWS without `sharePositionOrigin` (was
+    iPad-only) and async tap handlers swallow it in release — the fix
+    derives the anchor rect from the widget's render box
+    (`SharedModuleConfiguration.shareOriginOf`). Same latent bug fixed in
+    the users-route key share. Also fixed: LidarrAPI.from() read
+    LunaProfile.current headers instead of the passed profile's.
+- **Per-profile Tailscale + auth key management** (e7713f8b, build 7):
+  - LunaProfile HiveFields 47/48/49: tailscaleEnabled/AuthKey/Identity.
+    Migration in LunaDatabase.open() moves the old GLOBAL table values
+    onto the enabled profile with identity 'default' (where the plugin
+    migrates legacy node state) then clears globals — verified by
+    integration_test/tailscale_profile_test.dart (passing on sim) AND by
+    Stephen's phone surviving the build-7 update with its node intact.
+  - Identity names generated ONCE (slug + 6-char random suffix,
+    LunaProfileTools.generateTailscaleIdentity) and STORED — never derived
+    from renamable profile names. Non-default identities get hostname
+    `tailarr-app-<identity>` (default keeps `tailarr-app`).
+  - Profile switch → IO.syncTailscaleToProfile() (ensure/stop); profile
+    delete → forgetTailscaleNode(identity) cleanup.
+  - Settings > General: Auth Key tile (replace/remove anytime; shows
+    "Consumed — node identity saved" via onKeyConsumed(identity), which
+    deletes the spent plaintext key from the owning profile) + Forget
+    Tailscale Node action (stop + deleteIdentity + clear key → fresh
+    re-enroll). Enable toggle now starts from existing state and only
+    prompts for a key when a start FAILS.
+  - tailscale_embed bumped f11d76e → efc0e02 (multi-identity rev).
+
+### tailarr-server repo (as `~/projects/podscale`)
+- **Two reboot bugs fixed upstream** (d79e27b): stale podman.sock FILE
+  survives reboot (non-tmpfs /run) and the `-S` check skipped starting the
+  API service → probe the API instead; sidecars now set TS_AUTH_ONCE=true
+  (without it containerboot re-auths each restart and MINTS A NEW NODE —
+  that's how tailarr→tailarr-1 / uptime-kuma-1 drift happened).
+- **Sovereign mode design doc** committed (0b091cc,
+  docs/sovereign-mode-design.md): optional hidden embedded headscale
+  behind a control-plane driver interface; entry fee = domain + 443 +
+  HTTP-01; loses Funnel/ts.net-certs/hosted DERP; kills the tsapi wizard.
+- Stephen independently shipped **v0.10.1** (OAuth-first bootstrap that
+  seeds .tsapi.json, inits policy fences, mints the controller's own
+  tagged key — no Settings wizard needed).
+
+### tailscale_embed (separate session, coordinated from here)
+- Multi-identity SHIPPED (efc0e02) from a prompt authored here: identity
+  on TailscaleConfig, in-place legacy migration, serialized switching,
+  rollback-to-previous-identity, onKeyConsumed(String identity) BREAKING,
+  listIdentities/deleteIdentity, IDENTITY_ACTIVE error code.
+
+### Environment / infra state (IMPORTANT for next session)
+- **Test server moved tailnets**: re-bootstrapped on `taila06ea9` as
+  `tailarr.taila06ea9.ts.net` (v0.10.1 flow, tsapi CONFIGURED, fixtures
+  fake-user + tailscale-nginx — likely the embed session's). The reusable
+  tailde95ff key CANNOT reach it; live E2E blocked until a taila06ea9 key
+  exists (see backlog). tailde95ff is effectively retired.
+- Reboot-recovery for podman-in-guest + wedged-CoreSimulator fixes are in
+  auto-memory (tailarr-test-server-reboot-recovery.md).
+- Sim automation notes: AppleScript `click at` is flaky near the top of
+  the Simulator window; deep links (`tailarr:///settings/configuration/general`)
+  are a more reliable way to navigate. `flutter test` output MUST go
+  through `tee` (plain `| tail` buffers everything invisibly), and the
+  runner gives builds a hard 12-min window — prebuild
+  (`flutter build ios --simulator --debug` with the same dart-defines) first.
+- Phone installs: release build + `xcrun devicectl device install app`
+  (in-place). When entitlements change, plain `flutter build ios --release`
+  fails ("No Accounts") — build once via `xcodebuild -allowProvisioningUpdates
+  -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_C9NUZL9HZF.p8
+  -authenticationKeyID C9NUZL9HZF -authenticationKeyIssuerID aec2db68-…` to
+  mint the new profile; flutter builds reuse it afterwards.
+
+### Pending / next (user-gated)
+- Share-config flow polish (Stephen: "a bit wonky").
+- Universal-link tap-from-Messages test between two phones (build 6+ has
+  the entitlement; AASA live since ~noon 2026-07-19).
+- Live E2E on the new tailnet; plugin live E2E in the embed session.
+- status() UI, v2 remainder, suite invite, sovereign mode (backlog).
