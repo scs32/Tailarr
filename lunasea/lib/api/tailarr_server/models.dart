@@ -90,6 +90,7 @@ class TailarrServerPod {
 class TailarrServerNetworkEntry {
   final String name;
   final String state;
+  final bool controller;
   final bool tailscale;
   final bool https;
   final bool funnel;
@@ -97,10 +98,12 @@ class TailarrServerNetworkEntry {
   final Map<String, String> ports;
   final String ip;
   final String dnsName;
+  final String busy;
 
   const TailarrServerNetworkEntry({
     required this.name,
     required this.state,
+    required this.controller,
     required this.tailscale,
     required this.https,
     required this.funnel,
@@ -108,7 +111,12 @@ class TailarrServerNetworkEntry {
     required this.ports,
     required this.ip,
     required this.dnsName,
+    required this.busy,
   });
+
+  /// Funnel can be toggled: the pod serves HTTPS and is not the controller.
+  bool get canTogglePublic => https && !controller;
+  bool get isBusy => busy.isNotEmpty;
 
   /// Best launch URL for the pod — mirrors the server's `service_url()`:
   /// HTTPS on the MagicDNS name when tailscale serve terminates TLS, else
@@ -122,9 +130,11 @@ class TailarrServerNetworkEntry {
   }
 
   factory TailarrServerNetworkEntry.fromJson(Map<String, dynamic> json) {
+    final busy = json['busy'];
     return TailarrServerNetworkEntry(
       name: _string(json['name']),
       state: _string(json['state']),
+      controller: _bool(json['controller']),
       tailscale: _bool(json['tailscale']),
       https: _bool(json['https']),
       funnel: _bool(json['funnel']),
@@ -133,6 +143,125 @@ class TailarrServerNetworkEntry {
           .map((k, v) => MapEntry(k.toString(), v.toString())),
       ip: _string(json['ip']),
       dnsName: _string(json['dns_name']),
+      busy: busy == null || busy == false ? '' : busy.toString(),
+    );
+  }
+}
+
+/// One device of `GET /api/users`
+class TailarrServerUserDevice {
+  final String id;
+  final String hostname;
+  final String nickname;
+  final String os;
+  final DateTime? lastSeen;
+  final String ip;
+  final List<String> can;
+
+  const TailarrServerUserDevice({
+    required this.id,
+    required this.hostname,
+    required this.nickname,
+    required this.os,
+    required this.lastSeen,
+    required this.ip,
+    required this.can,
+  });
+
+  String get displayName => nickname.isNotEmpty ? nickname : hostname;
+
+  /// Tailscale reports a recent last-seen for connected devices.
+  bool get isOnline =>
+      lastSeen != null &&
+      DateTime.now().toUtc().difference(lastSeen!.toUtc()).inMinutes < 2;
+
+  factory TailarrServerUserDevice.fromJson(Map<String, dynamic> json) {
+    return TailarrServerUserDevice(
+      id: _string(json['id']),
+      hostname: _string(json['hostname']),
+      nickname: _string(json['nickname']),
+      os: _string(json['os']),
+      lastSeen: DateTime.tryParse(_string(json['last_seen'])),
+      ip: _string(json['ip']),
+      can: (json['can'] as List? ?? []).map((e) => e.toString()).toList(),
+    );
+  }
+}
+
+/// `GET /api/users`
+class TailarrServerUsers {
+  /// Whether the server has Tailscale API credentials — the users features
+  /// are gated on this.
+  final bool configured;
+  final String? error;
+  final List<TailarrServerUserDevice> users;
+  final List<String> services;
+
+  const TailarrServerUsers({
+    required this.configured,
+    required this.error,
+    required this.users,
+    required this.services,
+  });
+
+  factory TailarrServerUsers.fromJson(Map<String, dynamic> json) {
+    final error = json['error'];
+    return TailarrServerUsers(
+      configured: _bool(json['configured']),
+      error: error == null ? null : error.toString(),
+      users: (json['users'] as List? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(TailarrServerUserDevice.fromJson)
+          .toList(),
+      services:
+          (json['services'] as List? ?? []).map((e) => e.toString()).toList(),
+    );
+  }
+}
+
+/// `POST /api/users/keys` — a single-use, preauthorized, 24h enrollment key.
+class TailarrServerUserKey {
+  final bool ok;
+  final String? error;
+  final String key;
+
+  const TailarrServerUserKey({
+    required this.ok,
+    required this.error,
+    required this.key,
+  });
+
+  factory TailarrServerUserKey.fromJson(Map<String, dynamic> json) {
+    final error = json['error'];
+    return TailarrServerUserKey(
+      ok: _bool(json['ok']),
+      error: error == null ? null : error.toString(),
+      key: _string(json['key']),
+    );
+  }
+}
+
+/// `POST /api/users/adopt`
+class TailarrServerAdoptResult {
+  final bool ok;
+  final String id;
+  final String hostname;
+  final String? error;
+
+  const TailarrServerAdoptResult({
+    required this.ok,
+    required this.id,
+    required this.hostname,
+    required this.error,
+  });
+
+  factory TailarrServerAdoptResult.fromJson(Map<String, dynamic> json) {
+    final error = json['error'];
+    return TailarrServerAdoptResult(
+      ok: _bool(json['ok']),
+      id: _string(json['id']),
+      hostname: _string(json['hostname']),
+      error: error == null ? null : error.toString(),
     );
   }
 }

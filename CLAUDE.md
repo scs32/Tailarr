@@ -15,6 +15,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Note:** Forked from the archived LunaSea project for personal development.
 
+## Backlog
+
+- **Share Module Configuration** (added 2026-07-19): export a module's
+  connection details from one phone, send by text, tap-to-import on the
+  recipient's Tailarr. Sketch:
+  - *Transport/launch*: universal link on tailarr.com
+    (`https://tailarr.com/import#<base64url-json-payload>`) — opens the app
+    directly on devices with Tailarr (needs Associated Domains entitlement,
+    fine on the paid team, + an `apple-app-site-association` file served
+    from the tailarr-site Cloudflare Pages repo), and falls back to a
+    friendly "get Tailarr" web page for everyone else. Payload in the URL
+    *fragment* so the secret never reaches the server logs. A custom
+    `tailarr://` scheme is the simpler fallback if AASA is a hassle.
+  - *Format*: versioned JSON `{v, modules: {sonarr: {host, key, headers}}}`
+    base64url-encoded. Carrying API keys in a text is inherently
+    sender's-choice; nothing Apple-special is required. Optional hardening
+    later: passphrase-encrypt the payload and share the passphrase out of
+    band.
+  - *Overwrite safeguard*: import screen previews exactly what's inside
+    (module, host, key obfuscated) and flags per-module conflicts —
+    "Sonarr is already configured on profile 'default': Overwrite /
+    Import into new profile / Skip". Never silently replaces.
+  - Suite tie-in: the Tailarr Server module's Users flow already shares an
+    enrollment key; a combined "invite" (tailnet key + module config in one
+    link) is the dream version.
+
+- **Tailarr Server module v2 remainder**: controller self-upgrade screen,
+  catalog/install wizard, pod busy auto-refresh, diagnose viewer, Kuma
+  monitoring, shares management.
+
 ## Build Commands
 
 ### Flutter App (from `lunasea/` directory)
@@ -217,6 +247,73 @@ Went from "shelved / Tailscale fundamentally broken" to shipping. State now:
   `~/projects/tailscale-embedding-playbook.md` (cross-project patterns) and
   `~/projects/swiftfin/KICKOFF.md` (Swiftfin-specific brief + first prompt).
 - Jellyfin clean-library batch transcode script (hevc_videotoolbox ~5Mbps).
+
+---
+
+## Session Log — 2026-07-18/19 (Tailarr Server module, tailscale_embed extraction, live E2E)
+
+### Shipped (all pushed to master)
+- **Tailarr Server module v1** — first-class module (enum `TAILARR_SERVER`,
+  display "Tailarr Server", profile HiveFields 44-46: enabled/host/headers,
+  NO api key — server is tailnet-only). Screens: pods list (+fleet
+  start/restart bar), pod detail (start/stop/update, tailnet URL, logs,
+  backups create/restore/delete), image updates. Hand-built Dio client in
+  `lib/api/tailarr_server/` matched to the Flask handlers. Connection page
+  warns on non-ts.net hosts and when Tailscale toggle is off; Test
+  Connection requires server `api_version >= 1` (added in tailarr-server
+  v0.9.8, released + tagged this session).
+- **tailscale_embed extraction** — the whole embedded-Tailscale stack now
+  lives in github.com/scs32/tailscale_embed (public, GPL-3.0, local
+  `~/projects/tailscale_embed`), consumed as a git dep. Prebuilt
+  xcframework COMMITTED in that repo → CI needs no Go. Tailarr keeps only a
+  thin facade (`lib/system/network/platform/network_io.dart`) + the
+  settings toggle. App node hostname renamed `tailarr` → **`tailarr-app`**
+  (avoids collision with the server controller node). Kickoff doc for new
+  consumer projects: `~/projects/tailscale-embed-kickoff.md`.
+- **Live E2E test** (`integration_test/e2e_test.dart`) — enrolls a REAL
+  tsnet node on a simulator, hits the live test server through the tunnel,
+  walks all module screens. Run:
+  `flutter test integration_test/e2e_test.dart -d <sim-udid>
+  --dart-define=TS_AUTHKEY=<reusable tskey-auth for tailde95ff>
+  --dart-define=SERVER_HOST=https://tailarr-server.tailde95ff.ts.net`
+  v1 flow PASSED end-to-end (and caught a real Future-in-setState bug).
+- **Module v2 (users + funnel)**: users list (15s poll, gate screen when
+  server tsapi unconfigured), Add User (mints single-use 24h key, copy/
+  share sheet), Adopt-by-ID, user detail with per-service access switches;
+  Public Access (Funnel) toggle on pod detail (confirm-on-enable,
+  "funnel refused" surfaces output). Analyzer-clean, committed — but the
+  extended E2E run **died of disk-full and is UNVERIFIED**. Rerun the
+  command above after freeing space (create sim first:
+  `xcrun simctl create e2e-iphone com.apple.CoreSimulator.SimDeviceType.iPhone-17 com.apple.CoreSimulator.SimRuntime.iOS-26-5`).
+
+### Test infrastructure (old tailnet tailde95ff = TEST net)
+- **Test server**: apple/container Debian guest named `tailarr-server` on
+  this Mac → tailarr-server v0.9.8 at
+  `https://tailarr-server.tailde95ff.ts.net` with one `uptime-kuma` pod.
+  **After reboot it does NOT autostart**: `container system start &&
+  container start tailarr-server && container exec tailarr-server bash -c
+  'cd /root/tailarr && ./bootstrap-tailarr.sh && cd /root/Pods/uptime-kuma && sh run.sh'`
+  (bootstrap reuses saved identity; no key needed).
+- Stephen has a **reusable tskey-auth for tailde95ff** (in this session's
+  chat; ask him — NEVER write it into this public repo). Server tsapi is
+  NOT configured → users features show the gate screen; full users E2E
+  needs a Tailscale API token saved via the server web UI Settings.
+- **Phone**: dev build installed, enrolled on tailde95ff as `tailarr-app`,
+  full v1 verified by Stephen by hand. His TestFlight install + live
+  services are on a NEWER separate tailnet (untouched). GOTCHA:
+  `flutter install` uninstalls first, wiping node identity + settings —
+  use `flutter run` / `devicectl device install app` to keep them.
+
+### Pending / next
+- Free disk (chronic ~99%; a staged macOS update snapshot appeared 07-19;
+  candidates the user reserved: Claude vm_bundles 7.8G, Downloads 1.8G,
+  Edge 1.5G) → rerun v2 E2E → install v2 build on phone.
+- Full users-flow E2E once tsapi is configured on the test server.
+- v2 remainder (user's order): controller upgrade screen, install wizard,
+  busy auto-refresh, diagnose, monitoring, shares.
+- Backlog: **Share Module Configuration** (see Backlog section above).
+- New project consuming tailscale_embed — kickoff prompt ready at
+  `~/projects/tailscale-embed-kickoff.md`.
 
 ---
 

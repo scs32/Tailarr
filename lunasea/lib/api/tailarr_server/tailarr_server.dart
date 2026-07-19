@@ -130,6 +130,63 @@ class TailarrServerAPI {
     await httpClient.post('api/updates/refresh');
   }
 
+  ////////////
+  /// USERS ///
+  ////////////
+
+  Future<TailarrServerUsers> getUsers() async {
+    final response = await httpClient.get('api/users');
+    return TailarrServerUsers.fromJson(response.data);
+  }
+
+  /// Mint a single-use, preauthorized, 24h enrollment key tagged
+  /// `tag:tailarr-user`.
+  Future<TailarrServerUserKey> createUserKey() async {
+    final response = await httpClient.post('api/users/keys', data: {});
+    return TailarrServerUserKey.fromJson(response.data);
+  }
+
+  Future<TailarrServerAdoptResult> adoptUser(String nodeId) async {
+    final response = await httpClient.post(
+      'api/users/adopt',
+      data: {'id': nodeId},
+    );
+    return TailarrServerAdoptResult.fromJson(response.data);
+  }
+
+  /// Empty [nickname] clears it; the server truncates to 40 chars.
+  Future<void> setUserNickname(String nodeId, String nickname) async {
+    await httpClient.post('api/users/$nodeId', data: {'nickname': nickname});
+  }
+
+  /// Grant/revoke a service by flipping `tag:tailarr-can-<service>` —
+  /// effective in seconds, no pod restart.
+  Future<TailarrServerActionResult> setUserAccess(
+    String nodeId,
+    String service,
+    bool allow,
+  ) async {
+    final response = await httpClient.post(
+      'api/users/$nodeId/access',
+      data: {'service': service, 'allow': allow},
+    );
+    return TailarrServerActionResult.fromJson(response.data);
+  }
+
+  /// Expose a pod publicly via Tailscale Funnel (or make it private again).
+  /// Live flip — rewrites the sidecar's serve config, no pod restart.
+  Future<TailarrServerActionResult> setFunnel(
+    String pod,
+    bool enabled,
+  ) async {
+    final response = await httpClient.post(
+      'api/network/$pod',
+      data: {'funnel': enabled},
+      options: Options(receiveTimeout: _longOperation),
+    );
+    return TailarrServerActionResult.fromJson(response.data);
+  }
+
   /// `action` is one of: start, stop, restart, rerender. Never touches the
   /// controller pod.
   Future<TailarrServerFleetResult> fleetAction(String action) async {

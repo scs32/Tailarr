@@ -85,6 +85,7 @@ class _State extends State<PodDetailsRoute>
       children: [
         _statusBlock(pod),
         _urlBlock(pod),
+        _publicAccessBlock(pod),
         LunaDivider(),
         if (!pod.controller) ..._actionBlocks(pod),
         _logsBlock(),
@@ -165,6 +166,100 @@ class _State extends State<PodDetailsRoute>
         },
       ),
     );
+  }
+
+  /// Tailscale Funnel toggle — expose the pod's HTTPS serve to the public
+  /// internet, or make it tailnet-only again. Live flip, no restart.
+  Widget _publicAccessBlock(TailarrServerPod pod) {
+    return Selector<TailarrServerState,
+        Future<List<TailarrServerNetworkEntry>>?>(
+      selector: (_, state) => state.network,
+      builder: (context, network, _) => FutureBuilder(
+        future: network,
+        builder: (
+          context,
+          AsyncSnapshot<List<TailarrServerNetworkEntry>> snapshot,
+        ) {
+          if (!snapshot.hasData) {
+            return const SizedBox(height: 0, width: double.infinity);
+          }
+          final entry = snapshot.data!
+              .where((e) => e.name == widget.pod)
+              .cast<TailarrServerNetworkEntry?>()
+              .firstWhere((_) => true, orElse: () => null);
+          if (entry == null || !entry.canTogglePublic) {
+            return const SizedBox(height: 0, width: double.infinity);
+          }
+          final busy = entry.busy == 'funnel' || _funnelPending;
+          return LunaBlock(
+            title: 'Public Access',
+            body: [
+              TextSpan(
+                text: entry.funnel
+                    ? 'PUBLIC — reachable from the internet'
+                    : 'Private — tailnet only',
+                style: TextStyle(
+                  color:
+                      entry.funnel ? LunaColours.orange : LunaColours.accent,
+                  fontWeight: LunaUI.FONT_WEIGHT_BOLD,
+                ),
+              ),
+              const TextSpan(
+                text: 'Tailscale Funnel — flips live, no restart',
+              ),
+            ],
+            trailing: LunaSwitch(
+              value: entry.funnel,
+              onChanged: busy ? null : (v) => _setFunnel(entry, v),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  bool _funnelPending = false;
+
+  Future<void> _setFunnel(TailarrServerNetworkEntry entry, bool enable) async {
+    final state = context.read<TailarrServerState>();
+    if (enable) {
+      // Mirrors the web UI: confirm on expose, not on making private.
+      final confirmed = await TailarrServerDialogs().confirmAction(
+        context,
+        title: 'Make ${entry.name} Public',
+        message:
+            'Expose ${entry.name} to the ENTIRE internet via Tailscale Funnel? Anyone with the URL can reach it — the service\'s own login becomes the only protection.',
+        buttonText: 'Make Public',
+        buttonColor: LunaColours.orange,
+      );
+      if (!confirmed) return;
+    }
+    setState(() => _funnelPending = true);
+    try {
+      final result = await state.api!.setFunnel(entry.name, enable);
+      if (result.ok) {
+        showLunaSuccessSnackBar(
+          title: enable ? 'Now Public' : 'Now Private',
+          message: enable
+              ? 'https://${entry.dnsName} is reachable from the internet'
+              : '${entry.name} is tailnet-only again',
+        );
+      } else {
+        final detail = result.error ?? result.status;
+        showLunaErrorSnackBar(
+          title: 'Funnel Change Failed',
+          message: result.status == 'funnel refused'
+              ? '$detail\n${result.output.split('\n').take(3).join('\n')}'
+              : detail,
+        );
+      }
+    } catch (error, stack) {
+      LunaLogger().error('Funnel toggle failed', error, stack);
+      showLunaErrorSnackBar(title: 'Funnel Change Failed', error: error);
+    } finally {
+      if (mounted) setState(() => _funnelPending = false);
+      state.resetPods();
+    }
   }
 
   List<Widget> _actionBlocks(TailarrServerPod pod) {

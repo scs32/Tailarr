@@ -119,6 +119,47 @@ void main() {
     );
     debugPrint('[e2e] updates page rendered');
 
+    // ── v2: Users screen (gate or live list depending on tsapi) ──
+    LunaRouter.router.go('/tailarr_server/users');
+    final users = await api.getUsers();
+    if (users.configured) {
+      await _pumpUntilFound(
+        tester,
+        find.text('Add User'),
+        timeout: const Duration(seconds: 30),
+      );
+      debugPrint('[e2e] users list rendered '
+          '(${users.users.length} devices, ${users.services.length} services)');
+    } else {
+      await _pumpUntilFound(
+        tester,
+        find.text('Tailscale API Credentials Required'),
+        timeout: const Duration(seconds: 30),
+      );
+      debugPrint('[e2e] users gate screen rendered (tsapi not configured)');
+    }
+
+    // ── v2: Funnel round-trip via the API the toggle uses ──
+    final onResult = await api.setFunnel('uptime-kuma', true);
+    debugPrint('[e2e] funnel on → status=${onResult.status}');
+    expect(
+      ['public', 'funnel refused'].contains(onResult.status),
+      isTrue,
+      reason: 'unexpected funnel status: '
+          '${onResult.status} / ${onResult.error}',
+    );
+    if (onResult.ok) {
+      final entries = await api.getNetwork();
+      final kuma = entries.firstWhere((e) => e.name == 'uptime-kuma');
+      expect(kuma.funnel, isTrue);
+      final offResult = await api.setFunnel('uptime-kuma', false);
+      debugPrint('[e2e] funnel off → status=${offResult.status}');
+      expect(offResult.ok, isTrue);
+    } else {
+      debugPrint('[e2e] funnel refused (missing nodeAttr in tailnet '
+          'policy) — error surfaced correctly');
+    }
+
     debugPrint('[e2e] SUCCESS — full flow completed against live server');
   });
 }
