@@ -21,20 +21,42 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   wonky" on device (2026-07-19) — revisit UX after TestFlight feedback.
   (Feature itself SHIPPED in build 6 — see 2026-07-19 session log.)
 
+- **Share-config: second share crashed on device (UNRESOLVED,
+  2026-07-19)**: Stephen shared Sonarr config to another build-7 user →
+  worked. Radarr share, same method, minutes later → "didn't work" AND
+  an iOS app crash (whose phone crashed — sender or recipient — is
+  UNKNOWN; ask first). Investigated same day: Sonarr/Radarr share +
+  import code paths are identical; full double-share (sender) and
+  double-import-while-warm (recipient) reproduced CLEAN on simulator
+  (debug build, tailarr:/// scheme) — no crash either direction. So it's
+  environmental: prime suspects are (a) a release-only native crash, or
+  (b) iOS opening the SECOND universal link in Safari instead of the app
+  (looks like "didn't work"; recipient may have a remembered
+  open-in-Safari preference). NEXT STEP — get the crash log: on the
+  phone that crashed, Settings > Privacy & Security > Analytics &
+  Improvements > Analytics Data → newest `Tailarr-2026-07-19-*.ips`,
+  AirDrop it over; or pull TestFlight crash reports via the ASC API key
+  on this Mac (they lag ~a day). Also ask the recipient what the second
+  link tap actually did (Safari / nothing / app-then-crash).
+
 - **Tailarr Server module v2 remainder**: controller self-upgrade screen,
   catalog/install wizard, pod busy auto-refresh, diagnose viewer, Kuma
   monitoring, shares management.
 
-- **tailscale_embed remainder** (core upgrade DONE 2026-07-19, pinned
-  efc0e02 — identities, onKeyConsumed(identity), rollback all adopted):
+- **tailscale_embed remainder** (bumped to 39b8afd 2026-07-20 — short-name
+  routing + zone-pinning fixes; identities/onKeyConsumed adopted earlier):
   - Surface plugin `status()` (hostname/IPs/peers/state/identity) in
     Settings > Network — answers "am I connected?".
-  - BEFORE the next plugin bump: the plugin must ship its
-    framework-distribution change (xcframework → GitHub Releases +
-    CocoaPods script_phase, checksum-pinned) — each bump otherwise bakes
-    ~180MB more binaries into git history (GitHub already warns; a future
-    tailscale rev could cross the 100MB hard limit and block pushes).
-    Then verify Tailarr CI's pod install fetches the framework.
+  - Adopt the new additive plugin API when useful: restart(),
+    isEnrolled(identity), TailscaleSettingsPanel/Store,
+    FakeTailscaleBackend (deliberately NOT adopted in build 8 to keep
+    the bug-fix diff minimal).
+  - ~~Framework distribution before next bump~~ DONE 2026-07-20: plugin
+    history rewritten (filter-repo, binaries purged — ALL pre-rewrite
+    hashes incl. efc0e02 are dead; never pin them). xcframework now
+    downloads from the plugin's GitHub Releases (framework-v1.92.5,
+    SHA-256-pinned via ios/Framework.lock) at pod-install time —
+    transparent to Tailarr; verified locally and in CI (build 8).
   - Plugin's own live E2E (two identities, live switch, rollback, key
     consumption) still pending a real key in the embed session.
 
@@ -171,7 +193,7 @@ Conditional imports in main file select appropriate implementation.
 ### Current State
 **Working end-to-end since 2026-07-04; extracted into a reusable Flutter plugin on 2026-07-18.** The app embeds a Tailscale node via tsnet and routes tailnet traffic (`*.ts.net`, `100.64.0.0/10`, `fd7a:115c:a1e0::/48`) through it — no system-wide VPN needed on the phone.
 
-The whole stack (Go tsnet proxy, Swift MethodChannel bridge, findProxy/HttpOverrides routing, TailscaleGuard lifecycle widget, auth-key validation/friendly errors) now lives in **github.com/scs32/tailscale_embed** (public, GPL-3.0), consumed as a git dependency in `lunasea/pubspec.yaml`. The prebuilt `TailscaleEmbed.xcframework` is checked into that repo, so neither local builds nor CI need a Go toolchain anymore.
+The whole stack (Go tsnet proxy, Swift MethodChannel bridge, findProxy/HttpOverrides routing, TailscaleGuard lifecycle widget, auth-key validation/friendly errors) now lives in **github.com/scs32/tailscale_embed** (public, GPL-3.0), consumed as a git dependency in `lunasea/pubspec.yaml`. The prebuilt `TailscaleEmbed.xcframework` is downloaded from that repo's GitHub Releases during `pod install` (SHA-256-pinned via `ios/Framework.lock`, cached in the pub-cache checkout) — no Go toolchain needed locally or in CI. It is NOT in the plugin's git history anymore (purged 2026-07-20).
 
 ### What remains in this repo
 - `lib/system/network/platform/network_io.dart` — thin `IO` facade over `TailscaleEmbed.instance`; configures the plugin with a `TailscaleConfig` provider reading Hive (`TAILSCALE_ENABLED`/`TAILSCALE_AUTH_KEY`, hostname `tailarr`) and adds Tailarr-specific client config (TLS validation toggle, user agent) via `TailscaleHttpOverrides.install(configureClient: …)`.
@@ -219,7 +241,9 @@ Went from "shelved / Tailscale fundamentally broken" to shipping. State now:
 - Routing: `findProxy` sends `*.ts.net` + Tailscale IPs (100.64.0.0/10,
   fd7a:115c:a1e0::/48) to the proxy. Go proxy resolves `*.ts.net` FQDNs from the
   peer list (no system MagicDNS on-device). Bare short names NOT supported
-  (indistinguishable from LAN hosts). Node registers as hostname `tailarr`.
+  (indistinguishable from LAN hosts) — **STALE: fixed in the plugin as of
+  2026-07-20 (build 8); dotless hosts now route to the proxy, peer-list
+  first with system-DNS fallback**. Node registers as hostname `tailarr`.
 - Human-readable auth errors; rejects `tskey-api-`/`tskey-client-` keys.
 
 ### Rebrand: LunaSea → Tailarr
@@ -473,9 +497,66 @@ Public Beta group 9d6bdfdb-…, both scripted via the ASC API key on this Mac).
   -authenticationKeyID C9NUZL9HZF -authenticationKeyIssuerID aec2db68-…` to
   mint the new profile; flutter builds reuse it afterwards.
 
+---
+
+## Session Log — 2026-07-19 (evening: second-share crash investigation)
+
+Investigated the "first share works, second share crashes" report (see
+backlog item above for full detail + next steps). Findings:
+- Sonarr vs Radarr share/import code is symmetric — no module-specific bug.
+- Simulator repro of BOTH flows passed clean: import Sonarr → save →
+  import Radarr while warm → save (recipient side), and share Sonarr →
+  share Radarr in one session (sender side). Blocked on the device crash
+  log + knowing which phone crashed.
+- Sim technique notes: `build/ios/iphonesimulator/Runner.app` left by a
+  `flutter test integration_test` run is the TEST HARNESS — launched
+  standalone it hangs on splash forever ("Timeout waiting for first frame
+  when launching a URL"); rebuild with `flutter build ios --simulator
+  --debug` before manual sim testing (that plain build is what's there
+  now). AppleScript `click at` works reliably on the bottom action bar;
+  taps INSIDE a presented share sheet (Copy icon) do NOT register —
+  dismiss by tapping outside instead. simctl has no tap; deep links +
+  bottom-bar clicks cover most driving.
+
 ### Pending / next (user-gated)
+- **Second-share crash**: get crash log + which phone (backlog item above).
 - Share-config flow polish (Stephen: "a bit wonky").
 - Universal-link tap-from-Messages test between two phones (build 6+ has
   the entitlement; AASA live since ~noon 2026-07-19).
 - Live E2E on the new tailnet; plugin live E2E in the embed session.
 - status() UI, v2 remainder, suite invite, sovereign mode (backlog).
+
+---
+
+## Session Log — 2026-07-20 (build 8: tailscale_embed bug-fix bump)
+
+### Shipped
+- **tailscale_embed bumped efc0e02 → 39b8afd** (`flutter pub upgrade
+  tailscale_embed`; additive, zero Dart changes). Picks up two fixes:
+  1. **Bare MagicDNS short names now work** — dotless non-IP hosts (e.g.
+     `truenas-ts`) route to the embedded proxy (peer-list resolution
+     first, system-DNS fallback), so LAN hostnames still work. The old
+     "must type the full name.tailXXXX.ts.net" caveat is DEAD — README
+     addressing table updated accordingly.
+  2. Zone-pinning fix in the plugin's serialized-ops chain.
+  Deliberately did NOT adopt the new additive API (restart(),
+  isEnrolled(), TailscaleSettingsPanel/Store, FakeTailscaleBackend) —
+  separate backlog item, kept this diff bug-fix-only.
+- **First build through the new framework-download path**: the plugin
+  repo's history was rewritten 2026-07-20 (binaries purged; all old
+  hashes dead — NEVER pin pre-rewrite refs like efc0e02). `pod install`
+  now downloads TailscaleEmbed.xcframework from the plugin's GitHub
+  Releases (framework-v1.92.5, SHA-256-pinned via ios/Framework.lock,
+  cached in the pub-cache checkout). Verified locally (139M framework,
+  tag matches lock) and sim-verified: app boots, Settings > General
+  Network section (Use Tailscale toggle + Auth Key tile) renders fine.
+- Docs: README addressing table gains a bare-short-name row; stale
+  "checked-in xcframework" and backlog framework-distribution items
+  corrected; 2026-07-04 log annotated.
+
+### Verify on device (build 8)
+- **Headline smoke test**: enter a bare short name as a module host
+  (e.g. `http://truenas-ts/`) and confirm it resolves over the tailnet.
+  This is the FIRST real-device exercise of the short-name fix
+  (plugin-side it was only sim-verified) — flagged in the build notes.
+- Everything else should behave identically to build 7.

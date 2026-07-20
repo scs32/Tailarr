@@ -42,12 +42,10 @@ resolves `*.ts.net` names to their tailnet IP from the node's own peer list.
 | MagicDNS FQDN + port | `http://sonarr.tail1234.ts.net:8989` | the service's own port |
 | Tailscale IP + port | `http://100.66.77.18:8989` | IPv4 or IPv6 (`fd7a:115c:a1e0::…`) |
 | MagicDNS FQDN, HTTPS, no port | `https://sonarr.tail1234.ts.net` | when the host is published with [`tailscale serve`](https://tailscale.com/kb/1242/tailscale-serve) (TLS on 443) |
+| Bare MagicDNS short name + port | `http://sonarr:8989` | resolved from the tailnet peer list; if no peer matches, falls back to system DNS (so LAN hostnames still work) |
 
-Use the **full** `*.ts.net` name, not a bare MagicDNS short name (`sonarr`):
-the app can't tell a tailnet short name from a LAN hostname, so only the
-qualified name (or a Tailscale IP) is routed through the mesh. Anything else —
-LAN addresses like `192.168.1.10`, public hosts — connects directly, so mixed
-setups work without configuration.
+Anything else — LAN addresses like `192.168.1.10`, public hosts — connects
+directly, so mixed setups work without configuration.
 
 Architecture: `lunasea/Go/main.go` (tsnet + HTTP CONNECT proxy) →
 `GoLunaSea.xcframework` (gomobile) → Swift MethodChannel bridge
