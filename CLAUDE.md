@@ -554,9 +554,37 @@ backlog item above for full detail + next steps). Findings:
   "checked-in xcframework" and backlog framework-distribution items
   corrected; 2026-07-04 log annotated.
 
+### Release (build 8 is LIVE on TestFlight)
+- CI run 29762623188 (workflow_dispatch on master, commit 7bbb542e) →
+  upload succeeded; pod-install log confirmed the framework download.
+- ASC steps scripted from this Mac (same builds-6/7 pattern): waited for
+  processingState=VALID, betaAppReviewSubmission 201 (WAITING_FOR_REVIEW;
+  same version 11.0.0 → instant external availability), added to Public
+  Beta group 9d6bdfdb-3c09-48d5-a580-5d7115ed1b21 (204), and set the
+  What to Test notes via betaBuildLocalizations (build id
+  f1015a71-9a01-456f-9ae5-10c6fc74b7f6).
+
 ### Verify on device (build 8)
 - **Headline smoke test**: enter a bare short name as a module host
   (e.g. `http://truenas-ts/`) and confirm it resolves over the tailnet.
   This is the FIRST real-device exercise of the short-name fix
   (plugin-side it was only sim-verified) — flagged in the build notes.
+  Report the result (pass OR fail) back to the embed session — the
+  system-DNS fallback half is the untested part on real hardware.
 - Everything else should behave identically to build 7.
+
+### Notes / small findings
+- COSMETIC: Tailarr Server connection screen's `_isTailnetHost` only
+  recognizes `.ts.net` + 100.x IPs, so a bare short name there shows the
+  red "Not a Tailnet Address" warning even though it routes fine now.
+  Fold into the status()/settings UI pass if desired.
+- Feedback list for the tailscale_embed maintainer was drafted this
+  session (version tags instead of raw-hash pins; log cache-hit case in
+  pod install; scheduled CI check that release assets still download +
+  match Framework.lock; README note that pub-cache repair drops the
+  cached framework; relay the device short-name result). Stephen is
+  carrying it to the embed session HIMSELF — not filed as an issue.
+- **Plezy** (edde746/plezy, Flutter Plex+Jellyfin client) is GPL-3.0 —
+  license-identical to Tailarr and tailscale_embed, so borrowing its
+  code for a Plex module or forking it as an embed consumer is clean
+  (keep notices, publish source; same App Store murkiness as Tailarr).
