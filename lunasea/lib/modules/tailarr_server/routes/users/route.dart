@@ -3,10 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lunasea/core.dart';
 import 'package:lunasea/extensions/string/string.dart';
-import 'package:lunasea/modules/settings.dart';
 import 'package:lunasea/modules/tailarr_server.dart';
 import 'package:lunasea/router/routes/tailarr_server.dart';
-import 'package:share_plus/share_plus.dart';
 
 class UsersRoute extends StatefulWidget {
   const UsersRoute({
@@ -22,6 +20,10 @@ class _State extends State<UsersRoute> with LunaScrollControllerMixin {
   final _refreshKey = GlobalKey<RefreshIndicatorState>();
   Future<TailarrServerUsers>? _users;
   Timer? _pollTimer;
+
+  /// Last successful snapshot — decides whether Add User creates a person
+  /// (server v0.19.0+) or mints an anonymous key (older servers).
+  TailarrServerUsers? _latest;
 
   @override
   void initState() {
@@ -40,7 +42,10 @@ class _State extends State<UsersRoute> with LunaScrollControllerMixin {
   void _fetch() {
     final api = context.read<TailarrServerState>().api;
     setState(() {
-      _users = api?.getUsers();
+      _users = api?.getUsers().then((users) {
+        _latest = users;
+        return users;
+      });
     });
   }
 
@@ -106,6 +111,33 @@ class _State extends State<UsersRoute> with LunaScrollControllerMixin {
         onTap: _refreshKey.currentState!.show,
       );
     }
+    // Pre-0.19.0 servers: the flat machine list is the whole model.
+    if (!users.hasPeople) return _legacyContent(users);
+
+    if (users.people.isEmpty && users.users.isEmpty) {
+      return LunaMessage(
+        text: 'No Users Found',
+        buttonText: 'Refresh',
+        onTap: _refreshKey.currentState!.show,
+      );
+    }
+    return LunaListView(
+      controller: scrollController,
+      children: [
+        for (final person in users.people) _personTile(person, users),
+        if (users.users.isNotEmpty) ...[
+          const LunaHeader(
+            text: 'Unassigned Devices',
+            subtitle: 'Enrolled with an old anonymous key — '
+                'assign each to a user',
+          ),
+          for (final device in users.users) _unassignedTile(device, users),
+        ],
+      ],
+    );
+  }
+
+  Widget _legacyContent(TailarrServerUsers users) {
     if (users.users.isEmpty) {
       return LunaMessage(
         text: 'No User Devices Found',
@@ -116,7 +148,7 @@ class _State extends State<UsersRoute> with LunaScrollControllerMixin {
     return LunaListViewBuilder(
       controller: scrollController,
       itemCount: users.users.length,
-      itemBuilder: (context, index) => _userTile(
+      itemBuilder: (context, index) => _machineTile(
         users.users[index],
         users.services.length,
       ),
@@ -144,6 +176,42 @@ class _State extends State<UsersRoute> with LunaScrollControllerMixin {
     );
   }
 
+  Widget _personTile(TailarrServerPerson person, TailarrServerUsers users) {
+    final online = person.devices.any((d) => d.isOnline);
+    return LunaBlock(
+      title: person.name,
+      body: [
+        TextSpan(
+          text: '${person.devices.length} '
+              'device${person.devices.length == 1 ? '' : 's'}',
+          style: TextStyle(
+            color: online ? LunaColours.accent : LunaColours.grey,
+            fontWeight: LunaUI.FONT_WEIGHT_BOLD,
+          ),
+        ),
+        TextSpan(
+          text: person.badges.isEmpty
+              ? 'No access granted'
+              : person.badges.join(LunaUI.TEXT_BULLET.pad()),
+          style: person.badges.contains('server')
+              ? const TextStyle(color: LunaColours.orange)
+              : null,
+        ),
+      ],
+      trailing: LunaIconButton(
+        icon: person.badges.contains('server')
+            ? Icons.shield_rounded
+            : Icons.person_rounded,
+        color: person.badges.contains('server')
+            ? LunaColours.orange
+            : (online ? LunaColours.accent : LunaColours.grey),
+      ),
+      onTap: () => TailarrServerRoutes.PERSON_DETAILS.go(
+        params: {'id': person.id},
+      ),
+    );
+  }
+
   String _lastSeenLabel(TailarrServerUserDevice user) {
     if (user.isOnline) return 'Online';
     final seen = user.lastSeen;
@@ -154,7 +222,38 @@ class _State extends State<UsersRoute> with LunaScrollControllerMixin {
     return '${diff.inDays}d ago';
   }
 
-  Widget _userTile(TailarrServerUserDevice user, int serviceCount) {
+  Widget _unassignedTile(
+    TailarrServerUserDevice device,
+    TailarrServerUsers users,
+  ) {
+    return LunaBlock(
+      title: device.displayName,
+      body: [
+        TextSpan(
+          text: _lastSeenLabel(device),
+          style: TextStyle(
+            color: device.isOnline ? LunaColours.accent : LunaColours.grey,
+            fontWeight: LunaUI.FONT_WEIGHT_BOLD,
+          ),
+        ),
+        TextSpan(
+          text: [device.os, device.ip]
+              .where((s) => s.isNotEmpty)
+              .join(LunaUI.TEXT_BULLET.pad()),
+        ),
+      ],
+      trailing: LunaIconButton(
+        icon: Icons.person_add_alt_rounded,
+        onPressed: () => _assignDevice(device, users.people),
+      ),
+      // Per-device access toggles still work through the legacy endpoint.
+      onTap: () => TailarrServerRoutes.USER_DETAILS.go(
+        params: {'id': device.id},
+      ),
+    );
+  }
+
+  Widget _machineTile(TailarrServerUserDevice user, int serviceCount) {
     return LunaBlock(
       title: user.displayName,
       body: [
@@ -168,7 +267,11 @@ class _State extends State<UsersRoute> with LunaScrollControllerMixin {
         TextSpan(
           text: '${user.can.length} of $serviceCount services',
         ),
-        TextSpan(text: [user.os, user.ip].where((s) => s.isNotEmpty).join(LunaUI.TEXT_BULLET)),
+        TextSpan(
+          text: [user.os, user.ip]
+              .where((s) => s.isNotEmpty)
+              .join(LunaUI.TEXT_BULLET),
+        ),
       ],
       trailing: LunaIconButton(
         icon: user.isOnline
@@ -180,6 +283,59 @@ class _State extends State<UsersRoute> with LunaScrollControllerMixin {
         params: {'id': user.id},
       ),
     );
+  }
+
+  Future<void> _assignDevice(
+    TailarrServerUserDevice device,
+    List<TailarrServerPerson> people,
+  ) async {
+    if (people.isEmpty) {
+      showLunaErrorSnackBar(
+        title: 'No Users Yet',
+        message: 'Add a user first, then assign this device to them',
+      );
+      return;
+    }
+    bool flag = false;
+    TailarrServerPerson? selected;
+    await LunaDialog.dialog(
+      context: context,
+      title: 'Assign ${device.displayName}',
+      content: List.generate(
+        people.length,
+        (index) => LunaDialog.tile(
+          icon: Icons.person_rounded,
+          iconColor: LunaColours().byListIndex(index),
+          text: people[index].name,
+          onTap: () {
+            flag = true;
+            selected = people[index];
+            Navigator.of(context).pop();
+          },
+        ),
+      ),
+      contentPadding: LunaDialog.listDialogContentPadding(),
+    );
+    if (!flag || selected == null) return;
+
+    final api = context.read<TailarrServerState>().api;
+    await api!.assignDevice(selected!.id, device.id).then((result) {
+      if (result.ok) {
+        showLunaSuccessSnackBar(
+          title: 'Device Assigned',
+          message: '${device.displayName} → ${selected!.name}',
+        );
+      } else {
+        showLunaErrorSnackBar(
+          title: 'Assignment Failed',
+          message: result.error ?? 'Unknown error',
+        );
+      }
+      _fetch();
+    }).catchError((error, stack) {
+      LunaLogger().error('Device assignment failed', error, stack);
+      showLunaErrorSnackBar(title: 'Assignment Failed', error: error);
+    });
   }
 
   Future<void> _addUser() async {
@@ -206,6 +362,41 @@ class _State extends State<UsersRoute> with LunaScrollControllerMixin {
       showLunaErrorSnackBar(title: 'Add User Failed', error: error);
       return;
     }
+
+    if (_latest?.hasPeople ?? false) {
+      return _addPerson(api);
+    }
+    return _addLegacyKey(api);
+  }
+
+  Future<void> _addPerson(TailarrServerAPI api) async {
+    final values = await LunaDialogs().editText(context, 'User Name');
+    if (!values.item1 || values.item2.trim().isEmpty) return;
+    final name = values.item2.trim();
+    await api.addPerson(name).then((result) {
+      if (result.ok && result.key.isNotEmpty) {
+        _fetch();
+        TailarrServerKeySheet.show(
+          context,
+          enrollmentKey: result.key,
+          message:
+              'Send this to $name. They install Tailscale on their device and sign in with this key — the device enrolls already belonging to them, with no access until you grant services. Single-use, expires in 24 hours.',
+          shareMessage:
+              'Your Tailarr access key (install Tailscale, then sign in with this key — expires in 24h):',
+        );
+      } else {
+        showLunaErrorSnackBar(
+          title: 'Add User Failed',
+          message: result.error ?? 'Unknown error',
+        );
+      }
+    }).catchError((error, stack) {
+      LunaLogger().error('Add person failed', error, stack);
+      showLunaErrorSnackBar(title: 'Add User Failed', error: error);
+    });
+  }
+
+  Future<void> _addLegacyKey(TailarrServerAPI api) async {
     final confirmed = await TailarrServerDialogs().confirmAction(
       context,
       title: 'Add User',
@@ -217,7 +408,14 @@ class _State extends State<UsersRoute> with LunaScrollControllerMixin {
     if (!confirmed) return;
     await api.createUserKey().then((result) {
       if (result.ok && result.key.isNotEmpty) {
-        _showKeySheet(result.key);
+        TailarrServerKeySheet.show(
+          context,
+          enrollmentKey: result.key,
+          message:
+              'Send this to the new user. They install Tailscale on their device and sign in with this key — the device then appears here with no access until you grant services. Single-use, expires in 24 hours.',
+          shareMessage:
+              'Your Tailarr access key (install Tailscale, then sign in with this key — expires in 24h):',
+        );
       } else {
         showLunaErrorSnackBar(
           title: 'Key Generation Failed',
@@ -228,64 +426,6 @@ class _State extends State<UsersRoute> with LunaScrollControllerMixin {
       LunaLogger().error('User key generation failed', error, stack);
       showLunaErrorSnackBar(title: 'Key Generation Failed', error: error);
     });
-  }
-
-  void _showKeySheet(String key) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Enrollment Key',
-                style: TextStyle(
-                  fontSize: LunaUI.FONT_SIZE_H1,
-                  fontWeight: LunaUI.FONT_WEIGHT_BOLD,
-                ),
-              ),
-              const SizedBox(height: 12),
-              SelectableText(
-                key,
-                style: const TextStyle(fontFamily: 'monospace'),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Send this to the new user. They install Tailscale on their device and sign in with this key — the device then appears here with no access until you grant services. Single-use, expires in 24 hours.',
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: LunaButton.text(
-                      text: 'Copy',
-                      icon: Icons.copy_rounded,
-                      onTap: () async => key.copyToClipboard(),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: LunaButton.text(
-                      text: 'Share',
-                      icon: Icons.ios_share_rounded,
-                      onTap: () async => Share.share(
-                        'Your Tailarr access key (install Tailscale, then sign in with this key — expires in 24h):\n\n$key',
-                        sharePositionOrigin:
-                            SharedModuleConfiguration.shareOriginOf(context),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   Future<void> _adoptById() async {

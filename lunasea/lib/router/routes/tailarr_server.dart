@@ -6,6 +6,7 @@ import 'package:lunasea/modules/tailarr_server/routes/pod_details/route.dart';
 import 'package:lunasea/modules/tailarr_server/routes/pod_logs/route.dart';
 import 'package:lunasea/modules/tailarr_server/routes/tailarr_server/route.dart';
 import 'package:lunasea/modules/tailarr_server/routes/updates/route.dart';
+import 'package:lunasea/modules/tailarr_server/routes/person_details/route.dart';
 import 'package:lunasea/modules/tailarr_server/routes/user_details/route.dart';
 import 'package:lunasea/modules/tailarr_server/routes/users/route.dart';
 import 'package:lunasea/router/routes.dart';
@@ -18,7 +19,8 @@ enum TailarrServerRoutes with LunaRoutesMixin {
   POD_BACKUPS('backups'),
   UPDATES('updates'),
   USERS('users'),
-  USER_DETAILS('user/:id');
+  USER_DETAILS('user/:id'),
+  PERSON_DETAILS('person/:id');
 
   @override
   final String path;
@@ -58,6 +60,10 @@ enum TailarrServerRoutes with LunaRoutesMixin {
         return route(builder: (_, state) {
           return UserDetailsRoute(id: state.pathParameters['id'] ?? '');
         });
+      case TailarrServerRoutes.PERSON_DETAILS:
+        return route(builder: (_, state) {
+          return PersonDetailsRoute(id: state.pathParameters['id'] ?? '');
+        });
     }
   }
 
@@ -73,6 +79,7 @@ enum TailarrServerRoutes with LunaRoutesMixin {
       case TailarrServerRoutes.USERS:
         return [
           TailarrServerRoutes.USER_DETAILS.routes,
+          TailarrServerRoutes.PERSON_DETAILS.routes,
         ];
       case TailarrServerRoutes.POD_DETAILS:
         return [

@@ -173,6 +173,89 @@ class TailarrServerAPI {
     return TailarrServerActionResult.fromJson(response.data);
   }
 
+  //////////////
+  /// PEOPLE ///
+  //////////////
+  // Server v0.19.0+ first-class users. Detect support by
+  // TailarrServerUsers.hasPeople, NOT api_version (still 1).
+
+  /// Create a person and mint their first enrollment key — the device that
+  /// enrolls with it is born owned by them.
+  Future<TailarrServerPersonKey> addPerson(String name) async {
+    final response = await httpClient.post(
+      'api/people',
+      data: {'do': 'add', 'name': name},
+    );
+    return TailarrServerPersonKey.fromJson(response.data);
+  }
+
+  /// Mint a fresh single-use key for an existing person — the new device
+  /// automatically belongs to them and inherits their access.
+  Future<TailarrServerPersonKey> reissuePersonKey(String id) async {
+    final response = await httpClient.post(
+      'api/people',
+      data: {'do': 'reissue', 'id': id},
+    );
+    return TailarrServerPersonKey.fromJson(response.data);
+  }
+
+  Future<TailarrServerActionResult> renamePerson(
+    String id,
+    String name,
+  ) async {
+    final response = await httpClient.post(
+      'api/people',
+      data: {'do': 'rename', 'id': id, 'name': name},
+    );
+    return TailarrServerActionResult.fromJson(response.data);
+  }
+
+  /// Their devices stay enrolled but lose all access.
+  Future<TailarrServerActionResult> deletePerson(String id) async {
+    final response = await httpClient.post(
+      'api/people',
+      data: {'do': 'delete', 'id': id},
+    );
+    return TailarrServerActionResult.fromJson(response.data);
+  }
+
+  /// Attach an unassigned machine ([nodeId]) to person [id].
+  Future<TailarrServerActionResult> assignDevice(
+    String id,
+    String nodeId,
+  ) async {
+    final response = await httpClient.post(
+      'api/people',
+      data: {'do': 'assign', 'id': id, 'node': nodeId},
+    );
+    return TailarrServerActionResult.fromJson(response.data);
+  }
+
+  /// Grant/revoke a service for a PERSON — applies to all their devices.
+  Future<TailarrServerActionResult> setPersonAccess(
+    String id,
+    String service,
+    bool allow,
+  ) async {
+    final response = await httpClient.post(
+      'api/people/$id/access',
+      data: {'service': service, 'allow': allow},
+    );
+    return TailarrServerActionResult.fromJson(response.data);
+  }
+
+  /// Issue/fetch the person's ntfy credentials (server v0.20.0+; gated on
+  /// TailarrServerUsers.ntfy). Topics mirror their access badges.
+  Future<TailarrServerNotificationCredentials> getPersonNotifications(
+    String id,
+  ) async {
+    final response = await httpClient.post(
+      'api/people/$id/notifications',
+      data: {},
+    );
+    return TailarrServerNotificationCredentials.fromJson(response.data);
+  }
+
   /// Expose a pod publicly via Tailscale Funnel (or make it private again).
   /// Live flip — rewrites the sidecar's serve config, no pod restart.
   Future<TailarrServerActionResult> setFunnel(

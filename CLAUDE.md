@@ -43,6 +43,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   catalog/install wizard, pod busy auto-refresh, diagnose viewer, Kuma
   monitoring, shares management.
 
+- **Users → PEOPLE model (server v0.19/v0.20) — DONE in-app 2026-07-22**:
+  Users screen is person-centric (person tiles → new PERSON_DETAILS route:
+  rename, per-person access toggles w/ server-grant warning, devices
+  read-only, reissue key, delete, ntfy credentials + "Share Config" whose
+  JSON imports straight into Settings > Notifications). Unassigned bucket
+  (old anonymous-key machines) renders only when non-empty, with
+  assign-to-person picker + legacy per-device toggles/adopt. Legacy
+  fallback: no `people` key in GET /api/users (server <0.19) → old flat
+  list (api_version is still 1 — detect by key presence ONLY).
+  Verified live against v0.20.0: add/rename/grant/reissue/delete/assign
+  all exercised over the API; real payloads locked in as fixtures in
+  test/tailarr_server_people_test.dart. NOT yet verified: ntfy-credential
+  happy path (test server has ntfy:false — needs the notifications
+  system pod), on-device UI walk.
+  **Test server note**: the apple-container guest is now named `podhost`
+  (podman inside; controller pod `tailarr` + sidecar `tailscale-tailarr`;
+  reach the API via `container exec podhost podman exec tailscale-tailarr
+  wget -qO- http://tailarr:8080/api/...`). I self-upgraded it
+  v0.16.0 → **v0.20.0** on 2026-07-22 via POST /api/controller/upgrade.
+
 - **tailscale_embed remainder** (bumped to 39b8afd 2026-07-20 — short-name
   routing + zone-pinning fixes; identities/onKeyConsumed adopted earlier):
   - ~~Surface plugin `status()` in Settings > Network~~ DONE 2026-07-22

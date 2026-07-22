@@ -195,20 +195,69 @@ class TailarrServerUserDevice {
   }
 }
 
+/// One entry of `people` in `GET /api/users` (server v0.19.0+). A person
+/// owns devices; access badges apply to every device they own.
+class TailarrServerPerson {
+  final String id;
+  final String name;
+  final List<String> badges;
+  final int created;
+  final List<TailarrServerUserDevice> devices;
+
+  const TailarrServerPerson({
+    required this.id,
+    required this.name,
+    required this.badges,
+    required this.created,
+    required this.devices,
+  });
+
+  DateTime? get createdAt => created == 0
+      ? null
+      : DateTime.fromMillisecondsSinceEpoch(created * 1000);
+
+  factory TailarrServerPerson.fromJson(Map<String, dynamic> json) {
+    return TailarrServerPerson(
+      id: _string(json['id']),
+      name: _string(json['name']),
+      badges:
+          (json['badges'] as List? ?? []).map((e) => e.toString()).toList(),
+      created: _int(json['created']),
+      devices: (json['devices'] as List? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(TailarrServerUserDevice.fromJson)
+          .toList(),
+    );
+  }
+}
+
 /// `GET /api/users`
 class TailarrServerUsers {
   /// Whether the server has Tailscale API credentials — the users features
   /// are gated on this.
   final bool configured;
   final String? error;
+
+  /// Servers >= v0.19.0 return first-class people; [users] then holds only
+  /// UNASSIGNED machines. Older servers have no `people` key at all —
+  /// [hasPeople] is the model detector (api_version stays 1 either way).
+  final bool hasPeople;
+  final List<TailarrServerPerson> people;
   final List<TailarrServerUserDevice> users;
   final List<String> services;
+
+  /// v0.20.0+: the notifications system pod is set up — per-person
+  /// notification credentials can be issued.
+  final bool ntfy;
 
   const TailarrServerUsers({
     required this.configured,
     required this.error,
+    required this.hasPeople,
+    required this.people,
     required this.users,
     required this.services,
+    required this.ntfy,
   });
 
   factory TailarrServerUsers.fromJson(Map<String, dynamic> json) {
@@ -216,12 +265,89 @@ class TailarrServerUsers {
     return TailarrServerUsers(
       configured: _bool(json['configured']),
       error: error == null ? null : error.toString(),
+      hasPeople: json.containsKey('people'),
+      people: (json['people'] as List? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(TailarrServerPerson.fromJson)
+          .toList(),
       users: (json['users'] as List? ?? [])
           .whereType<Map<String, dynamic>>()
           .map(TailarrServerUserDevice.fromJson)
           .toList(),
       services:
           (json['services'] as List? ?? []).map((e) => e.toString()).toList(),
+      ntfy: _bool(json['ntfy']),
+    );
+  }
+}
+
+/// `POST /api/people` with `{do: add|reissue}` — an enrollment key bound to
+/// a person: the enrolling device is born owned by them.
+class TailarrServerPersonKey {
+  final bool ok;
+  final String? error;
+  final String id;
+  final String key;
+
+  const TailarrServerPersonKey({
+    required this.ok,
+    required this.error,
+    required this.id,
+    required this.key,
+  });
+
+  factory TailarrServerPersonKey.fromJson(Map<String, dynamic> json) {
+    final error = json['error'];
+    return TailarrServerPersonKey(
+      ok: _bool(json['ok']),
+      error: error == null ? null : error.toString(),
+      id: _string(json['id']),
+      key: _string(json['key']),
+    );
+  }
+}
+
+/// `POST /api/people/<id>/notifications` (server v0.20.0+) — per-person ntfy
+/// credentials whose topics mirror the person's access badges.
+class TailarrServerNotificationCredentials {
+  final bool ok;
+  final String? error;
+  final String url;
+  final String user;
+  final String password;
+  final String token;
+  final List<String> topics;
+
+  const TailarrServerNotificationCredentials({
+    required this.ok,
+    required this.error,
+    required this.url,
+    required this.user,
+    required this.password,
+    required this.token,
+    required this.topics,
+  });
+
+  /// The `{url, token, topics}` triple is byte-identical to the config
+  /// contract of the app's own Notifications module (stage 1) — shareable
+  /// straight into Settings > Notifications > Import Subscription.
+  String get subscriptionJson =>
+      '{"url": "$url", "token": "$token", '
+      '"topics": [${topics.map((t) => '"$t"').join(', ')}]}';
+
+  factory TailarrServerNotificationCredentials.fromJson(
+    Map<String, dynamic> json,
+  ) {
+    final error = json['error'];
+    return TailarrServerNotificationCredentials(
+      ok: _bool(json['ok']),
+      error: error == null ? null : error.toString(),
+      url: _string(json['url']),
+      user: _string(json['user']),
+      password: _string(json['password']),
+      token: _string(json['token']),
+      topics:
+          (json['topics'] as List? ?? []).map((e) => e.toString()).toList(),
     );
   }
 }
