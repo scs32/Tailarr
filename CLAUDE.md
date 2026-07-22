@@ -68,6 +68,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   ACL fences: a minted tag:tailarr-user key may not see the controller
   API), and update SERVER_HOST to https://tailarr.taila06ea9.ts.net.
 
+- **Notifications via ntfy** (plan agreed 2026-07-22, free path): LunaSea's
+  push pipeline is dead (v11 fork stripped Firebase; notify.lunasea.app
+  gone — vestiges: lib/system/webhooks.dart + per-module
+  LunaWebhooks.handle()). Revive with ntfy (ntfy.sh) instead:
+  1. Zero-code first: document native ntfy Connect in Sonarr v4/Radarr/
+     Prowlarr (paste topic); Tautulli via its webhook agent.
+  2. The differentiator: a Notifications setup screen that mints an
+     unguessable ntfy topic and AUTO-PROVISIONS the connection into each
+     configured service via the API clients Tailarr already has.
+  3. Suite angle: ntfy as a tailarr-server catalog pod — webhooks stay
+     on the tailnet; self-hosted ntfy needs `upstream-base-url: ntfy.sh`
+     for iOS APNs wake. ntfy click-URL can deep link `tailarr://`.
+  - Trade-off accepted: users install the ntfy app; notifications wear
+    ntfy's icon. Eventual "branded 1.0" upgrade path: own Firebase +
+    revive lunasea-notification-service as a pod ($0 in money, real
+    engineering) — topic-provisioning work carries over.
+  - Rejected: Gotify (no iOS app), Pushover (paid), Notifiarr (same
+    centralized-hosted-service model that died with LunaSea).
+
 - **Suite invite** (dream feature): tailnet enrollment key + module config
   in ONE link. Share-config payload is versioned with room for an
   `enroll: {control_url?, key}` field. Pairs with sovereign mode
