@@ -5,8 +5,11 @@ import 'package:lunasea/database/database.dart';
 import 'package:lunasea/modules/settings.dart';
 import 'package:lunasea/modules/settings/routes/system/widgets/backup_tile.dart';
 import 'package:lunasea/modules/settings/routes/system/widgets/restore_tile.dart';
+import 'package:lunasea/extensions/string/string.dart';
 import 'package:lunasea/router/routes/settings.dart';
 import 'package:lunasea/system/cache/image/image_cache.dart';
+import 'package:lunasea/system/environment.dart';
+import 'package:lunasea/system/flavor.dart';
 
 class SystemRoute extends StatefulWidget {
   const SystemRoute({
@@ -46,7 +49,32 @@ class _State extends State<SystemRoute> with LunaScrollControllerMixin {
         _logs(),
         _clearImageCache(),
         _clearConfiguration(),
+        LunaDivider(),
+        _version(),
       ],
+    );
+  }
+
+  Widget _version() {
+    return FutureBuilder(
+      future: PackageInfo.fromPlatform(),
+      builder: (context, AsyncSnapshot<PackageInfo> snapshot) {
+        final info = snapshot.data;
+        final version = info == null
+            ? '…'
+            : '${info.version} (${info.buildNumber})';
+        final flavor = LunaFlavor.current.key;
+        final commit = LunaEnvironment.commit.length > 7
+            ? LunaEnvironment.commit.substring(0, 7)
+            : LunaEnvironment.commit;
+        return LunaBlock(
+          title: 'Tailarr $version',
+          body: [TextSpan(text: '$flavor · $commit')],
+          trailing: const LunaIconButton(icon: Icons.info_outline_rounded),
+          onTap: () => 'Tailarr $version — $flavor · $commit'
+              .copyToClipboard(),
+        );
+      },
     );
   }
 
