@@ -36,6 +36,10 @@ class IO implements LunaNetwork {
 
   static Future<bool> isTailscaleRunning() => _embed.isRunning();
 
+  /// A snapshot of the node's state (backend state, IPs, DNS names, peers)
+  /// for the status screen. Null when the backend doesn't support status.
+  static Future<TailscaleStatus?> tailscaleStatus() => _embed.status();
+
   static Future<int?> getTailscalePort() async => _embed.proxyPort;
 
   static bool get isTailscaleSupported => _embed.isSupported;

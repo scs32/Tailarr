@@ -4,6 +4,7 @@ import 'package:lunasea/database/models/indexer.dart';
 import 'package:lunasea/modules.dart';
 import 'package:lunasea/modules/settings/routes/configuration/route.dart';
 import 'package:lunasea/modules/settings/routes/configuration_general/route.dart';
+import 'package:lunasea/modules/settings/routes/configuration_general/pages/tailscale_status.dart';
 import 'package:lunasea/modules/settings/routes/configuration_dashboard/pages/calendar_settings.dart';
 import 'package:lunasea/modules/settings/routes/configuration_dashboard/pages/default_pages.dart';
 import 'package:lunasea/modules/settings/routes/configuration_dashboard/route.dart';
@@ -60,6 +61,7 @@ enum SettingsRoutes with LunaRoutesMixin {
   HOME('/settings'),
   CONFIGURATION('configuration'),
   CONFIGURATION_GENERAL('general'),
+  CONFIGURATION_GENERAL_TAILSCALE_STATUS('tailscale_status'),
   CONFIGURATION_DASHBOARD('dashboard'),
   CONFIGURATION_DASHBOARD_CALENDAR('calendar'),
   CONFIGURATION_DASHBOARD_DEFAULT_PAGES('default_pages'),
@@ -128,6 +130,10 @@ enum SettingsRoutes with LunaRoutesMixin {
         return route(widget: const ConfigurationRoute());
       case SettingsRoutes.CONFIGURATION_GENERAL:
         return route(widget: const ConfigurationGeneralRoute());
+      case SettingsRoutes.CONFIGURATION_GENERAL_TAILSCALE_STATUS:
+        return route(
+          widget: const ConfigurationGeneralTailscaleStatusRoute(),
+        );
       case SettingsRoutes.CONFIGURATION_DASHBOARD:
         return route(widget: const ConfigurationDashboardRoute());
       case SettingsRoutes.CONFIGURATION_DASHBOARD_CALENDAR:
@@ -287,6 +293,10 @@ enum SettingsRoutes with LunaRoutesMixin {
           SettingsRoutes.CONFIGURATION_TAILARR_SERVER.routes,
           SettingsRoutes.CONFIGURATION_TAUTULLI.routes,
           SettingsRoutes.CONFIGURATION_WAKE_ON_LAN.routes,
+        ];
+      case SettingsRoutes.CONFIGURATION_GENERAL:
+        return [
+          SettingsRoutes.CONFIGURATION_GENERAL_TAILSCALE_STATUS.routes,
         ];
       case SettingsRoutes.CONFIGURATION_DASHBOARD:
         return [

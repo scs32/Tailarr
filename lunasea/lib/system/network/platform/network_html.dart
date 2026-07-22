@@ -1,3 +1,5 @@
+import 'package:tailscale_embed/tailscale_embed.dart' show TailscaleStatus;
+
 // ignore: always_use_package_imports
 import '../network.dart';
 
@@ -17,6 +19,8 @@ class IO {
   static Future<void> stopTailscale() async {}
 
   static Future<bool> isTailscaleRunning() async => false;
+
+  static Future<TailscaleStatus?> tailscaleStatus() async => null;
 
   static Future<int?> getTailscalePort() async => null;
 

@@ -9,6 +9,7 @@ import 'package:lunasea/system/network/network.dart';
 import 'package:tailscale_embed/tailscale_embed.dart';
 import 'package:lunasea/system/network/platform/network_io.dart'
     if (dart.library.html) 'package:lunasea/system/network/platform/network_html.dart';
+import 'package:lunasea/router/routes/settings.dart';
 import 'package:lunasea/system/platform.dart';
 import 'package:lunasea/utils/profile_tools.dart';
 
@@ -82,6 +83,7 @@ class _State extends State<ConfigurationGeneralRoute>
       LunaHeader(text: 'settings.Network'.tr()),
       _useTLSValidation(),
       if (IO.isTailscaleSupported) _useTailscale(),
+      if (IO.isTailscaleSupported) _tailscaleStatus(),
       if (IO.isTailscaleSupported) _tailscaleAuthKey(),
       if (IO.isTailscaleSupported) _tailscaleForgetNode(),
     ];
@@ -289,6 +291,17 @@ class _State extends State<ConfigurationGeneralRoute>
         profile.save();
       }
     }
+  }
+
+  Widget _tailscaleStatus() {
+    return LunaBlock(
+      title: 'Tailscale Status',
+      body: const [
+        TextSpan(text: 'Node state, addresses, and peers'),
+      ],
+      trailing: const LunaIconButton(icon: Icons.lan_rounded),
+      onTap: SettingsRoutes.CONFIGURATION_GENERAL_TAILSCALE_STATUS.go,
+    );
   }
 
   Widget _tailscaleAuthKey() {
