@@ -593,13 +593,9 @@ backlog item above for full detail + next steps). Findings:
   f1015a71-9a01-456f-9ae5-10c6fc74b7f6).
 
 ### Verify on device (build 8)
-- **Headline smoke test**: enter a bare short name as a module host
-  (e.g. `http://truenas-ts/`) and confirm it resolves over the tailnet.
-  This is the FIRST real-device exercise of the short-name fix
-  (plugin-side it was only sim-verified) — flagged in the build notes.
-  Report the result (pass OR fail) back to the embed session — the
-  system-DNS fallback half is the untested part on real hardware.
-- Everything else should behave identically to build 7.
+- ~~Bare short-name smoke test~~ **PASSED 2026-07-22** (Stephen, real
+  device): short names resolve over the tailnet. Relay to the embed
+  session together with the magicsock suspend/resume finding above.
 
 ### Notes / small findings
 - COSMETIC: Tailarr Server connection screen's `_isTailnetHost` only
