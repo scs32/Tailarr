@@ -96,6 +96,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - Rejected: Gotify (no iOS app), Pushover (paid), Notifiarr (same
     centralized-hosted-service model that died with LunaSea).
 
+- **App Store submission** (active as of 2026-07-22): decision made to
+  proceed. Risk assessment: LOW — **Zagreus** (apps.apple.com id6752225616,
+  Zebrra Labs LLC) is a public GPL-3.0 LunaSea fork (github.com/IsThisMeta/
+  zagreus) live on the App Store since 2025-09-25, 5.0★, with PAID IAP
+  tiers + its own hosted push notifications; no takedown in ~10 months.
+  Their App-Review handling = plain description disclaimer ("purely a
+  remote control application, no functionality without a server") + 17+
+  rating + standard Apple EULA — copy that pattern; our Funnel demo
+  server idea is optional strength on top.
+  - **Exception email SENT 2026-07-22** to Jagandeep Brar
+    (me@jagandeepbrar.io) — suite-first framing, soft ask for an App
+    Store distribution exception; a reply saying "fine by me" is the
+    target artifact. Not blocking — submission proceeds in parallel.
+  - Remaining: build 9 (status page); listing copy (lead with
+    tailnet-privacy differentiator, say "open source" openly, 17+,
+    tailarr.com as support+marketing URL); screenshots per device class;
+    privacy questionnaire ("Data Not Collected"); export compliance
+    (standard WireGuard encryption → exempt); review notes (+optional
+    Funnel demo + share-config link for the reviewer).
+  - **V1 question open**: Stephen half-tempted to call it V1. Version
+    string is 11.0.0 (LunaSea lineage); if debuting as "1.0", verify
+    ASC accepts a lower version string after TestFlight 11.0.0 builds
+    BEFORE promising it.
+
 - **Suite invite** (dream feature): tailnet enrollment key + module config
   in ONE link. Share-config payload is versioned with room for an
   `enroll: {control_url?, key}` field. Pairs with sovereign mode
