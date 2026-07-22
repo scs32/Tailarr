@@ -580,6 +580,72 @@ backlog item above for full detail + next steps). Findings:
 
 ---
 
+## Session Log — 2026-07-22 (status screen, build 9, App Store decision)
+
+### Shipped (all pushed to master)
+- **Tailscale Status screen** (e5742d62): Settings > General > Network >
+  "Tailscale Status" → live page (5s auto-refresh + pull-to-refresh):
+  color-coded connection state, node card (identity/hostname/MagicDNS/
+  IPs/DNS suffix/proxy port), health-warnings card, peers list
+  (online-first, subnet routes). Files: pages/tailscale_status.dart,
+  route CONFIGURATION_GENERAL_TAILSCALE_STATUS, IO.tailscaleStatus()
+  facade + web stub. Verified: sim (stopped state) + NEW
+  integration_test/tailscale_status_page_test.dart rendering connected/
+  health/stopped against the plugin's FakeTailscaleBackend (first
+  adoption; all passing). GOTCHA: LunaBlock body lines are RichText —
+  widget-test finders need `find.text(..., findRichText: true)`.
+- **Build 9 LIVE on TestFlight**: CI run 29941163795 → build id
+  ff1a9d27-dbe1-4e7e-a75a-e2d4358bfa94, VALID → review APPROVED
+  (same-version fast path), Public Beta group, What to Test notes ask
+  testers to report magicsock-warning sightings.
+- **Post-build-9 (ride build 10)**: connecting-overlay flash fix
+  (4c66ac2a — TailscaleGuard overlayBuilder now defers visibility 400ms,
+  input still blocked from frame one; Stephen saw the blip on launch) and
+  **version tile** in Settings > System (fb63c64a — "Tailarr 11.0.0 (N)"
+  + "flavor · commit", tap to copy; first version display in the v11
+  codebase; CI stamps beta·sha via env vars, local builds show
+  edge·master by design).
+
+### ⚠️ Toolchain: local Flutter must stay 3.38.6 (CI pin)
+Something upgraded local Flutter in place to 3.44.7 on 2026-07-20 10:58
+(reflog in /opt/homebrew/Caskroom/flutter/3.38.6/flutter) — breaks the
+build (simple_icons 14.x extends now-final IconData; google_fonts 6.2.1
+const-eval error). Ran `flutter downgrade` back to 3.38.6 + reverted the
+3.44 migrator churn in ios/ project files. To EVER upgrade Flutter:
+bump google_fonts→8.x, simple_icons→16.x, update CI FLUTTER_VERSION,
+one PR.
+
+### TestFlight stats (ASC API, first pull)
+17 public-link testers (anonymous by design), 207 sessions/30d
+(123 = Stephen; 3 engaged testers at 21/16/16), ZERO crash submissions,
+1 screenshot feedback (2026-07-18) asking when the App Store version
+lands. API notes: metrics endpoint needs `groupBy=betaTesters`;
+feedback via /v1/apps/{id}/betaFeedbackScreenshotSubmissions;
+GET /v1/builds/{id}/betaGroups is 403 for this key (write is fine).
+
+### Decisions / findings (details in Backlog)
+- Build 8 short-name smoke test PASSED on device (backlog updated).
+- Magicsock ReceiveIPv4 suspend/resume finding — full handoff note in
+  backlog; Stephen carries to embed session with the smoke-test pass +
+  FYI that FakeTailscaleBackend now has a consumer.
+- ntfy notification plan added to backlog (ed1bf8ca).
+- App Store: GO decision. Zagreus precedent found; exception email
+  SENT to Jagandeep (me@jagandeepbrar.io, from git history). Backlog
+  has the full submission checklist + open V1-version question.
+- Phone state: side-loaded dev build (in-place installs via devicectl
+  preserved node identity all day); will show "edge · master" in the
+  new version tile until TestFlight build 10.
+
+### Pending / next
+- **Build 10** when ready (overlay fix + version tile are waiting on
+  master); then update phone via TestFlight to rejoin the release train.
+- Jagandeep reply (goodwill artifact, non-blocking).
+- App Store checklist: listing copy, screenshots, privacy/export
+  questionnaires, review notes (optional Funnel demo), V1 decision.
+- Embed session handoff (magicsock rebind + short-name pass).
+
+---
+
 ## Session Log — 2026-07-20 (build 8: tailscale_embed bug-fix bump)
 
 ### Shipped
