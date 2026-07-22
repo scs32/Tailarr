@@ -45,8 +45,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **tailscale_embed remainder** (bumped to 39b8afd 2026-07-20 — short-name
   routing + zone-pinning fixes; identities/onKeyConsumed adopted earlier):
-  - Surface plugin `status()` (hostname/IPs/peers/state/identity) in
-    Settings > Network — answers "am I connected?".
+  - ~~Surface plugin `status()` in Settings > Network~~ DONE 2026-07-22
+    (e5742d62): Tailscale Status page — connection state, node card,
+    health warnings, peers list. FakeTailscaleBackend integration test.
+  - **Magicsock suspend/resume bug — carry to embed session** (found
+    2026-07-22 via the new status page on Stephen's phone): after iOS
+    suspend/resume the node shows health warning "MagicSock function
+    ReceiveIPv4 is not running" (tailscale#10976 class); traffic still
+    works but silently degrades to DERP; node stop/start clears it.
+    Fix belongs in the plugin's resume path: rebind magicsock (the
+    official iOS client calls magicsock Rebind() on wake) alongside
+    EnsureProxy's proxy-listener rebind, then re-check health.
   - Adopt the new additive plugin API when useful: restart(),
     isEnrolled(identity), TailscaleSettingsPanel/Store,
     FakeTailscaleBackend (deliberately NOT adopted in build 8 to keep
