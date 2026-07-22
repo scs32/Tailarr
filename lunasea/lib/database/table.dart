@@ -6,6 +6,7 @@ import 'package:lunasea/database/tables/bios.dart';
 import 'package:lunasea/database/tables/dashboard.dart';
 import 'package:lunasea/database/tables/lidarr.dart';
 import 'package:lunasea/database/tables/lunasea.dart';
+import 'package:lunasea/database/tables/notifications.dart';
 import 'package:lunasea/database/tables/nzbget.dart';
 import 'package:lunasea/database/tables/radarr.dart';
 import 'package:lunasea/database/tables/sabnzbd.dart';
@@ -20,6 +21,10 @@ enum LunaTable<T extends LunaTableMixin> {
   dashboard<DashboardDatabase>('home', items: DashboardDatabase.values),
   lidarr<LidarrDatabase>('lidarr', items: LidarrDatabase.values),
   lunasea<LunaSeaDatabase>('lunasea', items: LunaSeaDatabase.values),
+  notifications<NotificationsDatabase>(
+    'notifications',
+    items: NotificationsDatabase.values,
+  ),
   nzbget<NZBGetDatabase>('nzbget', items: NZBGetDatabase.values),
   radarr<RadarrDatabase>('radarr', items: RadarrDatabase.values),
   sabnzbd<SABnzbdDatabase>('sabnzbd', items: SABnzbdDatabase.values),

@@ -1,0 +1,370 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:dio/dio.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:workmanager/workmanager.dart';
+
+import 'package:lunasea/api/ntfy/models.dart';
+import 'package:lunasea/api/ntfy/ntfy.dart';
+import 'package:lunasea/database/box.dart';
+import 'package:lunasea/database/models/notification.dart';
+import 'package:lunasea/database/tables/notifications.dart';
+import 'package:lunasea/system/logger.dart';
+import 'package:lunasea/system/notifications/platform/ntfy_shared_state.dart';
+
+/// Entry point for the ntfy notification pipeline: foreground stream while
+/// the app is active, one-shot polls for pull-to-refresh, and an
+/// opportunistic background-refresh task that posts local notifications.
+class LunaNtfy {
+  static bool get isSupported => true;
+  static bool get isBackgroundRefreshSupported =>
+      Platform.isIOS || Platform.isAndroid;
+
+  /// Must match the BGTaskSchedulerPermittedIdentifiers entry in Info.plist
+  /// and the identifier registered in AppDelegate.swift.
+  static const BACKGROUND_TASK_ID = 'com.stephenspeicher.tailarr.ntfy-refresh';
+
+  Future<void> initialize() async {
+    await NtfySync.mirrorConfig();
+    if (isBackgroundRefreshSupported) {
+      await NtfyLocalNotifications.initialize();
+      await Workmanager().initialize(ntfyBackgroundDispatcher);
+    }
+    NtfyStreamManager.instance.initialize();
+  }
+
+  Future<int> syncInbox() => NtfySync.syncInbox();
+
+  void restartStream() => NtfyStreamManager.instance.restart();
+
+  /// Call after any subscription/background setting changes: mirrors the
+  /// Hive config to the shared-state file and reapplies stream + schedule.
+  Future<void> onConfigChanged() async {
+    await NtfySync.mirrorConfig();
+    NtfyStreamManager.instance.restart();
+    if (!isBackgroundRefreshSupported) return;
+    if (NotificationsDatabase.ENABLED.read() &&
+        NotificationsDatabase.BACKGROUND_REFRESH.read()) {
+      await _schedule();
+    } else {
+      await Workmanager().cancelByUniqueName(BACKGROUND_TASK_ID);
+    }
+  }
+
+  /// Requests notification permission and schedules the periodic refresh.
+  /// Returns whether the permission was granted.
+  Future<bool> enableBackgroundRefresh() async {
+    if (!isBackgroundRefreshSupported) return false;
+    final granted = await NtfyLocalNotifications.requestPermissions();
+    await onConfigChanged();
+    return granted;
+  }
+
+  Future<void> disableBackgroundRefresh() async {
+    if (!isBackgroundRefreshSupported) return;
+    await onConfigChanged();
+  }
+
+  Future<void> _schedule() async {
+    await Workmanager().registerPeriodicTask(
+      BACKGROUND_TASK_ID,
+      BACKGROUND_TASK_ID,
+      // iOS ignores the frequency here (set in AppDelegate.swift); Android
+      // clamps to its 15-minute minimum anyway.
+      frequency: const Duration(minutes: 15),
+      constraints: Constraints(networkType: NetworkType.connected),
+      existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
+    );
+  }
+}
+
+/// Fetch-and-store, kept free of any widget so the exact same path can be
+/// invoked from pull-to-refresh, the foreground stream, the background task,
+/// and — in stage 3 — a content-free push wake-up.
+class NtfySync {
+  NtfySync._();
+
+  static const INBOX_LIMIT = 200;
+
+  /// The active subscription from Hive settings, or null when the module is
+  /// disabled/unconfigured. Main-isolate only.
+  static NtfySubscription? config() {
+    if (!NotificationsDatabase.ENABLED.read()) return null;
+    final subscription = NtfySubscription(
+      url: NotificationsDatabase.URL.read(),
+      token: NotificationsDatabase.TOKEN.read(),
+      topics: NotificationsDatabase.TOPICS
+          .read()
+          .map((t) => t.toString())
+          .toList(),
+    );
+    return subscription.isValid ? subscription : null;
+  }
+
+  /// Mirrors the Hive-backed settings into the shared-state file the
+  /// background isolate reads. Preserves the since-markers.
+  static Future<void> mirrorConfig() async {
+    final state = await NtfySharedState.load();
+    state.url = NotificationsDatabase.URL.read();
+    state.token = NotificationsDatabase.TOKEN.read();
+    state.topics = NotificationsDatabase.TOPICS
+        .read()
+        .map((t) => t.toString())
+        .toList();
+    state.backgroundEnabled = NotificationsDatabase.ENABLED.read() &&
+        NotificationsDatabase.BACKGROUND_REFRESH.read();
+    await state.save();
+  }
+
+  /// One poll: everything since the inbox marker into Hive. Returns the
+  /// number of messages that were new.
+  static Future<int> syncInbox() async {
+    final subscription = config();
+    if (subscription == null) return 0;
+    final state = await NtfySharedState.load();
+    final messages =
+        await NtfyClient(subscription).poll(since: state.sinceParameter);
+    return _store(messages, state);
+  }
+
+  /// Stores stream-delivered messages through the same dedupe/marker path.
+  static Future<int> storeMessages(List<NtfyMessage> messages) async {
+    final state = await NtfySharedState.load();
+    return _store(messages, state);
+  }
+
+  static Future<int> _store(
+    List<NtfyMessage> messages,
+    NtfySharedState state,
+  ) async {
+    int fresh = 0;
+    int maxTime = state.since;
+
+    for (final message in messages) {
+      if (message.id.isEmpty) continue;
+      if (message.time > maxTime) maxTime = message.time;
+      // Existing entries keep their read flag — repeated polls overlap.
+      if (LunaBox.notifications.contains(message.id)) continue;
+      await LunaBox.notifications.update(
+        message.id,
+        LunaNotification(
+          id: message.id,
+          time: message.time,
+          topic: message.topic,
+          title: message.title,
+          body: message.message,
+          priority: message.priority,
+          tags: message.tags,
+        ),
+      );
+      fresh++;
+    }
+
+    _compact();
+
+    if (maxTime > state.since || maxTime > state.bgSince) {
+      state.since = maxTime;
+      // Anything already visible in-app must not re-notify from background.
+      if (maxTime > state.bgSince) state.bgSince = maxTime;
+      await state.save();
+    }
+    return fresh;
+  }
+
+  static void _compact([int count = INBOX_LIMIT]) {
+    if (LunaBox.notifications.size <= count) return;
+    final items = LunaBox.notifications.data.toList()
+      ..sort((a, b) => b.time.compareTo(a.time));
+    items.skip(count).forEach((notification) => notification.delete());
+  }
+
+  /// Background-isolate fetch: file-backed state only — the Hive boxes are
+  /// owned by the main isolate and must not be opened here. New messages are
+  /// NOT stored; the inbox catches up from its own marker on next launch.
+  static Future<List<NtfyMessage>> backgroundFetch() async {
+    final state = await NtfySharedState.load();
+    if (!state.backgroundEnabled) return [];
+    final subscription = state.subscription;
+    if (subscription == null) return [];
+
+    // First background run with no marker: look back one hour, not the
+    // entire server-side cache.
+    final since = state.bgSince != 0
+        ? state.bgSince
+        : DateTime.now().millisecondsSinceEpoch ~/ 1000 - 3600;
+
+    final messages =
+        await NtfyClient(subscription).poll(since: since.toString());
+    final fresh = messages
+        .where((m) => m.id.isNotEmpty && !state.notifiedIds.contains(m.id))
+        .toList();
+
+    state.bgSince = since;
+    for (final message in messages) {
+      if (message.time > state.bgSince) state.bgSince = message.time;
+    }
+    state.notifiedIds = [
+      ...fresh.map((m) => m.id),
+      ...state.notifiedIds,
+    ];
+    await state.save();
+    return fresh;
+  }
+}
+
+/// Keeps a live ndjson stream open while the app is foregrounded, with
+/// exponential backoff reconnects, and tears it down on suspend (iOS kills
+/// the socket anyway — reconnecting on resume also re-polls anything missed).
+class NtfyStreamManager with WidgetsBindingObserver {
+  NtfyStreamManager._();
+  static final NtfyStreamManager instance = NtfyStreamManager._();
+
+  bool _foreground = true;
+  int _generation = 0;
+  CancelToken? _cancelToken;
+
+  void initialize() {
+    WidgetsBinding.instance.addObserver(this);
+    restart();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _foreground = true;
+      restart();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _foreground = false;
+      _stop();
+    }
+  }
+
+  void restart() {
+    _stop();
+    if (_foreground) _run(++_generation);
+  }
+
+  void _stop() {
+    _generation++;
+    _cancelToken?.cancel();
+    _cancelToken = null;
+  }
+
+  Future<void> _run(int generation) async {
+    int backoff = 5;
+    while (_foreground && generation == _generation) {
+      final subscription = NtfySync.config();
+      if (subscription == null) return;
+      try {
+        // Catch up first so the stream only has to carry live messages.
+        await NtfySync.syncInbox();
+        final state = await NtfySharedState.load();
+        final cancelToken = _cancelToken = CancelToken();
+        final stream = NtfyClient(subscription).stream(
+          since: state.sinceParameter,
+          cancelToken: cancelToken,
+        );
+        await for (final message in stream) {
+          if (generation != _generation) return;
+          backoff = 5;
+          await NtfySync.storeMessages([message]);
+        }
+      } catch (error) {
+        if (generation != _generation) return;
+        LunaLogger().debug('ntfy stream dropped — reconnecting: $error');
+      }
+      if (!_foreground || generation != _generation) return;
+      await Future.delayed(Duration(seconds: backoff));
+      backoff = (backoff * 2).clamp(5, 120);
+    }
+  }
+}
+
+/// Posts local notifications for background-fetched messages. Runs in both
+/// the main isolate (permission requests) and the background isolate (show).
+class NtfyLocalNotifications {
+  NtfyLocalNotifications._();
+  static final _plugin = FlutterLocalNotificationsPlugin();
+
+  static Future<void> initialize() async {
+    await _plugin.initialize(
+      const InitializationSettings(
+        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        iOS: DarwinInitializationSettings(
+          requestAlertPermission: false,
+          requestBadgePermission: false,
+          requestSoundPermission: false,
+        ),
+      ),
+    );
+  }
+
+  static Future<bool> requestPermissions() async {
+    if (Platform.isIOS) {
+      final ios = _plugin.resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin>();
+      return await ios?.requestPermissions(
+            alert: true,
+            badge: true,
+            sound: true,
+          ) ??
+          false;
+    }
+    if (Platform.isAndroid) {
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      return await android?.requestNotificationsPermission() ?? false;
+    }
+    return false;
+  }
+
+  static const _details = NotificationDetails(
+    android: AndroidNotificationDetails(
+      'tailarr_ntfy',
+      'Tailarr Alerts',
+      channelDescription: 'Alerts from your Tailarr Server',
+    ),
+    iOS: DarwinNotificationDetails(),
+  );
+
+  static Future<void> show(List<NtfyMessage> messages) async {
+    await initialize();
+    for (final message in messages.take(5)) {
+      await _plugin.show(
+        message.id.hashCode,
+        message.title?.isNotEmpty == true
+            ? message.title
+            : ntfyTopicLabel(message.topic),
+        message.message ?? '',
+        _details,
+      );
+    }
+    if (messages.length > 5) {
+      await _plugin.show(
+        0,
+        'Tailarr',
+        '${messages.length - 5} more notifications in the inbox',
+        _details,
+      );
+    }
+  }
+}
+
+/// Background-isolate entry point — invoked by BGAppRefreshTask (iOS) /
+/// WorkManager (Android). Keep it Hive-free: shared-state file + network +
+/// local notifications only.
+@pragma('vm:entry-point')
+void ntfyBackgroundDispatcher() {
+  Workmanager().executeTask((task, inputData) async {
+    try {
+      final fresh = await NtfySync.backgroundFetch();
+      if (fresh.isNotEmpty) await NtfyLocalNotifications.show(fresh);
+    } catch (_) {
+      // Opportunistic by design — the next refresh or launch catches up.
+    }
+    return true;
+  });
+}

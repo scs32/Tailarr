@@ -108,6 +108,8 @@ class _State extends State<SettingsHeaderRoute> with LunaScrollControllerMixin {
         return LunaProfile.current.sonarrHeaders;
       case LunaModule.SABNZBD:
         return LunaProfile.current.sabnzbdHeaders;
+      case LunaModule.NOTIFICATIONS:
+        throw Exception('Notifications does not have a headers page');
       case LunaModule.NZBGET:
         return LunaProfile.current.nzbgetHeaders;
       case LunaModule.SEARCH:
@@ -138,6 +140,8 @@ class _State extends State<SettingsHeaderRoute> with LunaScrollControllerMixin {
       case LunaModule.SONARR:
         return context.read<SonarrState>().reset();
       case LunaModule.SABNZBD:
+        return;
+      case LunaModule.NOTIFICATIONS:
         return;
       case LunaModule.NZBGET:
         return;

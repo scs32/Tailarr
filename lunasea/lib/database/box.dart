@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:lunasea/database/models/external_module.dart';
 import 'package:lunasea/database/models/indexer.dart';
 import 'package:lunasea/database/models/log.dart';
+import 'package:lunasea/database/models/notification.dart';
 import 'package:lunasea/database/models/profile.dart';
 import 'package:lunasea/database/table.dart';
 import 'package:lunasea/system/logger.dart';
@@ -14,6 +15,7 @@ enum LunaBox<T> {
   indexers<LunaIndexer>('indexers'),
   logs<LunaLog>('logs'),
   lunasea<dynamic>('lunasea'),
+  notifications<LunaNotification>('notifications'),
   profiles<LunaProfile>('profiles');
 
   final String key;

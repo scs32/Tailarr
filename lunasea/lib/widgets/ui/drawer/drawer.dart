@@ -115,6 +115,7 @@ class LunaDrawer extends StatelessWidget {
                 fontWeight: LunaUI.FONT_WEIGHT_BOLD,
               ),
             ),
+            if (module == LunaModule.NOTIFICATIONS) _unreadBadge(module),
           ],
         ),
         onTap: onTap ??
@@ -123,6 +124,31 @@ class LunaDrawer extends StatelessWidget {
               if (!currentPage) module.launch();
             },
       ),
+    );
+  }
+
+  Widget _unreadBadge(LunaModule module) {
+    return LunaBox.notifications.listenableBuilder(
+      builder: (context, _) {
+        final unread = LunaBox.notifications.data.where((n) => !n.read).length;
+        if (unread == 0) return const SizedBox();
+        return Container(
+          margin: const EdgeInsets.only(left: 8.0),
+          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
+          decoration: BoxDecoration(
+            color: module.color,
+            borderRadius: BorderRadius.circular(LunaUI.BORDER_RADIUS),
+          ),
+          child: Text(
+            unread > 99 ? '99+' : '$unread',
+            style: const TextStyle(
+              color: LunaColours.primary,
+              fontWeight: LunaUI.FONT_WEIGHT_BOLD,
+              fontSize: LunaUI.FONT_SIZE_H4,
+            ),
+          ),
+        );
+      },
     );
   }
 

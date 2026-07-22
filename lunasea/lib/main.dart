@@ -8,6 +8,7 @@ import 'package:lunasea/router/router.dart';
 import 'package:lunasea/system/cache/image/image_cache.dart';
 import 'package:lunasea/system/cache/memory/memory_store.dart';
 import 'package:lunasea/system/network/network.dart';
+import 'package:lunasea/system/notifications/notifications.dart';
 import 'package:lunasea/system/network/tailscale_connecting_overlay.dart';
 import 'package:tailscale_embed/tailscale_embed.dart';
 import 'package:lunasea/system/recovery_mode/main.dart';
@@ -44,6 +45,7 @@ Future<void> bootstrap() async {
   if (LunaImageCache.isSupported) LunaImageCache().initialize();
   LunaRouter().initialize();
   await LunaMemoryStore().initialize();
+  if (LunaNtfy.isSupported) await LunaNtfy().initialize();
 }
 
 class LunaBIOS extends StatelessWidget {

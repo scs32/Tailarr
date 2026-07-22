@@ -15,6 +15,7 @@ import 'package:lunasea/modules/sabnzbd.dart';
 import 'package:lunasea/modules/nzbget.dart';
 import 'package:lunasea/modules/tautulli.dart';
 import 'package:lunasea/modules/tailarr_server.dart';
+import 'package:lunasea/database/tables/notifications.dart';
 import 'package:lunasea/modules/dashboard/core/state.dart';
 import 'package:lunasea/api/wake_on_lan/wake_on_lan.dart';
 
@@ -23,6 +24,7 @@ part 'modules.g.dart';
 const MODULE_DASHBOARD_KEY = 'dashboard';
 const MODULE_EXTERNAL_MODULES_KEY = 'external_modules';
 const MODULE_LIDARR_KEY = 'lidarr';
+const MODULE_NOTIFICATIONS_KEY = 'notifications';
 const MODULE_NZBGET_KEY = 'nzbget';
 const MODULE_OVERSEERR_KEY = 'overseerr';
 const MODULE_RADARR_KEY = 'radarr';
@@ -42,6 +44,8 @@ enum LunaModule {
   EXTERNAL_MODULES(MODULE_EXTERNAL_MODULES_KEY),
   @HiveField(1)
   LIDARR(MODULE_LIDARR_KEY),
+  @HiveField(13)
+  NOTIFICATIONS(MODULE_NOTIFICATIONS_KEY),
   @HiveField(2)
   NZBGET(MODULE_NZBGET_KEY),
   @HiveField(3)
@@ -72,6 +76,8 @@ enum LunaModule {
         return LunaModule.DASHBOARD;
       case MODULE_LIDARR_KEY:
         return LunaModule.LIDARR;
+      case MODULE_NOTIFICATIONS_KEY:
+        return LunaModule.NOTIFICATIONS;
       case MODULE_NZBGET_KEY:
         return LunaModule.NZBGET;
       case MODULE_RADARR_KEY:
@@ -127,6 +133,8 @@ extension LunaModuleEnablementExtension on LunaModule {
         return true;
       case LunaModule.LIDARR:
         return LunaProfile.current.lidarrEnabled;
+      case LunaModule.NOTIFICATIONS:
+        return NotificationsDatabase.ENABLED.read();
       case LunaModule.NZBGET:
         return LunaProfile.current.nzbgetEnabled;
       case LunaModule.OVERSEERR:
@@ -158,6 +166,8 @@ extension LunaModuleMetadataExtension on LunaModule {
         return 'lunasea.Dashboard'.tr();
       case LunaModule.LIDARR:
         return 'Lidarr';
+      case LunaModule.NOTIFICATIONS:
+        return 'Notifications';
       case LunaModule.NZBGET:
         return 'NZBGet';
       case LunaModule.RADARR:
@@ -189,6 +199,8 @@ extension LunaModuleMetadataExtension on LunaModule {
         return Icons.home_rounded;
       case LunaModule.LIDARR:
         return LunaIcons.LIDARR;
+      case LunaModule.NOTIFICATIONS:
+        return Icons.notifications_rounded;
       case LunaModule.NZBGET:
         return LunaIcons.NZBGET;
       case LunaModule.RADARR:
@@ -220,6 +232,8 @@ extension LunaModuleMetadataExtension on LunaModule {
         return LunaColours.accent;
       case LunaModule.LIDARR:
         return const Color(0xFF159552);
+      case LunaModule.NOTIFICATIONS:
+        return const Color(0xFF22D3EE);
       case LunaModule.NZBGET:
         return const Color(0xFF42D535);
       case LunaModule.RADARR:
@@ -251,6 +265,8 @@ extension LunaModuleMetadataExtension on LunaModule {
         return null;
       case LunaModule.LIDARR:
         return 'https://lidarr.audio';
+      case LunaModule.NOTIFICATIONS:
+        return 'https://ntfy.sh';
       case LunaModule.NZBGET:
         return 'https://nzbget.net';
       case LunaModule.RADARR:
@@ -282,6 +298,8 @@ extension LunaModuleMetadataExtension on LunaModule {
         return null;
       case LunaModule.LIDARR:
         return 'https://github.com/Lidarr/Lidarr';
+      case LunaModule.NOTIFICATIONS:
+        return 'https://github.com/binwiederhier/ntfy';
       case LunaModule.NZBGET:
         return 'https://github.com/nzbget/nzbget';
       case LunaModule.RADARR:
@@ -313,6 +331,8 @@ extension LunaModuleMetadataExtension on LunaModule {
         return 'lunasea.Dashboard'.tr();
       case LunaModule.LIDARR:
         return 'Manage Music';
+      case LunaModule.NOTIFICATIONS:
+        return 'Alerts From Your Server';
       case LunaModule.NZBGET:
         return 'Manage Usenet Downloads';
       case LunaModule.RADARR:
@@ -344,6 +364,8 @@ extension LunaModuleMetadataExtension on LunaModule {
         return null;
       case LunaModule.LIDARR:
         return 'Lidarr is a music collection manager for Usenet and BitTorrent users. It can monitor multiple RSS feeds for new tracks from your favorite artists and will grab, sort and rename them. It can also be configured to automatically upgrade the quality of files already downloaded when a better quality format becomes available.';
+      case LunaModule.NOTIFICATIONS:
+        return 'Notifications subscribes to your Tailarr Server\'s ntfy topics: server alerts and media events land in an in-app inbox, live while the app is open and checked periodically in the background. Instant push delivery arrives in a later update.';
       case LunaModule.NZBGET:
         return 'NZBGet is a binary downloader, which downloads files from Usenet based on information given in nzb-files.';
       case LunaModule.RADARR:
@@ -377,6 +399,8 @@ extension LunaModuleRoutingExtension on LunaModule {
         return LunaRoutes.dashboard.root.path;
       case LunaModule.LIDARR:
         return LunaRoutes.lidarr.root.path;
+      case LunaModule.NOTIFICATIONS:
+        return LunaRoutes.notifications.root.path;
       case LunaModule.NZBGET:
         return LunaRoutes.nzbget.root.path;
       case LunaModule.RADARR:
@@ -408,6 +432,8 @@ extension LunaModuleRoutingExtension on LunaModule {
         return SettingsRoutes.CONFIGURATION_DASHBOARD;
       case LunaModule.LIDARR:
         return SettingsRoutes.CONFIGURATION_LIDARR;
+      case LunaModule.NOTIFICATIONS:
+        return SettingsRoutes.CONFIGURATION_NOTIFICATIONS;
       case LunaModule.NZBGET:
         return SettingsRoutes.CONFIGURATION_NZBGET;
       case LunaModule.OVERSEERR:
@@ -515,6 +541,8 @@ extension LunaModuleExtension on LunaModule {
         return context.read<RadarrState>();
       case LunaModule.SONARR:
         return context.read<SonarrState>();
+      case LunaModule.NOTIFICATIONS:
+        return null;
       case LunaModule.NZBGET:
         return context.read<NZBGetState>();
       case LunaModule.SABNZBD:

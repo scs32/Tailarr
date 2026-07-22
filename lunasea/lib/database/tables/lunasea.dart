@@ -1,6 +1,7 @@
 import 'package:lunasea/database/models/external_module.dart';
 import 'package:lunasea/database/models/indexer.dart';
 import 'package:lunasea/database/models/log.dart';
+import 'package:lunasea/database/models/notification.dart';
 import 'package:lunasea/database/models/profile.dart';
 import 'package:lunasea/types/indexer_icon.dart';
 import 'package:lunasea/types/list_view_option.dart';
@@ -47,6 +48,7 @@ enum LunaSeaDatabase<T> with LunaTableMixin<T> {
     Hive.registerAdapter(LunaIndexerAdapter());
     Hive.registerAdapter(LunaProfileAdapter());
     Hive.registerAdapter(LunaLogAdapter());
+    Hive.registerAdapter(LunaNotificationAdapter());
     Hive.registerAdapter(LunaIndexerIconAdapter());
     Hive.registerAdapter(LunaLogTypeAdapter());
     Hive.registerAdapter(LunaModuleAdapter());

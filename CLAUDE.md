@@ -77,7 +77,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   ACL fences: a minted tag:tailarr-user key may not see the controller
   API), and update SERVER_HOST to https://tailarr.taila06ea9.ts.net.
 
-- **Notifications via ntfy** (plan agreed 2026-07-22, free path): LunaSea's
+- **Notifications via ntfy — STAGE 1 BUILT in-app 2026-07-22** (3-stage
+  plan: 1 = in-app inbox + poll/stream + BG refresh, 2 = server per-user
+  ACLs, 3 = APNs push relay). What shipped in the working tree (not yet
+  committed at time of writing):
+  - `lib/api/ntfy/` — standalone NtfyClient (poll + ndjson stream) +
+    NtfySubscription parser (JSON handout AND `tailarr://ntfy?...` URI);
+    this fetcher is the exact unit stage 3's push wake-up will call.
+  - Inbox module (LunaModule.NOTIFICATIONS, HiveField 13, global not
+    per-profile), `/notifications` route, drawer unread badge,
+    Settings > Notifications (enable, import-JSON, url/token/topics,
+    background toggle, test connection).
+  - Storage: LunaNotification (Hive typeId 30) in LunaBox.notifications
+    keyed by ntfy message id (natural dedupe), compacted to 200;
+    NotificationsDatabase table (global).
+  - Foreground: NtfyStreamManager (first WidgetsBindingObserver in the
+    app) reconnects with backoff while resumed. Background: workmanager
+    0.9 (BGAppRefreshTask id `com.stephenspeicher.tailarr.ntfy-refresh`
+    in Info.plist + AppDelegate) + flutter_local_notifications; the BG
+    isolate NEVER touches Hive — config + since-markers live in a shared
+    JSON file (`tailarr_ntfy.json`, two markers: inbox `since` vs
+    notify `bg_since`), inbox catches up on next launch.
+  - Verified: analyzer clean, test/ntfy_models_test.dart 9/9,
+    integration_test/notifications_inbox_test.dart 3/3 on sim, sim build
+    + settings-screen screenshot. NOT yet verified: live server
+    (needs a read token: `podman exec ntfy ntfy token add <user>`),
+    on-device BG refresh, deep-link registration (TODO in
+    router/routes/notifications.dart).
+  - Original stage-2/3 plan: LunaSea's
   push pipeline is dead (v11 fork stripped Firebase; notify.lunasea.app
   gone — vestiges: lib/system/webhooks.dart + per-module
   LunaWebhooks.handle()). Revive with ntfy (ntfy.sh) instead:
