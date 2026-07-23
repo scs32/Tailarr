@@ -3,6 +3,7 @@ import 'package:lunasea/core.dart';
 import 'package:lunasea/modules/lidarr.dart';
 import 'package:lunasea/modules/settings.dart';
 import 'package:lunasea/router/routes/settings.dart';
+import 'package:lunasea/system/gateway/gateway_services.dart';
 
 class ConfigurationLidarrConnectionDetailsRoute extends StatefulWidget {
   const ConfigurationLidarrConnectionDetailsRoute({
@@ -69,6 +70,7 @@ class _State extends State<ConfigurationLidarrConnectionDetailsRoute>
         );
         if (_values.item1) {
           LunaProfile.current.lidarrHost = _values.item2;
+          GatewayServicesSync.markManual('lidarr');
           LunaProfile.current.save();
           context.read<LidarrState>().reset();
         }
@@ -96,6 +98,7 @@ class _State extends State<ConfigurationLidarrConnectionDetailsRoute>
         );
         if (_values.item1) {
           LunaProfile.current.lidarrKey = _values.item2;
+          GatewayServicesSync.markManual('lidarr');
           LunaProfile.current.save();
           context.read<LidarrState>().reset();
         }

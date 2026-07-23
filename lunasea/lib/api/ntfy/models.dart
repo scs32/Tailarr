@@ -124,6 +124,110 @@ class NtfyGatewayCredentials {
   }
 }
 
+/// One service the calling person is badged for, as handed out by
+/// `GET http://tailarr-gate/self/services` (tailarr-server v0.23.0+).
+class GatewayService {
+  /// `sonarr` | `radarr` | `lidarr` map to native connection modules;
+  /// `tailarr` is the app's own server module (auth is always null);
+  /// `external` — and any type this app version does not recognize — renders
+  /// as an External Module bookmark so nothing shared is ever invisible.
+  final String type;
+
+  /// Pod/service name — the stable identifier for reconciliation.
+  final String name;
+
+  /// HTTPS tailnet URL. May be empty while the service is stopped (the
+  /// MagicDNS name lives in its sidecar) — keep the previously stored value.
+  final String url;
+
+  /// Native-type credential (`{"api_key": …}` for the Arrs). null means
+  /// "create/keep the module but the credential is missing" — keep what is
+  /// stored and let the user fill just that field.
+  final Map<String, dynamic>? auth;
+
+  const GatewayService({
+    required this.type,
+    required this.name,
+    required this.url,
+    this.auth,
+  });
+
+  String get apiKey => (auth?['api_key'] ?? '').toString();
+
+  /// NZBGet-style credentials (`{"user": …, "password": …}`) — user may
+  /// legitimately be empty.
+  String get authUser => (auth?['user'] ?? '').toString();
+  String get authPassword => (auth?['password'] ?? '').toString();
+
+  factory GatewayService.fromJson(Map<String, dynamic> json) {
+    return GatewayService(
+      type: (json['type'] as String? ?? '').trim().toLowerCase(),
+      name: (json['name'] as String? ?? '').trim(),
+      url: (json['url'] as String? ?? '').trim().replaceAll(RegExp(r'/+$'), ''),
+      auth: json['auth'] is Map<String, dynamic>
+          ? json['auth'] as Map<String, dynamic>
+          : null,
+    );
+  }
+}
+
+/// `GET http://tailarr-gate/self/services` — same whois-authenticated
+/// gateway as /self/notifications, answering "which services is this
+/// device's person badged for".
+class GatewayServicesResponse {
+  final bool ok;
+  final String? error;
+  final String kind;
+
+  /// null when the payload had no `services` key — an old controller
+  /// (< 0.23.0) behind a new gateway answers with the notifications
+  /// payload, which must read as "feature unavailable", not an error.
+  final List<GatewayService>? services;
+  final int? statusCode;
+
+  const GatewayServicesResponse({
+    required this.ok,
+    required this.error,
+    required this.kind,
+    required this.services,
+    this.statusCode,
+  });
+
+  /// The contract's version-skew check: consume only when the response is
+  /// actually the services payload.
+  bool get isSupported => services != null && kind == 'services';
+
+  /// Server too old for this feature — old gateway (clean 404) or old
+  /// controller (notifications payload). Degrade silently to manual config.
+  bool get isUnavailable =>
+      statusCode == 404 || (!isSupported && !isUnassigned);
+
+  /// "this device is not assigned to a user" — the fix is an admin action
+  /// (assign the device), not a retry.
+  bool get isUnassigned =>
+      !ok && (error ?? '').toLowerCase().contains('not assigned');
+
+  factory GatewayServicesResponse.fromJson(
+    Map<String, dynamic> json, {
+    int? statusCode,
+  }) {
+    final error = json['error'];
+    final services = json['services'];
+    return GatewayServicesResponse(
+      ok: json['ok'] == true,
+      statusCode: statusCode,
+      error: error == null ? null : error.toString(),
+      kind: (json['kind'] as String? ?? '').trim(),
+      services: services is List
+          ? services
+              .whereType<Map<String, dynamic>>()
+              .map(GatewayService.fromJson)
+              .toList()
+          : null,
+    );
+  }
+}
+
 /// Maps a Tailarr topic name to its display label: `tlr-ops` is the server
 /// itself, `tlr-media-<service>` is the service's name.
 String ntfyTopicLabel(String topic) {

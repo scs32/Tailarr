@@ -53,6 +53,25 @@ class NtfyGatewayClient {
       statusCode: response.statusCode,
     );
   }
+
+  /// Returns every service the CALLER'S person is badged for (server
+  /// v0.23.0+). Older gateways 404 and older controllers answer with the
+  /// notifications payload — both surface via [GatewayServicesResponse]
+  /// skew flags, not exceptions. Throws only on transport errors.
+  Future<GatewayServicesResponse> selfServices() async {
+    final response = await httpClient.get('self/services');
+    final data = response.data;
+    if (data is! Map<String, dynamic>) {
+      throw FormatException(
+        'Unexpected gateway response '
+        '(HTTP ${response.statusCode}): ${response.data}'.trim(),
+      );
+    }
+    return GatewayServicesResponse.fromJson(
+      data,
+      statusCode: response.statusCode,
+    );
+  }
 }
 
 class NtfyClient {

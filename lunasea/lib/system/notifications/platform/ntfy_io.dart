@@ -12,6 +12,7 @@ import 'package:lunasea/api/ntfy/ntfy.dart';
 import 'package:lunasea/database/box.dart';
 import 'package:lunasea/database/models/notification.dart';
 import 'package:lunasea/database/tables/notifications.dart';
+import 'package:lunasea/system/gateway/gateway_services.dart';
 import 'package:lunasea/system/logger.dart';
 import 'package:lunasea/system/notifications/platform/ntfy_shared_state.dart';
 
@@ -353,7 +354,10 @@ class NtfyStreamManager with WidgetsBindingObserver {
   Future<void> _run(int generation) async {
     int backoff = 5;
     while (_foreground && generation == _generation) {
-      // Gateway-managed configs re-sync on every (re)connect cycle.
+      // Gateway-managed configs re-sync on every (re)connect cycle. The
+      // services reconcile rides the same wake-up (self-throttled, and a
+      // no-op until the user has run Automatic Setup).
+      await GatewayServicesSync.refresh();
       await NtfySync.refreshFromGateway();
       if (!_foreground || generation != _generation) return;
       final subscription = NtfySync.config();

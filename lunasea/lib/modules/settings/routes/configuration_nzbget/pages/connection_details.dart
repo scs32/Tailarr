@@ -3,6 +3,7 @@ import 'package:lunasea/core.dart';
 import 'package:lunasea/modules/nzbget.dart';
 import 'package:lunasea/modules/settings.dart';
 import 'package:lunasea/router/routes/settings.dart';
+import 'package:lunasea/system/gateway/gateway_services.dart';
 
 class ConfigurationNZBGetConnectionDetailsRoute extends StatefulWidget {
   const ConfigurationNZBGetConnectionDetailsRoute({
@@ -70,6 +71,7 @@ class _State extends State<ConfigurationNZBGetConnectionDetailsRoute>
         );
         if (_values.item1) {
           LunaProfile.current.nzbgetHost = _values.item2;
+          GatewayServicesSync.markManual('nzbget');
           LunaProfile.current.save();
           context.read<NZBGetState>().reset();
         }
@@ -93,6 +95,7 @@ class _State extends State<ConfigurationNZBGetConnectionDetailsRoute>
         );
         if (_values.item1) {
           LunaProfile.current.nzbgetUser = _values.item2;
+          GatewayServicesSync.markManual('nzbget');
           LunaProfile.current.save();
           context.read<NZBGetState>().reset();
         }
@@ -125,6 +128,7 @@ class _State extends State<ConfigurationNZBGetConnectionDetailsRoute>
         );
         if (_values.item1) {
           LunaProfile.current.nzbgetPass = _values.item2;
+          GatewayServicesSync.markManual('nzbget');
           LunaProfile.current.save();
           context.read<NZBGetState>().reset();
         }

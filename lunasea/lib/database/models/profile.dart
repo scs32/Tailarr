@@ -158,6 +158,14 @@ class LunaProfile extends HiveObject {
   @HiveField(45, defaultValue: '')
   String tailarrServerHost;
 
+  /// Native module types ('sonarr', 'radarr', …, 'tailarr') whose connection
+  /// details came from the tailarr-gate /self/services endpoint and are
+  /// reconciled on re-sync. A manual edit to a module's host/key removes it
+  /// from this list so hand-entered configs are never clobbered.
+  @JsonKey(defaultValue: <String>[])
+  @HiveField(50, defaultValue: <String>[])
+  List<String> gatewayManagedModules;
+
   @JsonKey()
   @HiveField(46, defaultValue: <String, String>{})
   Map<String, String> tailarrServerHeaders;
@@ -217,6 +225,8 @@ class LunaProfile extends HiveObject {
     required this.tailarrServerEnabled,
     required this.tailarrServerHost,
     required this.tailarrServerHeaders,
+    //Gateway self-config
+    required this.gatewayManagedModules,
     //Tautulli
     required this.tautulliEnabled,
     required this.tautulliHost,
@@ -268,6 +278,8 @@ class LunaProfile extends HiveObject {
     bool? tailarrServerEnabled,
     String? tailarrServerHost,
     Map<String, String>? tailarrServerHeaders,
+    //Gateway self-config
+    List<String>? gatewayManagedModules,
     //Tautulli
     bool? tautulliEnabled,
     String? tautulliHost,
@@ -318,6 +330,8 @@ class LunaProfile extends HiveObject {
       tailarrServerEnabled: tailarrServerEnabled ?? false,
       tailarrServerHost: tailarrServerHost ?? '',
       tailarrServerHeaders: tailarrServerHeaders ?? {},
+      // Gateway self-config
+      gatewayManagedModules: gatewayManagedModules ?? [],
       // Tautulli
       tautulliEnabled: tautulliEnabled ?? false,
       tautulliHost: tautulliHost ?? '',

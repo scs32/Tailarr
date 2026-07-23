@@ -15,6 +15,7 @@ import 'package:lunasea/api/ntfy/ntfy.dart';
 import 'package:lunasea/core.dart';
 import 'package:lunasea/database/tables/notifications.dart';
 import 'package:lunasea/main.dart';
+import 'package:lunasea/system/gateway/gateway_services.dart';
 import 'package:lunasea/system/network/platform/network_io.dart';
 import 'package:lunasea/system/notifications/notifications.dart';
 import 'package:tailscale_embed/tailscale_embed.dart';
@@ -77,5 +78,54 @@ void main() {
       reason: 'test notification not found on tlr-ops',
     );
     debugPrint('[gate-e2e] ntfy round-trip complete');
+
+    // ── 4. Services self-config (server v0.23.0+): the same gateway lists
+    // every service the person is badged for. Gate E2E holds heresphere +
+    // server, so the app's own server module materializes natively and
+    // heresphere falls through to an external bookmark. ──
+    debugPrint('[gate-e2e] querying http://tailarr-gate/self/services…');
+    final services = await NtfyGatewayClient().selfServices();
+    debugPrint(
+      '[gate-e2e] services: ok=${services.ok} kind=${services.kind} '
+      '${services.services?.map((s) => '${s.type}:${s.name}:${s.url}').toList()}',
+    );
+    expect(services.ok, isTrue, reason: services.error ?? '');
+    expect(services.isSupported, isTrue,
+        reason: 'server answered a non-services payload — v0.23.0+ required');
+
+    final outcome = await GatewayServicesSync.sync();
+    final result = outcome.result;
+    expect(result, isNotNull);
+    debugPrint(
+      '[gate-e2e] reconciled: configured=${result!.configured} '
+      'bookmarked=${result.bookmarked} missingAuth=${result.missingAuth}',
+    );
+
+    final synced = LunaProfile.current;
+    final tailarrEntry = services.services!
+        .where((s) => s.type == 'tailarr')
+        .toList();
+    expect(tailarrEntry, hasLength(1),
+        reason: 'server badge should hand out the tailarr module');
+    if (tailarrEntry.single.url.isNotEmpty) {
+      expect(synced.tailarrServerEnabled, isTrue);
+      expect(synced.tailarrServerHost, tailarrEntry.single.url);
+      expect(synced.gatewayManagedModules, contains('tailarr'));
+    }
+
+    final heresphere = services.services!
+        .where((s) => s.name == 'heresphere')
+        .toList();
+    expect(heresphere, hasLength(1),
+        reason: 'heresphere badge should appear in the listing');
+    if (heresphere.single.url.isNotEmpty) {
+      expect(
+        LunaBox.externalModules.data
+            .any((m) => m.gatewayName == 'heresphere' && m.host.isNotEmpty),
+        isTrue,
+        reason: 'heresphere should reconcile into an external bookmark',
+      );
+    }
+    debugPrint('[gate-e2e] services self-config complete');
   });
 }

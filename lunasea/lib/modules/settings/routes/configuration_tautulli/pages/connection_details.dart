@@ -3,6 +3,7 @@ import 'package:lunasea/core.dart';
 import 'package:lunasea/modules/settings.dart';
 import 'package:lunasea/modules/tautulli.dart';
 import 'package:lunasea/router/routes/settings.dart';
+import 'package:lunasea/system/gateway/gateway_services.dart';
 
 class ConfigurationTautulliConnectionDetailsRoute extends StatefulWidget {
   const ConfigurationTautulliConnectionDetailsRoute({
@@ -69,6 +70,7 @@ class _State extends State<ConfigurationTautulliConnectionDetailsRoute>
         );
         if (_values.item1) {
           LunaProfile.current.tautulliHost = _values.item2;
+          GatewayServicesSync.markManual('tautulli');
           LunaProfile.current.save();
           context.read<TautulliState>().reset();
         }
@@ -96,6 +98,7 @@ class _State extends State<ConfigurationTautulliConnectionDetailsRoute>
         );
         if (_values.item1) {
           LunaProfile.current.tautulliKey = _values.item2;
+          GatewayServicesSync.markManual('tautulli');
           LunaProfile.current.save();
           context.read<TautulliState>().reset();
         }

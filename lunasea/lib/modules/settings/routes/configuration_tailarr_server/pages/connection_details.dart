@@ -3,6 +3,7 @@ import 'package:lunasea/core.dart';
 import 'package:lunasea/modules/settings.dart';
 import 'package:lunasea/modules/tailarr_server.dart';
 import 'package:lunasea/router/routes/settings.dart';
+import 'package:lunasea/system/gateway/gateway_services.dart';
 
 class ConfigurationTailarrServerConnectionDetailsRoute extends StatefulWidget {
   const ConfigurationTailarrServerConnectionDetailsRoute({
@@ -125,6 +126,7 @@ class _State extends State<ConfigurationTailarrServerConnectionDetailsRoute>
         );
         if (_values.item1) {
           LunaProfile.current.tailarrServerHost = _values.item2;
+          GatewayServicesSync.markManual('tailarr');
           LunaProfile.current.save();
           context.read<TailarrServerState>().reset();
         }

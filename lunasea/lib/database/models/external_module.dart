@@ -13,9 +13,17 @@ class LunaExternalModule extends HiveObject {
   @HiveField(1, defaultValue: '')
   String host;
 
+  /// Non-empty when this bookmark is managed by the tailarr-gate
+  /// /self/services endpoint — holds the service's stable `name` so
+  /// re-syncs can reconcile it. Empty for user-created bookmarks.
+  @JsonKey(defaultValue: '')
+  @HiveField(2, defaultValue: '')
+  String gatewayName;
+
   LunaExternalModule({
     this.displayName = '',
     this.host = '',
+    this.gatewayName = '',
   });
 
   @override

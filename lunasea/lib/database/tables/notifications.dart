@@ -24,7 +24,12 @@ enum NotificationsDatabase<T> with LunaTableMixin<T> {
 
   /// Epoch ms of the last attempt and the last SUCCESSFUL gateway sync.
   LAST_ATTEMPT<int>(0),
-  LAST_SYNC<int>(0);
+  LAST_SYNC<int>(0),
+
+  /// Epoch ms of the last successful /self/services reconcile (server
+  /// v0.23.0+). Lives here because this table is the gateway self-config
+  /// state, notifications and services alike.
+  SERVICES_LAST_SYNC<int>(0);
 
   @override
   LunaTable get table => LunaTable.notifications;

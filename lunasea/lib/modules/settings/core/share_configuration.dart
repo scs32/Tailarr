@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lunasea/core.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:lunasea/system/gateway/gateway_services.dart';
 
 /// One module's connection settings as carried by a share link.
 ///
@@ -157,30 +158,35 @@ class SharedModuleConfiguration {
     final profile = LunaProfile.current;
     switch (module) {
       case LunaModule.SONARR:
+        GatewayServicesSync.markManualOn(profile, 'sonarr');
         profile.sonarrEnabled = true;
         profile.sonarrHost = host;
         profile.sonarrKey = key;
         profile.sonarrHeaders = Map<String, String>.from(headers);
         break;
       case LunaModule.RADARR:
+        GatewayServicesSync.markManualOn(profile, 'radarr');
         profile.radarrEnabled = true;
         profile.radarrHost = host;
         profile.radarrKey = key;
         profile.radarrHeaders = Map<String, String>.from(headers);
         break;
       case LunaModule.LIDARR:
+        GatewayServicesSync.markManualOn(profile, 'lidarr');
         profile.lidarrEnabled = true;
         profile.lidarrHost = host;
         profile.lidarrKey = key;
         profile.lidarrHeaders = Map<String, String>.from(headers);
         break;
       case LunaModule.SABNZBD:
+        GatewayServicesSync.markManualOn(profile, 'sabnzbd');
         profile.sabnzbdEnabled = true;
         profile.sabnzbdHost = host;
         profile.sabnzbdKey = key;
         profile.sabnzbdHeaders = Map<String, String>.from(headers);
         break;
       case LunaModule.NZBGET:
+        GatewayServicesSync.markManualOn(profile, 'nzbget');
         profile.nzbgetEnabled = true;
         profile.nzbgetHost = host;
         profile.nzbgetUser = user;
@@ -188,12 +194,14 @@ class SharedModuleConfiguration {
         profile.nzbgetHeaders = Map<String, String>.from(headers);
         break;
       case LunaModule.TAUTULLI:
+        GatewayServicesSync.markManualOn(profile, 'tautulli');
         profile.tautulliEnabled = true;
         profile.tautulliHost = host;
         profile.tautulliKey = key;
         profile.tautulliHeaders = Map<String, String>.from(headers);
         break;
       case LunaModule.TAILARR_SERVER:
+        GatewayServicesSync.markManualOn(profile, 'tailarr');
         profile.tailarrServerEnabled = true;
         profile.tailarrServerHost = host;
         profile.tailarrServerHeaders = Map<String, String>.from(headers);
@@ -211,6 +219,7 @@ class SharedModuleConfiguration {
     final profile = LunaProfile();
     switch (module) {
       case LunaModule.LIDARR:
+        GatewayServicesSync.markManualOn(profile, 'lidarr');
         profile.lidarrHost = host;
         profile.lidarrKey = key;
         profile.lidarrHeaders = Map<String, String>.from(headers);

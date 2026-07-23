@@ -3,6 +3,7 @@ import 'package:lunasea/core.dart';
 import 'package:lunasea/modules/sabnzbd.dart';
 import 'package:lunasea/modules/settings.dart';
 import 'package:lunasea/router/routes/settings.dart';
+import 'package:lunasea/system/gateway/gateway_services.dart';
 
 class ConfigurationSABnzbdConnectionDetailsRoute extends StatefulWidget {
   const ConfigurationSABnzbdConnectionDetailsRoute({
@@ -69,6 +70,7 @@ class _State extends State<ConfigurationSABnzbdConnectionDetailsRoute>
         );
         if (_values.item1) {
           LunaProfile.current.sabnzbdHost = _values.item2;
+          GatewayServicesSync.markManual('sabnzbd');
           LunaProfile.current.save();
           context.read<SABnzbdState>().reset();
         }
@@ -96,6 +98,7 @@ class _State extends State<ConfigurationSABnzbdConnectionDetailsRoute>
         );
         if (_values.item1) {
           LunaProfile.current.sabnzbdKey = _values.item2;
+          GatewayServicesSync.markManual('sabnzbd');
           LunaProfile.current.save();
           context.read<SABnzbdState>().reset();
         }

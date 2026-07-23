@@ -6,6 +6,7 @@ import 'package:lunasea/database/tables/notifications.dart';
 import 'package:lunasea/extensions/datetime.dart';
 import 'package:lunasea/extensions/string/string.dart';
 import 'package:lunasea/modules/settings.dart';
+import 'package:lunasea/system/gateway/gateway_services.dart';
 import 'package:lunasea/system/notifications/notifications.dart';
 
 class ConfigurationNotificationsRoute extends StatefulWidget {
@@ -219,6 +220,7 @@ class _State extends State<ConfigurationNotificationsRoute>
           title: 'Notifications Configured',
           message: (creds.topics as List).join(', '),
         );
+        await _syncServices();
       } else if (creds.isUnassigned == true) {
         showLunaErrorSnackBar(
           title: 'Device Not Assigned',
@@ -239,6 +241,33 @@ class _State extends State<ConfigurationNotificationsRoute>
         message:
             'Needs Tailscale enabled and a Tailarr Server v0.21+ with notifications set up — or use manual entry below. Details in Settings > System > Logs.',
       );
+    }
+  }
+
+  /// Piggybacks on a successful notifications setup: materialize the
+  /// person's badged services as modules (server v0.23.0+). Version skew —
+  /// old gateway 404 or old controller answering the notifications payload —
+  /// degrades silently per the contract; only real changes get a snackbar.
+  Future<void> _syncServices() async {
+    try {
+      final outcome = await GatewayServicesSync.sync();
+      final result = outcome.result;
+      if (result == null || result.isEmpty) return;
+      final summary = [
+        ...result.configured.map((t) => t.toTitleCase()),
+        if (result.bookmarked.isNotEmpty)
+          '${result.bookmarked.length} bookmark(s)',
+      ].join(', ');
+      showLunaSuccessSnackBar(
+        title: 'Services Configured',
+        message: result.missingAuth.isEmpty
+            ? summary
+            : '$summary — ${result.missingAuth.join(', ')} still need(s) an API key',
+      );
+    } catch (error, stack) {
+      // Transport failure after notifications just succeeded is unusual —
+      // log it, but services self-config is best-effort by design.
+      LunaLogger().error('gateway services sync failed', error, stack);
     }
   }
 

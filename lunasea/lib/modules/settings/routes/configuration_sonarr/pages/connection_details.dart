@@ -3,6 +3,7 @@ import 'package:lunasea/core.dart';
 import 'package:lunasea/modules/settings.dart';
 import 'package:lunasea/modules/sonarr.dart';
 import 'package:lunasea/router/routes/settings.dart';
+import 'package:lunasea/system/gateway/gateway_services.dart';
 
 class ConfigurationSonarrConnectionDetailsRoute extends StatefulWidget {
   const ConfigurationSonarrConnectionDetailsRoute({
@@ -69,6 +70,7 @@ class _State extends State<ConfigurationSonarrConnectionDetailsRoute>
         );
         if (_values.item1) {
           LunaProfile.current.sonarrHost = _values.item2;
+          GatewayServicesSync.markManual('sonarr');
           LunaProfile.current.save();
           context.read<SonarrState>().reset();
         }
@@ -96,6 +98,7 @@ class _State extends State<ConfigurationSonarrConnectionDetailsRoute>
         );
         if (_values.item1) {
           LunaProfile.current.sonarrKey = _values.item2;
+          GatewayServicesSync.markManual('sonarr');
           LunaProfile.current.save();
           context.read<SonarrState>().reset();
         }
