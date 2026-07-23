@@ -94,9 +94,21 @@ void main() {
 
     await pumpInbox(tester);
     expect(
-      find.textContaining('Add your server\'s subscription', findRichText: true),
+      find.text('Notifications Are Not Set Up', findRichText: true),
       findsOneWidget,
     );
+    // The empty state links to the setup surface — as "Set Up
+    // Notifications", or "Automatic Setup Failed" if the opportunistic
+    // gateway attempt already ran (no gateway in the test environment).
+    final linksToSetup = find
+            .text('Set Up Notifications', findRichText: true)
+            .evaluate()
+            .isNotEmpty ||
+        find
+            .text('Automatic Setup Failed', findRichText: true)
+            .evaluate()
+            .isNotEmpty;
+    expect(linksToSetup, isTrue);
 
     await disposePage(tester);
   });

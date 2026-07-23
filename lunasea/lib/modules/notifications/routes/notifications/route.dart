@@ -17,10 +17,32 @@ class NotificationsRoute extends StatefulWidget {
   State<NotificationsRoute> createState() => _State();
 }
 
+enum _InboxFilter {
+  all('All'),
+  media('Media'),
+  server('Server');
+
+  final String label;
+  const _InboxFilter(this.label);
+
+  bool matches(LunaNotification notification) {
+    switch (this) {
+      case _InboxFilter.all:
+        return true;
+      case _InboxFilter.media:
+        return notification.topic.startsWith('tlr-media-');
+      case _InboxFilter.server:
+        return !notification.topic.startsWith('tlr-media-');
+    }
+  }
+}
+
 class _State extends State<NotificationsRoute> with LunaScrollControllerMixin {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final GlobalKey<RefreshIndicatorState> _refreshKey =
       GlobalKey<RefreshIndicatorState>();
+
+  _InboxFilter _filter = _InboxFilter.all;
 
   @override
   void initState() {
@@ -89,6 +111,30 @@ class _State extends State<NotificationsRoute> with LunaScrollControllerMixin {
       useDrawer: true,
       scrollControllers: [scrollController],
       actions: [
+        PopupMenuButton<_InboxFilter>(
+          icon: Icon(
+            Icons.filter_list_rounded,
+            color: _filter == _InboxFilter.all
+                ? LunaColours.white
+                : LunaModule.NOTIFICATIONS.color,
+          ),
+          onSelected: (filter) => setState(() => _filter = filter),
+          itemBuilder: (context) => [
+            for (final filter in _InboxFilter.values)
+              PopupMenuItem(
+                value: filter,
+                child: Text(
+                  filter.label,
+                  style: TextStyle(
+                    fontSize: LunaUI.FONT_SIZE_H3,
+                    color: _filter == filter
+                        ? LunaModule.NOTIFICATIONS.color
+                        : LunaColours.white,
+                  ),
+                ),
+              ),
+          ],
+        ),
         LunaIconButton(
           icon: Icons.delete_sweep_rounded,
           onPressed: _clearInbox,
@@ -121,10 +167,21 @@ class _State extends State<NotificationsRoute> with LunaScrollControllerMixin {
             ..sort((a, b) => b.time.compareTo(a.time));
           if (notifications.isEmpty) return _empty();
           WidgetsBinding.instance.addPostFrameCallback((_) => _markAllRead());
+          final filtered = notifications.where(_filter.matches).toList();
+          if (filtered.isEmpty) {
+            return LunaListView(
+              controller: scrollController,
+              children: [
+                LunaMessage.inList(
+                  text: 'No ${_filter.label} Notifications',
+                ),
+              ],
+            );
+          }
           return LunaListViewBuilder(
             controller: scrollController,
-            itemCount: notifications.length,
-            itemBuilder: (context, index) => _tile(notifications[index]),
+            itemCount: filtered.length,
+            itemBuilder: (context, index) => _tile(filtered[index]),
           );
         },
       ),
@@ -184,36 +241,141 @@ class _State extends State<NotificationsRoute> with LunaScrollControllerMixin {
       color = LunaModule.NOTIFICATIONS.color;
     }
 
-    return LunaBlock(
-      title: notification.title?.isNotEmpty == true
-          ? notification.title!
-          : label,
-      body: [
-        if (notification.body?.isNotEmpty == true)
-          TextSpan(text: notification.body),
-        TextSpan(
-          children: [
-            TextSpan(
-              text: label,
-              style: TextStyle(
-                color: color,
-                fontWeight: LunaUI.FONT_WEIGHT_BOLD,
-              ),
-            ),
-            TextSpan(
-              text:
-                  '${LunaUI.TEXT_BULLET.pad()}${notification.timestamp.asAge()}',
-            ),
-          ],
-        ),
-      ],
-      trailing: LunaIconButton(
-        icon: _topicIcon(notification.topic),
-        color: color,
+    return Dismissible(
+      key: ValueKey('notification-${notification.id}'),
+      direction: DismissDirection.endToStart,
+      onDismissed: (_) => notification.delete(),
+      background: Container(
+        color: LunaColours.red,
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 24),
+        child: const Icon(Icons.delete_rounded, color: LunaColours.white),
       ),
-      // TODO: deep link media notifications into the matching module
-      // (topic tlr-media-<service> → that module's relevant screen).
+      child: LunaBlock(
+        title: notification.title?.isNotEmpty == true
+            ? notification.title!
+            : label,
+        body: [
+          if (notification.body?.isNotEmpty == true)
+            TextSpan(text: notification.body),
+          TextSpan(
+            children: [
+              TextSpan(
+                text: label,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: LunaUI.FONT_WEIGHT_BOLD,
+                ),
+              ),
+              TextSpan(
+                text:
+                    '${LunaUI.TEXT_BULLET.pad()}${notification.timestamp.asAge()}',
+              ),
+            ],
+          ),
+        ],
+        trailing: LunaIconButton(
+          icon: _topicIcon(notification.topic),
+          color: color,
+        ),
+        onTap: () => _showDetails(notification, label, color),
+        // TODO: deep link media notifications into the matching module
+        // (topic tlr-media-<service> → that module's relevant screen).
+      ),
     );
+  }
+
+  void _showDetails(
+    LunaNotification notification,
+    String label,
+    Color color,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(_topicIcon(notification.topic), color: color),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      notification.title?.isNotEmpty == true
+                          ? notification.title!
+                          : label,
+                      style: const TextStyle(
+                        fontSize: LunaUI.FONT_SIZE_H1,
+                        fontWeight: LunaUI.FONT_WEIGHT_BOLD,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (notification.body?.isNotEmpty == true) ...[
+                SelectableText(notification.body!),
+                const SizedBox(height: 12),
+              ],
+              LunaTableCard(
+                content: [
+                  LunaTableContent(title: 'source', body: label),
+                  LunaTableContent(title: 'topic', body: notification.topic),
+                  LunaTableContent(
+                    title: 'received',
+                    body: notification.timestamp.asDateTime(),
+                  ),
+                  LunaTableContent(
+                    title: 'priority',
+                    body: _priorityLabel(notification.priority),
+                  ),
+                  if (notification.tags.isNotEmpty)
+                    LunaTableContent(
+                      title: 'tags',
+                      body: notification.tags.join(', '),
+                    ),
+                ],
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: LunaButton.text(
+                      text: 'Dismiss',
+                      icon: Icons.delete_rounded,
+                      color: LunaColours.red,
+                      onTap: () async {
+                        await notification.delete();
+                        if (context.mounted) Navigator.of(context).pop();
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _priorityLabel(int priority) {
+    switch (priority) {
+      case 1:
+        return 'Minimum (1)';
+      case 2:
+        return 'Low (2)';
+      case 4:
+        return 'High (4)';
+      case 5:
+        return 'Urgent (5)';
+      default:
+        return 'Default (3)';
+    }
   }
 
   IconData _topicIcon(String topic) {
