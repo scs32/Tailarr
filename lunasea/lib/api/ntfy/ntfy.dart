@@ -43,9 +43,15 @@ class NtfyGatewayClient {
     final response = await httpClient.get('self/notifications');
     final data = response.data;
     if (data is! Map<String, dynamic>) {
-      throw const FormatException('Unexpected gateway response');
+      throw FormatException(
+        'Unexpected gateway response '
+        '(HTTP ${response.statusCode}): ${response.data}'.trim(),
+      );
     }
-    return NtfyGatewayCredentials.fromJson(data);
+    return NtfyGatewayCredentials.fromJson(
+      data,
+      statusCode: response.statusCode,
+    );
   }
 }
 

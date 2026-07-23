@@ -80,6 +80,10 @@ class NtfyGatewayCredentials {
   final String token;
   final List<String> topics;
 
+  /// HTTP status of the gateway response — surfaced in the FAILED state so
+  /// debugging is never blind to what actually came back.
+  final int? statusCode;
+
   const NtfyGatewayCredentials({
     required this.ok,
     required this.error,
@@ -88,6 +92,7 @@ class NtfyGatewayCredentials {
     required this.password,
     required this.token,
     required this.topics,
+    this.statusCode,
   });
 
   /// The gateway's "this machine isn't attached to any person" refusal —
@@ -98,10 +103,14 @@ class NtfyGatewayCredentials {
   NtfySubscription get subscription =>
       NtfySubscription(url: url, token: token, topics: topics);
 
-  factory NtfyGatewayCredentials.fromJson(Map<String, dynamic> json) {
+  factory NtfyGatewayCredentials.fromJson(
+    Map<String, dynamic> json, {
+    int? statusCode,
+  }) {
     final error = json['error'];
     return NtfyGatewayCredentials(
       ok: json['ok'] == true,
+      statusCode: statusCode,
       error: error == null ? null : error.toString(),
       url: (json['url'] as String? ?? '')
           .trim()

@@ -75,6 +75,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   a minimal one (include_tailscale: yes) and re-ran /api/ntfy/setup —
   relay to the server session (fresh installs are presumably fine, but
   older upgraded installs may hit this).
+  **Build-11 bug report triage (2026-07-22 late)**: Stephen's phone showed
+  neither people UI nor working auto-setup against his live server
+  (tailarr.tail95fc29.ts.net, v0.22.2). Verdict: (1) Users screen — APP
+  INNOCENT: the exact live payload (+unknown future keys) renders 3
+  person cards in integration_test/users_people_render_test.dart (serves
+  the fixture from an in-process HttpServer through the full app shell);
+  his phone was almost certainly querying a different host/profile — the
+  Users screen now SHOWS the queried host in empty/legacy states plus a
+  "Legacy User Model" banner when the fallback triggers. (2) Auto-setup —
+  was the server's silently-missing gateway (fixed in v0.22.1/2), but the
+  app's silence was its own sin: provisioning is now a PERSISTED state
+  machine (NotificationsDatabase SETUP_STATE/ERROR/DETAIL/LAST_ATTEMPT/
+  LAST_SYNC) with an always-visible status card (not set up / setting up
+  / configured+topics+synced-age+re-sync / FAILED with verbatim error +
+  exact request dialed), inbox empty-state links to it, opportunistic
+  attempt on module open (hourly throttle, always traced), manual entry
+  demoted to a "fallback" section. Gateway E2E re-verified green against
+  v0.22.2 (test server upgraded; Gate E2E person key reissued — keys are
+  single-use, reissue via {do:"reissue"}).
   **Test server note**: the apple-container guest is now named `podhost`
   (podman inside; controller pod `tailarr` + sidecar `tailscale-tailarr`;
   reach the API via `container exec podhost podman exec tailscale-tailarr

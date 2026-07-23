@@ -3,6 +3,8 @@ import 'package:lunasea/api/ntfy/models.dart';
 import 'package:lunasea/api/ntfy/ntfy.dart';
 import 'package:lunasea/core.dart';
 import 'package:lunasea/database/tables/notifications.dart';
+import 'package:lunasea/extensions/datetime.dart';
+import 'package:lunasea/extensions/string/string.dart';
 import 'package:lunasea/modules/settings.dart';
 import 'package:lunasea/system/notifications/notifications.dart';
 
@@ -18,6 +20,9 @@ class ConfigurationNotificationsRoute extends StatefulWidget {
 class _State extends State<ConfigurationNotificationsRoute>
     with LunaScrollControllerMixin {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  /// A setup attempt is in flight (SETTING UP state on the status card).
+  bool _settingUp = false;
 
   @override
   Widget build(BuildContext context) {
@@ -53,13 +58,21 @@ class _State extends State<ConfigurationNotificationsRoute>
         NotificationsDatabase.TOPICS,
         NotificationsDatabase.BACKGROUND_REFRESH,
         NotificationsDatabase.GATEWAY_MANAGED,
+        NotificationsDatabase.SETUP_STATE,
+        NotificationsDatabase.SETUP_ERROR,
+        NotificationsDatabase.LAST_SYNC,
       ],
       builder: (context, _) => LunaListView(
         controller: scrollController,
         children: [
           LunaModule.NOTIFICATIONS.informationBanner(),
+          if (LunaNtfy.isSupported) ..._setupStatusCard(),
           _enabledToggle(),
-          if (LunaNtfy.isSupported) _automaticSetup(),
+          const LunaHeader(
+            text: 'Manual Setup',
+            subtitle: 'Fallback — for servers without the self-config '
+                'gateway (pre-v0.21) or the official ntfy app',
+          ),
           _importSubscription(),
           _serverUrl(),
           _accessToken(),
@@ -71,35 +84,133 @@ class _State extends State<ConfigurationNotificationsRoute>
     );
   }
 
-  /// Self-service path (tailarr-server v0.21.0+): the hidden gateway node
-  /// identifies this device over the tailnet and hands back its owner's
-  /// credentials. Manual entry below stays as the fallback.
-  Widget _automaticSetup() {
+  /// The provisioning state machine, always visible: NOT SET UP,
+  /// SETTING UP, CONFIGURED (automatic or manual), or FAILED with the
+  /// verbatim error + the exact request that was dialed. A failed attempt
+  /// must never look like "nothing happened".
+  List<Widget> _setupStatusCard() {
+    final state = NotificationsDatabase.SETUP_STATE.read();
     final managed = NotificationsDatabase.GATEWAY_MANAGED.read();
-    return LunaBlock(
-      title: 'Automatic Setup',
-      body: [
-        TextSpan(
-          text: managed
-              ? 'Configured from your Tailarr Server — kept in sync as your access changes'
-              : 'Fetch your credentials from your Tailarr Server over the tailnet',
-          style: managed
-              ? const TextStyle(
-                  color: LunaColours.accent,
-                  fontWeight: LunaUI.FONT_WEIGHT_BOLD,
-                )
-              : null,
+    final url = NotificationsDatabase.URL.read();
+
+    if (_settingUp) {
+      return [
+        const LunaBlock(
+          title: 'Automatic Setup',
+          body: [TextSpan(text: 'Setting up — asking your Tailarr Server…')],
+          trailing: LunaIconButton(icon: Icons.downloading_rounded),
         ),
-      ],
-      trailing: LunaIconButton(
-        icon: managed ? Icons.cloud_done_rounded : Icons.cloud_sync_rounded,
-        color: managed ? LunaColours.accent : LunaColours.white,
+      ];
+    }
+
+    if (managed && url.isNotEmpty) {
+      final topics = NotificationsDatabase.TOPICS
+          .read()
+          .map((t) => t.toString())
+          .toList();
+      final synced = NotificationsDatabase.LAST_SYNC.read();
+      return [
+        LunaBlock(
+          title: 'Automatic Setup',
+          body: [
+            const TextSpan(
+              text: 'Configured from your Tailarr Server',
+              style: TextStyle(
+                color: LunaColours.accent,
+                fontWeight: LunaUI.FONT_WEIGHT_BOLD,
+              ),
+            ),
+            TextSpan(text: url),
+            TextSpan(text: topics.join(', ')),
+            if (synced > 0)
+              TextSpan(
+                text: 'Synced '
+                    '${DateTime.fromMillisecondsSinceEpoch(synced).asAge()}'
+                    '${LunaUI.TEXT_BULLET.pad()}Tap to re-sync',
+              ),
+          ],
+          trailing: const LunaIconButton(
+            icon: Icons.cloud_done_rounded,
+            color: LunaColours.accent,
+          ),
+          onTap: _runAutomaticSetup,
+        ),
+      ];
+    }
+
+    if (url.isNotEmpty) {
+      return [
+        LunaBlock(
+          title: 'Automatic Setup',
+          body: const [
+            TextSpan(text: 'Configured manually'),
+            TextSpan(text: 'Tap to switch to automatic setup'),
+          ],
+          trailing: const LunaIconButton(icon: Icons.cloud_sync_rounded),
+          onTap: _runAutomaticSetup,
+        ),
+      ];
+    }
+
+    if (state == 'failed') {
+      final attempted = NotificationsDatabase.LAST_ATTEMPT.read();
+      return [
+        LunaBlock(
+          title: 'Automatic Setup Failed',
+          body: [
+            TextSpan(
+              text: NotificationsDatabase.SETUP_ERROR.read(),
+              style: const TextStyle(
+                color: LunaColours.red,
+                fontWeight: LunaUI.FONT_WEIGHT_BOLD,
+              ),
+            ),
+            TextSpan(text: NotificationsDatabase.SETUP_DETAIL.read()),
+            TextSpan(
+              text: (attempted > 0
+                      ? 'Attempted ${DateTime.fromMillisecondsSinceEpoch(attempted).asAge()}'
+                      : '') +
+                  '${LunaUI.TEXT_BULLET.pad()}Tap to retry, or set up manually below',
+            ),
+          ],
+          trailing: const LunaIconButton(
+            icon: Icons.cloud_off_rounded,
+            color: LunaColours.red,
+          ),
+          onTap: _runAutomaticSetup,
+        ),
+      ];
+    }
+
+    return [
+      LunaBlock(
+        title: 'Set Up Automatically',
+        body: const [
+          TextSpan(
+            text: 'Fetch your credentials from your Tailarr Server over '
+                'the tailnet — no typing needed',
+          ),
+        ],
+        trailing: const LunaIconButton(
+          icon: Icons.cloud_sync_rounded,
+          color: LunaColours.accent,
+        ),
+        onTap: _runAutomaticSetup,
       ),
-      onTap: _runAutomaticSetup,
-    );
+    ];
   }
 
   Future<void> _runAutomaticSetup() async {
+    if (_settingUp) return;
+    setState(() => _settingUp = true);
+    try {
+      await _attemptAutomaticSetup();
+    } finally {
+      if (mounted) setState(() => _settingUp = false);
+    }
+  }
+
+  Future<void> _attemptAutomaticSetup() async {
     try {
       final creds = await LunaNtfy().autoConfigure();
       if (creds == null) return;
@@ -121,10 +232,12 @@ class _State extends State<ConfigurationNotificationsRoute>
         );
       }
     } catch (error) {
+      // Full dial detail is in Settings > System > Logs (logged by
+      // autoConfigure) — the snackbar keeps the human guidance.
       showLunaErrorSnackBar(
         title: 'Server Not Reachable',
         message:
-            'Needs Tailscale enabled and a Tailarr Server v0.21+ with notifications set up — or use manual entry below',
+            'Needs Tailscale enabled and a Tailarr Server v0.21+ with notifications set up — or use manual entry below. Details in Settings > System > Logs.',
       );
     }
   }

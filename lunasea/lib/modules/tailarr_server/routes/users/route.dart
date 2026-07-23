@@ -115,10 +115,12 @@ class _State extends State<UsersRoute> with LunaScrollControllerMixin {
     if (!users.hasPeople) return _legacyContent(users);
 
     if (users.people.isEmpty && users.users.isEmpty) {
-      return LunaMessage(
-        text: 'No Users Found',
-        buttonText: 'Refresh',
-        onTap: _refreshKey.currentState!.show,
+      return LunaListView(
+        controller: scrollController,
+        children: [
+          LunaMessage.inList(text: 'No Users Found'),
+          _queriedHostBlock(),
+        ],
       );
     }
     return LunaListView(
@@ -138,20 +140,40 @@ class _State extends State<UsersRoute> with LunaScrollControllerMixin {
   }
 
   Widget _legacyContent(TailarrServerUsers users) {
-    if (users.users.isEmpty) {
-      return LunaMessage(
-        text: 'No User Devices Found',
-        buttonText: 'Refresh',
-        onTap: _refreshKey.currentState!.show,
-      );
-    }
-    return LunaListViewBuilder(
+    // The fallback being active must be VISIBLE: an empty legacy list is
+    // otherwise indistinguishable from a broken people view. Always name
+    // the host that was queried and why the old model is rendering.
+    return LunaListView(
       controller: scrollController,
-      itemCount: users.users.length,
-      itemBuilder: (context, index) => _machineTile(
-        users.users[index],
-        users.services.length,
-      ),
+      children: [
+        _legacyModelBlock(),
+        if (users.users.isEmpty)
+          LunaMessage.inList(text: 'No User Devices Found'),
+        for (final user in users.users)
+          _machineTile(user, users.services.length),
+      ],
+    );
+  }
+
+  Widget _legacyModelBlock() {
+    return LunaBlock(
+      title: 'Legacy User Model',
+      body: [
+        const TextSpan(
+          text:
+              'This server did not report people (pre-v0.19) — showing the flat device list. Queried:',
+        ),
+        TextSpan(text: context.read<TailarrServerState>().host),
+      ],
+      trailing: const LunaIconButton(icon: Icons.history_rounded),
+    );
+  }
+
+  Widget _queriedHostBlock() {
+    return LunaBlock(
+      title: 'Server',
+      body: [TextSpan(text: context.read<TailarrServerState>().host)],
+      trailing: const LunaIconButton(icon: Icons.dns_rounded),
     );
   }
 

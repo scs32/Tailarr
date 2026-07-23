@@ -45,15 +45,60 @@ class LunaNtfy {
   /// owner's credentials. On success the config is stored, marked
   /// gateway-managed, and the module is enabled. Throws on transport
   /// errors (gateway absent — older server or notifications not set up).
+  static const _GATEWAY_URL =
+      'http://${NtfyGatewayClient.DEFAULT_HOST}/self/notifications';
+
+  static void _recordFailure(String error, String detail) {
+    NotificationsDatabase.SETUP_STATE.update('failed');
+    NotificationsDatabase.SETUP_ERROR.update(error);
+    NotificationsDatabase.SETUP_DETAIL.update(detail);
+  }
+
+  /// Every attempt — user-triggered or opportunistic — leaves a persisted
+  /// trace (state + timestamps + verbatim error): a failed attempt must
+  /// never be indistinguishable from "nothing was implemented".
   Future<NtfyGatewayCredentials?> autoConfigure() async {
-    final creds = await NtfyGatewayClient().selfNotifications();
+    NotificationsDatabase.LAST_ATTEMPT
+        .update(DateTime.now().millisecondsSinceEpoch);
+    final NtfyGatewayCredentials creds;
+    try {
+      creds = await NtfyGatewayClient().selfNotifications();
+    } on DioException catch (error, stack) {
+      // Capture exactly what came back (or didn't) — this detail decides
+      // whether the next fix is app- or server-side.
+      final detail = 'GET $_GATEWAY_URL → type=${error.type} '
+          'status=${error.response?.statusCode ?? '-'} '
+          'body=${error.response?.data ?? '(no response — resolve/dial failed)'}';
+      _recordFailure(error.message ?? error.type.toString(), detail);
+      LunaLogger().error('ntfy gateway dial failed: $detail', error, stack);
+      rethrow;
+    } catch (error, stack) {
+      _recordFailure(error.toString(), 'GET $_GATEWAY_URL');
+      LunaLogger().error('ntfy gateway setup failed', error, stack);
+      rethrow;
+    }
+    LunaLogger().debug(
+      'ntfy gateway → HTTP ${creds.statusCode} ok=${creds.ok} '
+      'error=${creds.error} topics=${creds.topics}',
+    );
     if (creds.ok && creds.subscription.isValid) {
       NotificationsDatabase.URL.update(creds.url);
       NotificationsDatabase.TOKEN.update(creds.token);
       NotificationsDatabase.TOPICS.update(creds.topics);
       NotificationsDatabase.GATEWAY_MANAGED.update(true);
       NotificationsDatabase.ENABLED.update(true);
+      NotificationsDatabase.SETUP_STATE.update('configured');
+      NotificationsDatabase.SETUP_ERROR.update('');
+      NotificationsDatabase.SETUP_DETAIL.update('');
+      NotificationsDatabase.LAST_SYNC
+          .update(DateTime.now().millisecondsSinceEpoch);
       await onConfigChanged();
+    } else {
+      _recordFailure(
+        creds.error ?? 'Gateway returned an incomplete handout',
+        'GET $_GATEWAY_URL → HTTP ${creds.statusCode ?? '-'} '
+            'ok=${creds.ok} topics=${creds.topics}',
+      );
     }
     return creds;
   }
@@ -162,6 +207,9 @@ class NtfySync {
         NotificationsDatabase.TOPICS.update(creds.topics);
         await mirrorConfig();
       }
+      NotificationsDatabase.SETUP_STATE.update('configured');
+      NotificationsDatabase.LAST_SYNC
+          .update(DateTime.now().millisecondsSinceEpoch);
     } catch (_) {
       // Gateway unreachable — keep the stored config.
     }

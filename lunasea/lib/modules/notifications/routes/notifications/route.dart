@@ -26,7 +26,32 @@ class _State extends State<NotificationsRoute> with LunaScrollControllerMixin {
   void initState() {
     super.initState();
     // Everything in the inbox counts as seen once the page is on screen.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _markAllRead());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _markAllRead();
+      _maybeAutoSetup();
+    });
+  }
+
+  /// Opportunistic self-provisioning on module open: unconfigured devices
+  /// on a v0.21+ server come up with zero typing. Throttled, and every
+  /// attempt is recorded on the settings status card — never silent.
+  Future<void> _maybeAutoSetup() async {
+    if (!LunaNtfy.isSupported) return;
+    if (NotificationsDatabase.URL.read().isNotEmpty) return;
+    final last = NotificationsDatabase.LAST_ATTEMPT.read();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - last < Duration.millisecondsPerHour) return;
+    try {
+      final creds = await LunaNtfy().autoConfigure();
+      if (creds?.ok == true && mounted) {
+        showLunaSuccessSnackBar(
+          title: 'Notifications Configured',
+          message: 'Set up automatically from your Tailarr Server',
+        );
+      }
+    } catch (_) {
+      // Recorded on the setup status card; the empty state links there.
+    }
   }
 
   void _markAllRead() {
@@ -108,21 +133,42 @@ class _State extends State<NotificationsRoute> with LunaScrollControllerMixin {
 
   Widget _empty() {
     final configured = NotificationsDatabase.URL.read().isNotEmpty;
+    final failed = NotificationsDatabase.SETUP_STATE.read() == 'failed';
     // LunaMessage is centered and unscrollable — wrap in a list so
     // pull-to-refresh still works on the empty state.
     return LunaListView(
       controller: scrollController,
       children: [
-        LunaMessage.inList(
-          text: configured
-              ? 'No Notifications'
-              : 'Add your server\'s subscription in settings to start receiving alerts',
-        ),
-        if (configured)
+        if (configured) ...[
+          LunaMessage.inList(text: 'No Notifications'),
           LunaMessage.inList(
             text:
                 'Alerts arrive live while the app is open and are checked periodically in the background',
           ),
+        ] else ...[
+          LunaMessage.inList(text: 'Notifications Are Not Set Up'),
+          LunaBlock(
+            title: failed ? 'Automatic Setup Failed' : 'Set Up Notifications',
+            body: [
+              TextSpan(
+                text: failed
+                    ? NotificationsDatabase.SETUP_ERROR.read()
+                    : 'Devices on a Tailarr Server are configured automatically — open setup to get started',
+                style: failed
+                    ? const TextStyle(
+                        color: LunaColours.red,
+                        fontWeight: LunaUI.FONT_WEIGHT_BOLD,
+                      )
+                    : null,
+              ),
+            ],
+            trailing: LunaIconButton(
+              icon: failed ? Icons.cloud_off_rounded : Icons.cloud_sync_rounded,
+              color: failed ? LunaColours.red : LunaColours.accent,
+            ),
+            onTap: SettingsRoutes.CONFIGURATION_NOTIFICATIONS.go,
+          ),
+        ],
       ],
     );
   }
