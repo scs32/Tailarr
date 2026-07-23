@@ -324,10 +324,11 @@ class _State extends State<PersonDetailsRoute> with LunaScrollControllerMixin {
               ),
               const SizedBox(height: 12),
               const Text(
-                'In the ntfy app, add the server with the username and '
-                'password (the iOS ntfy app wants basic auth, not the '
-                'token), then subscribe to the topics. In Tailarr, paste '
-                'the shared config in Settings > Notifications instead.',
+                'Tailarr-app devices configure themselves automatically '
+                'from the server — this handout is for the official ntfy '
+                'app or manual setups. In the ntfy app, add the server '
+                'with the username and password (it wants basic auth, not '
+                'the token), then subscribe to the topics.',
               ),
               const SizedBox(height: 12),
               SelectableText(

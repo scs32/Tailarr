@@ -10,4 +10,5 @@ class LunaNtfy {
   Future<void> onConfigChanged() async {}
   Future<bool> enableBackgroundRefresh() async => false;
   Future<void> disableBackgroundRefresh() async {}
+  Future<dynamic> autoConfigure() async => null;
 }

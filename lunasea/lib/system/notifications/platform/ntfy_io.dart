@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:workmanager/workmanager.dart';
@@ -38,6 +39,24 @@ class LunaNtfy {
   Future<int> syncInbox() => NtfySync.syncInbox();
 
   void restartStream() => NtfyStreamManager.instance.restart();
+
+  /// Self-service setup via the tailarr-gate node (server v0.21.0+): the
+  /// gateway identifies this device by its tailnet address and returns the
+  /// owner's credentials. On success the config is stored, marked
+  /// gateway-managed, and the module is enabled. Throws on transport
+  /// errors (gateway absent — older server or notifications not set up).
+  Future<NtfyGatewayCredentials?> autoConfigure() async {
+    final creds = await NtfyGatewayClient().selfNotifications();
+    if (creds.ok && creds.subscription.isValid) {
+      NotificationsDatabase.URL.update(creds.url);
+      NotificationsDatabase.TOKEN.update(creds.token);
+      NotificationsDatabase.TOPICS.update(creds.topics);
+      NotificationsDatabase.GATEWAY_MANAGED.update(true);
+      NotificationsDatabase.ENABLED.update(true);
+      await onConfigChanged();
+    }
+    return creds;
+  }
 
   /// Call after any subscription/background setting changes: mirrors the
   /// Hive config to the shared-state file and reapplies stream + schedule.
@@ -116,6 +135,36 @@ class NtfySync {
     state.backgroundEnabled = NotificationsDatabase.ENABLED.read() &&
         NotificationsDatabase.BACKGROUND_REFRESH.read();
     await state.save();
+  }
+
+  /// Silent gateway re-query for gateway-managed configs — topics change
+  /// when the admin flips the person's services. Failures are ignored (the
+  /// stored config keeps working); refusals (device unassigned) are also
+  /// left alone rather than wiping a working subscription.
+  static Future<void> refreshFromGateway() async {
+    if (!NotificationsDatabase.ENABLED.read()) return;
+    if (!NotificationsDatabase.GATEWAY_MANAGED.read()) return;
+    try {
+      final creds = await NtfyGatewayClient().selfNotifications();
+      if (!creds.ok || !creds.subscription.isValid) return;
+      final changed = creds.url != NotificationsDatabase.URL.read() ||
+          creds.token != NotificationsDatabase.TOKEN.read() ||
+          !listEquals(
+            creds.topics,
+            NotificationsDatabase.TOPICS
+                .read()
+                .map((t) => t.toString())
+                .toList(),
+          );
+      if (changed) {
+        NotificationsDatabase.URL.update(creds.url);
+        NotificationsDatabase.TOKEN.update(creds.token);
+        NotificationsDatabase.TOPICS.update(creds.topics);
+        await mirrorConfig();
+      }
+    } catch (_) {
+      // Gateway unreachable — keep the stored config.
+    }
   }
 
   /// One poll: everything since the inbox marker into Hive. Returns the
@@ -256,6 +305,9 @@ class NtfyStreamManager with WidgetsBindingObserver {
   Future<void> _run(int generation) async {
     int backoff = 5;
     while (_foreground && generation == _generation) {
+      // Gateway-managed configs re-sync on every (re)connect cycle.
+      await NtfySync.refreshFromGateway();
+      if (!_foreground || generation != _generation) return;
       final subscription = NtfySync.config();
       if (subscription == null) return;
       try {

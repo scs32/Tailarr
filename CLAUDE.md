@@ -57,6 +57,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   test/tailarr_server_people_test.dart. NOT yet verified: ntfy-credential
   happy path (test server has ntfy:false — needs the notifications
   system pod), on-device UI walk.
+  **Gateway self-config (server v0.21.0) — DONE in-app 2026-07-22**:
+  notifications module now auto-configures from the hidden tailarr-gate
+  node (`GET http://tailarr-gate/self/notifications`, whois-authed, plain
+  HTTP over the tsnet — bare short name routes via the plugin).
+  Settings > Notifications gains "Automatic Setup" (also auto-attempted
+  when enabling with nothing configured); GATEWAY_MANAGED configs
+  silently re-query on every stream reconnect so topics follow admin
+  badge flips; any manual edit reverts to manual mode. Admin handout
+  sheet copy reframed as "for the official ntfy app / manual setups".
+  Live-verified on the v0.21.0 test server (integration_test/
+  gateway_e2e_test.dart): enroll person key → device born-owned with
+  badges → gateway returns matching topics → module auto-configures →
+  polls the ops topic. **Server bug found while deploying**: on the
+  hand-bootstrapped test box the controller pod had no .config.json, so
+  _ensure_gateway() failed with "controller tailnet IP unknown"; I wrote
+  a minimal one (include_tailscale: yes) and re-ran /api/ntfy/setup —
+  relay to the server session (fresh installs are presumably fine, but
+  older upgraded installs may hit this).
   **Test server note**: the apple-container guest is now named `podhost`
   (podman inside; controller pod `tailarr` + sidecar `tailscale-tailarr`;
   reach the API via `container exec podhost podman exec tailscale-tailarr

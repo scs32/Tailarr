@@ -11,6 +11,44 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:lunasea/api/ntfy/models.dart';
 
+/// Client for the tailarr-gate self-service endpoint (server v0.21.0+).
+///
+/// Plain HTTP on :80 to the bare MagicDNS short name — the tailnet encrypts
+/// and authenticates; the request must go out through the app's embedded
+/// Tailscale node (TailscaleHttpOverrides routes dotless hosts there).
+class NtfyGatewayClient {
+  static const DEFAULT_HOST = 'tailarr-gate';
+
+  final Dio httpClient;
+
+  NtfyGatewayClient._internal({required this.httpClient});
+
+  factory NtfyGatewayClient({String host = DEFAULT_HOST}) {
+    final dio = Dio(
+      BaseOptions(
+        baseUrl: 'http://$host/',
+        responseType: ResponseType.json,
+        connectTimeout: const Duration(seconds: 8),
+        receiveTimeout: const Duration(seconds: 8),
+        // {ok:false, error} refusals come back as 4xx — parse, don't throw.
+        validateStatus: (status) => status != null && status < 500,
+      ),
+    );
+    return NtfyGatewayClient._internal(httpClient: dio);
+  }
+
+  /// Returns the CALLER'S notification credentials. Throws on transport
+  /// errors (gateway absent: server < 0.21.0 or notifications not set up).
+  Future<NtfyGatewayCredentials> selfNotifications() async {
+    final response = await httpClient.get('self/notifications');
+    final data = response.data;
+    if (data is! Map<String, dynamic>) {
+      throw const FormatException('Unexpected gateway response');
+    }
+    return NtfyGatewayCredentials.fromJson(data);
+  }
+}
+
 class NtfyClient {
   final NtfySubscription subscription;
   final Dio httpClient;

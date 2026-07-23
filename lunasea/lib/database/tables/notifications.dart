@@ -5,7 +5,12 @@ enum NotificationsDatabase<T> with LunaTableMixin<T> {
   URL<String>(''),
   TOKEN<String>(''),
   TOPICS<List>([]),
-  BACKGROUND_REFRESH<bool>(false);
+  BACKGROUND_REFRESH<bool>(false),
+
+  /// Config came from the tailarr-gate self-service endpoint and is
+  /// re-queried periodically (topics change when the admin flips services).
+  /// Any manual edit turns this off.
+  GATEWAY_MANAGED<bool>(false);
 
   @override
   LunaTable get table => LunaTable.notifications;

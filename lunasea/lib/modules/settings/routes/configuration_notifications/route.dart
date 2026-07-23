@@ -52,12 +52,14 @@ class _State extends State<ConfigurationNotificationsRoute>
         NotificationsDatabase.TOKEN,
         NotificationsDatabase.TOPICS,
         NotificationsDatabase.BACKGROUND_REFRESH,
+        NotificationsDatabase.GATEWAY_MANAGED,
       ],
       builder: (context, _) => LunaListView(
         controller: scrollController,
         children: [
           LunaModule.NOTIFICATIONS.informationBanner(),
           _enabledToggle(),
+          if (LunaNtfy.isSupported) _automaticSetup(),
           _importSubscription(),
           _serverUrl(),
           _accessToken(),
@@ -69,6 +71,64 @@ class _State extends State<ConfigurationNotificationsRoute>
     );
   }
 
+  /// Self-service path (tailarr-server v0.21.0+): the hidden gateway node
+  /// identifies this device over the tailnet and hands back its owner's
+  /// credentials. Manual entry below stays as the fallback.
+  Widget _automaticSetup() {
+    final managed = NotificationsDatabase.GATEWAY_MANAGED.read();
+    return LunaBlock(
+      title: 'Automatic Setup',
+      body: [
+        TextSpan(
+          text: managed
+              ? 'Configured from your Tailarr Server — kept in sync as your access changes'
+              : 'Fetch your credentials from your Tailarr Server over the tailnet',
+          style: managed
+              ? const TextStyle(
+                  color: LunaColours.accent,
+                  fontWeight: LunaUI.FONT_WEIGHT_BOLD,
+                )
+              : null,
+        ),
+      ],
+      trailing: LunaIconButton(
+        icon: managed ? Icons.cloud_done_rounded : Icons.cloud_sync_rounded,
+        color: managed ? LunaColours.accent : LunaColours.white,
+      ),
+      onTap: _runAutomaticSetup,
+    );
+  }
+
+  Future<void> _runAutomaticSetup() async {
+    try {
+      final creds = await LunaNtfy().autoConfigure();
+      if (creds == null) return;
+      if (creds.ok) {
+        showLunaSuccessSnackBar(
+          title: 'Notifications Configured',
+          message: (creds.topics as List).join(', '),
+        );
+      } else if (creds.isUnassigned == true) {
+        showLunaErrorSnackBar(
+          title: 'Device Not Assigned',
+          message:
+              'Ask your Tailarr Server admin to assign this device to a user',
+        );
+      } else {
+        showLunaErrorSnackBar(
+          title: 'Automatic Setup Failed',
+          message: creds.error ?? 'Unknown error',
+        );
+      }
+    } catch (error) {
+      showLunaErrorSnackBar(
+        title: 'Server Not Reachable',
+        message:
+            'Needs Tailscale enabled and a Tailarr Server v0.21+ with notifications set up — or use manual entry below',
+      );
+    }
+  }
+
   Future<void> _onConfigChanged() async {
     await LunaNtfy().onConfigChanged();
   }
@@ -78,9 +138,16 @@ class _State extends State<ConfigurationNotificationsRoute>
       title: 'settings.EnableModule'.tr(args: [LunaModule.NOTIFICATIONS.title]),
       trailing: LunaSwitch(
         value: NotificationsDatabase.ENABLED.read(),
-        onChanged: (value) {
+        onChanged: (value) async {
           NotificationsDatabase.ENABLED.update(value);
-          _onConfigChanged();
+          await _onConfigChanged();
+          // Fresh enable with nothing configured: try the self-service
+          // gateway before asking the user to type anything.
+          if (value &&
+              LunaNtfy.isSupported &&
+              NotificationsDatabase.URL.read().isEmpty) {
+            await _runAutomaticSetup();
+          }
         },
       ),
     );
@@ -111,6 +178,7 @@ class _State extends State<ConfigurationNotificationsRoute>
         NotificationsDatabase.URL.update(subscription.url);
         NotificationsDatabase.TOKEN.update(subscription.token);
         NotificationsDatabase.TOPICS.update(subscription.topics);
+        NotificationsDatabase.GATEWAY_MANAGED.update(false);
         await _onConfigChanged();
         showLunaSuccessSnackBar(
           title: 'Subscription Imported',
@@ -134,6 +202,7 @@ class _State extends State<ConfigurationNotificationsRoute>
         if (values.item1) {
           NotificationsDatabase.URL
               .update(values.item2.trim().replaceAll(RegExp(r'/+$'), ''));
+          NotificationsDatabase.GATEWAY_MANAGED.update(false);
           _onConfigChanged();
         }
       },
@@ -159,6 +228,7 @@ class _State extends State<ConfigurationNotificationsRoute>
         );
         if (values.item1) {
           NotificationsDatabase.TOKEN.update(values.item2.trim());
+          NotificationsDatabase.GATEWAY_MANAGED.update(false);
           _onConfigChanged();
         }
       },
@@ -191,6 +261,7 @@ class _State extends State<ConfigurationNotificationsRoute>
                 .where((t) => t.isNotEmpty)
                 .toList(),
           );
+          NotificationsDatabase.GATEWAY_MANAGED.update(false);
           _onConfigChanged();
         }
       },

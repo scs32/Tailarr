@@ -68,6 +68,53 @@ class NtfySubscription {
       };
 }
 
+/// `GET http://tailarr-gate/self/notifications` (tailarr-server v0.21.0+).
+/// The gateway whois-authenticates the caller by tailnet source address and
+/// returns THAT person's ntfy credentials — no auth material in the request.
+class NtfyGatewayCredentials {
+  final bool ok;
+  final String? error;
+  final String url;
+  final String user;
+  final String password;
+  final String token;
+  final List<String> topics;
+
+  const NtfyGatewayCredentials({
+    required this.ok,
+    required this.error,
+    required this.url,
+    required this.user,
+    required this.password,
+    required this.token,
+    required this.topics,
+  });
+
+  /// The gateway's "this machine isn't attached to any person" refusal —
+  /// the fix is an admin action (assign the device), not a retry.
+  bool get isUnassigned =>
+      !ok && (error ?? '').toLowerCase().contains('not assigned');
+
+  NtfySubscription get subscription =>
+      NtfySubscription(url: url, token: token, topics: topics);
+
+  factory NtfyGatewayCredentials.fromJson(Map<String, dynamic> json) {
+    final error = json['error'];
+    return NtfyGatewayCredentials(
+      ok: json['ok'] == true,
+      error: error == null ? null : error.toString(),
+      url: (json['url'] as String? ?? '')
+          .trim()
+          .replaceAll(RegExp(r'/+$'), ''),
+      user: json['user'] as String? ?? '',
+      password: json['password'] as String? ?? '',
+      token: json['token'] as String? ?? '',
+      topics:
+          (json['topics'] as List? ?? []).map((t) => t.toString()).toList(),
+    );
+  }
+}
+
 /// Maps a Tailarr topic name to its display label: `tlr-ops` is the server
 /// itself, `tlr-media-<service>` is the service's name.
 String ntfyTopicLabel(String topic) {
