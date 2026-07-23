@@ -336,7 +336,7 @@ class _State extends State<PodDetailsRoute>
       if (!confirmed) return;
     }
     showLunaInfoSnackBar(
-      title: '${action.toTitleCase()}ing ${pod.name}',
+      title: '${action.asProgressLabel()} ${pod.name}',
       message: 'This can take a while…',
     );
     await state.api!.podAction(pod.name, action).then((result) {

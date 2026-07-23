@@ -14,6 +14,19 @@ extension StringNullableExtension on String? {
 }
 
 extension StringExtension on String {
+  /// Title-cased present participle of an action verb, for progress labels:
+  /// "update" -> "Updating", "stop" -> "Stopping" — naive `+ing`
+  /// concatenation produced "Updateing"/"Stoping".
+  String asProgressLabel() {
+    var verb = toLowerCase();
+    if (verb.endsWith('e')) {
+      verb = verb.substring(0, verb.length - 1);
+    } else if (verb == 'stop') {
+      verb = 'stopp';
+    }
+    return '${verb}ing'.toTitleCase();
+  }
+
   /// Returns the string converted to title case.
   ///
   /// Example: "hello world" -> "Hello World"

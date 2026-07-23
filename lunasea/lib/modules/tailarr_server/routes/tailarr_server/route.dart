@@ -83,7 +83,7 @@ class _State extends State<TailarrServerRoute>
     );
     if (!confirmed) return;
     showLunaInfoSnackBar(
-      title: '${action.toTitleCase()}ing Fleet',
+      title: '${action.asProgressLabel()} Fleet',
       message: 'This can take a while…',
     );
     await state.api!.fleetAction(action).then((result) {
