@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lunasea/core.dart';
+import 'package:lunasea/extensions/string/string.dart';
 import 'package:lunasea/modules/lidarr.dart';
 import 'package:lunasea/modules/nzbget.dart';
 import 'package:lunasea/modules/radarr.dart';
@@ -8,6 +9,12 @@ import 'package:lunasea/modules/settings.dart';
 import 'package:lunasea/modules/sonarr.dart';
 import 'package:lunasea/modules/tailarr_server.dart';
 import 'package:lunasea/modules/tautulli.dart';
+import 'package:lunasea/system/gateway/gateway_services.dart';
+import 'package:lunasea/system/network/platform/network_io.dart'
+    if (dart.library.html) 'package:lunasea/system/network/platform/network_html.dart';
+import 'package:lunasea/system/notifications/notifications.dart';
+import 'package:lunasea/utils/profile_tools.dart';
+import 'package:tailscale_embed/tailscale_embed.dart';
 
 /// Landing screen for shared-configuration deep links
 /// (https://tailarr.com/import#payload and tailarr:///import#payload).
@@ -33,6 +40,10 @@ class _State extends State<ImportConfigurationRoute>
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   SharedModuleConfiguration? _config;
 
+  /// The invite join sequence in flight — '' when idle, otherwise the
+  /// current step label shown in place of the action bar.
+  String _joiningStep = '';
+
   @override
   void initState() {
     super.initState();
@@ -41,15 +52,156 @@ class _State extends State<ImportConfigurationRoute>
 
   @override
   Widget build(BuildContext context) {
+    final config = _config;
     return LunaScaffold(
       scaffoldKey: _scaffoldKey,
       appBar: LunaAppBar(
-        title: 'Import Configuration',
+        title: config?.isInvite == true ? 'Tailarr Invite' : 'Import Configuration',
         scrollControllers: [scrollController],
       ),
-      body: _config == null ? _invalid() : _body(_config!),
-      bottomNavigationBar: _config == null ? null : _bottomActionBar(_config!),
+      body: config == null
+          ? _invalid()
+          : config.isInvite
+              ? _inviteBody(config)
+              : _body(config),
+      bottomNavigationBar: config == null
+          ? null
+          : config.isInvite
+              ? _inviteActionBar(config)
+              : _bottomActionBar(config),
     );
+  }
+
+  Widget _inviteBody(SharedModuleConfiguration config) {
+    return LunaListView(
+      controller: scrollController,
+      children: [
+        const LunaBlock(
+          title: 'You\'ve been invited',
+          body: [
+            TextSpan(text: 'One tap joins this server\'s private network'),
+            TextSpan(text: 'Your services set themselves up — no typing'),
+          ],
+          trailing: LunaIconButton(
+            icon: Icons.qr_code_rounded,
+            color: LunaColours.accent,
+          ),
+        ),
+        LunaBlock(
+          title: 'Server',
+          body: [TextSpan(text: config.host)],
+        ),
+        const LunaBlock(
+          title: 'Enrollment Key',
+          body: [
+            TextSpan(text: LunaUI.TEXT_OBFUSCATED_PASSWORD),
+            TextSpan(text: 'Single-use, expires 24h after it was issued'),
+          ],
+        ),
+        if (LunaProfile.current.tailscaleEnabled)
+          const LunaBlock(
+            title: 'Heads Up',
+            body: [
+              TextSpan(
+                text: 'This profile already has a Tailscale node. If it '
+                    'belongs to a different network, use Settings > General > '
+                    'Forget Tailscale Node first, then tap the invite again.',
+                style: TextStyle(color: LunaColours.orange),
+              ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  Widget _inviteActionBar(SharedModuleConfiguration config) {
+    if (_joiningStep.isNotEmpty) {
+      return LunaBottomActionBar(
+        actions: [
+          LunaButton.text(
+            text: _joiningStep,
+            icon: Icons.downloading_rounded,
+            onTap: () async {},
+          ),
+        ],
+      );
+    }
+    return LunaBottomActionBar(
+      actions: [
+        LunaButton.text(
+          text: 'Join & Set Up',
+          icon: Icons.rocket_launch_rounded,
+          color: LunaColours.accent,
+          onTap: () => _joinAndSetup(config),
+        ),
+      ],
+    );
+  }
+
+  /// The whole invite in one tap: save the server module + enroll key,
+  /// bring the embedded node up, then let the tailarr-gate self-config
+  /// endpoints materialize notifications and every badged service.
+  Future<void> _joinAndSetup(SharedModuleConfiguration config) async {
+    if (!IO.isTailscaleSupported) {
+      showLunaErrorSnackBar(
+        title: 'Not Supported',
+        message: 'Joining a tailnet is not supported on this platform',
+      );
+      return;
+    }
+
+    setState(() => _joiningStep = 'Joining network…');
+    try {
+      final profile = LunaProfile.current;
+      config.applyToProfile();
+      profile.tailscaleAuthKey = config.enrollKey;
+      profile.tailscaleEnabled = true;
+      if (profile.tailscaleIdentity.isEmpty) {
+        profile.tailscaleIdentity = LunaProfileTools.generateTailscaleIdentity(
+          LunaSeaDatabase.ENABLED_PROFILE.read(),
+        );
+      }
+      profile.save();
+
+      try {
+        await IO.startTailscale(profile.tailscaleAuthKey);
+      } catch (error) {
+        setState(() => _joiningStep = '');
+        showLunaErrorSnackBar(
+          title: 'Could Not Join',
+          message: TailscaleAuthKeys.friendlyError(error),
+        );
+        return;
+      }
+
+      setState(() => _joiningStep = 'Setting up your services…');
+      // Best-effort: the node is enrolled either way, and both re-attempt
+      // opportunistically later (module open / stream reconnect).
+      try {
+        await LunaNtfy().autoConfigure();
+      } catch (_) {}
+      GatewayServicesResult? services;
+      try {
+        services = (await GatewayServicesSync.sync()).result;
+      } catch (_) {}
+
+      if (!mounted) return;
+      context.read<TailarrServerState>().reset();
+      final summary = [
+        ...?services?.configured.map((t) => t.toTitleCase()),
+        if ((services?.bookmarked ?? []).isNotEmpty)
+          '${services!.bookmarked.length} bookmark(s)',
+      ].join(', ');
+      showLunaSuccessSnackBar(
+        title: 'You\'re In',
+        message: summary.isEmpty
+            ? 'Connected — services appear once the server grants access'
+            : summary,
+      );
+      LunaModule.DASHBOARD.launch();
+    } finally {
+      if (mounted) setState(() => _joiningStep = '');
+    }
   }
 
   Widget _invalid() {

@@ -32,6 +32,13 @@ class SharedModuleConfiguration {
   final String pass;
   final Map<String, String> headers;
 
+  /// Suite invite: a single-use Tailscale enrollment key (person-bound,
+  /// minted by tailarr-server). When present the import screen offers the
+  /// one-tap join flow — enroll the node, then let the tailarr-gate
+  /// self-config endpoints materialize every module the person is badged
+  /// for. Only ever carried alongside [LunaModule.TAILARR_SERVER].
+  final String enrollKey;
+
   const SharedModuleConfiguration({
     required this.module,
     required this.host,
@@ -39,7 +46,26 @@ class SharedModuleConfiguration {
     this.user = '',
     this.pass = '',
     this.headers = const {},
+    this.enrollKey = '',
   });
+
+  bool get isInvite => enrollKey.isNotEmpty;
+
+  /// A suite invite: the server module's address plus the person's
+  /// enrollment key — everything a fresh install needs to join and
+  /// self-configure.
+  factory SharedModuleConfiguration.invite({
+    required String serverHost,
+    required String enrollKey,
+    Map<String, String> headers = const {},
+  }) {
+    return SharedModuleConfiguration(
+      module: LunaModule.TAILARR_SERVER,
+      host: serverHost,
+      headers: headers,
+      enrollKey: enrollKey,
+    );
+  }
 
   /// Snapshot the current profile's settings for [module], or null when the
   /// module is not supported.
@@ -121,6 +147,9 @@ class SharedModuleConfiguration {
         headers: (json['headers'] as Map? ?? {}).map(
           (k, v) => MapEntry(k.toString(), v.toString()),
         ),
+        enrollKey: json['enroll'] is Map
+            ? (json['enroll']['key']?.toString() ?? '')
+            : '',
       );
     } catch (_) {
       return null;
@@ -136,6 +165,7 @@ class SharedModuleConfiguration {
       if (user.isNotEmpty) 'user': user,
       if (pass.isNotEmpty) 'pass': pass,
       if (headers.isNotEmpty) 'headers': headers,
+      if (enrollKey.isNotEmpty) 'enroll': {'key': enrollKey},
     };
     return base64Url.encode(utf8.encode(jsonEncode(payload))).replaceAll('=', '');
   }

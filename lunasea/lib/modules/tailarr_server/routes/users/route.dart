@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lunasea/core.dart';
 import 'package:lunasea/extensions/string/string.dart';
+import 'package:lunasea/modules/settings.dart';
 import 'package:lunasea/modules/tailarr_server.dart';
 import 'package:lunasea/router/routes/tailarr_server.dart';
 
@@ -398,13 +399,23 @@ class _State extends State<UsersRoute> with LunaScrollControllerMixin {
     await api.addPerson(name).then((result) {
       if (result.ok && result.key.isNotEmpty) {
         _fetch();
+        final profile = LunaProfile.current;
         TailarrServerKeySheet.show(
           context,
           enrollmentKey: result.key,
+          inviteLink: profile.tailarrServerHost.isEmpty
+              ? null
+              : SharedModuleConfiguration.invite(
+                  serverHost: profile.tailarrServerHost,
+                  enrollKey: result.key,
+                  headers: Map<String, String>.from(
+                    profile.tailarrServerHeaders,
+                  ),
+                ).link,
           message:
-              'Send this to $name. They install Tailscale on their device and sign in with this key — the device enrolls already belonging to them, with no access until you grant services. Single-use, expires in 24 hours.',
+              'Send this to $name. Their device enrolls already belonging to them, with no access until you grant services. Single-use, expires in 24 hours.',
           shareMessage:
-              'Your Tailarr access key (install Tailscale, then sign in with this key — expires in 24h):',
+              'Your Tailarr invite — open this link on your phone (it walks you through install if needed). Expires in 24h:',
         );
       } else {
         showLunaErrorSnackBar(

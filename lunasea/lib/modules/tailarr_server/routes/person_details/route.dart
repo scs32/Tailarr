@@ -391,13 +391,23 @@ class _State extends State<PersonDetailsRoute> with LunaScrollControllerMixin {
     if (!confirmed) return;
     await api!.reissuePersonKey(widget.id).then((result) {
       if (result.ok && result.key.isNotEmpty) {
+        final profile = LunaProfile.current;
         TailarrServerKeySheet.show(
           context,
           enrollmentKey: result.key,
+          inviteLink: profile.tailarrServerHost.isEmpty
+              ? null
+              : SharedModuleConfiguration.invite(
+                  serverHost: profile.tailarrServerHost,
+                  enrollKey: result.key,
+                  headers: Map<String, String>.from(
+                    profile.tailarrServerHeaders,
+                  ),
+                ).link,
           message:
-              'Send this to the user for their next device. It enrolls already belonging to them, with their access — nothing else to configure. Single-use, expires in 24 hours.',
+              'Single-use, expires in 24 hours. A device that joins with it automatically belongs to this user, with their access — modules configure themselves.',
           shareMessage:
-              'Your Tailarr access key (install Tailscale, then sign in with this key — expires in 24h):',
+              'Your Tailarr invite — open this link on your phone (it walks you through install if needed). Expires in 24h:',
         );
       } else {
         showLunaErrorSnackBar(

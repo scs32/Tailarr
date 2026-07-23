@@ -41,6 +41,7 @@ dependencies:
   quick_actions: ^1.0.5
   retrofit: ^4.0.1
   share_plus: ^10.1.4
+  qr_flutter: ^4.1.0
   shimmer: ^3.0.0
   simple_icons: ^14.6.1
   stack_trace: ^1.11.0
