@@ -664,6 +664,67 @@ backlog item above for full detail + next steps). Findings:
 
 ---
 
+## Session Log — 2026-07-22/23 (notifications stage 1 → builds 10-12, people model, gateway)
+
+Massive shipping session. Everything pushed to master; **builds 10, 11, 12
+all LIVE on TestFlight** (same 11.0.0 fast path; ASC scripting per usual).
+Stephen confirmed "all seems to be working" on device at session end.
+
+### Shipped (chronological)
+- **Build 10** (7e6a8533): Notifications module stage 1 — full detail in
+  the Backlog's ntfy entry. Key architecture: `lib/api/ntfy/` standalone
+  client (stage-3 push wake-up will reuse it), Hive typeId 30 inbox box
+  keyed by message id, NtfyStreamManager (app's first lifecycle observer),
+  workmanager BGAppRefresh + flutter_local_notifications, bg isolate is
+  Hive-free (shared JSON file `tailarr_ntfy.json`, split since-markers).
+  Plus the overlay-flash fix + version tile that were waiting on master.
+- **Build 11** (277c19c0 + b497e3c1): person-centric Users (people model,
+  server v0.19/20) + gateway self-config (v0.21) — details in Backlog.
+- **Build 12** (f87bd0be): provisioning made visible after Stephen's UX
+  report — persisted SETUP_STATE machine + always-on status card + inbox
+  links + queried-host/legacy-banner debug surfaces on Users. Users-screen
+  field report proven app-innocent via live-payload repro test.
+- **Post-build-12, riding build 13** (1f4f71fe + 3104625c): inbox
+  swipe-to-dismiss, tap-for-detail sheet, All/Media/Server filter;
+  "Updateing"/"Stoping" progress-label fix (String.asProgressLabel()).
+
+### Release-ops notes (learned this session)
+- ASC release script pattern lives in session scratchpads — REWRITE NOTE:
+  poll /v1/builds sorted by uploadedDate but SKIP the previous build's id
+  (the API shows the old build as newest right after CI upload; build 10's
+  script fired early and briefly overwrote build 9's notes).
+- Use **/usr/bin/python3** (system) for PyJWT — homebrew python3 lacks it.
+- Apple's exportArchive endpoint 502'd once (build 12 first attempt) —
+  `gh run rerun <id> --failed` fixed it; `gh run watch` SURVIVES a rerun
+  of the same run id (the build-12 watcher rode through and completed the
+  ASC chain itself).
+- Build ids: 10=6420d12f…, 11=ab9f17f8…, 12=85623fc0….
+- Flutter nags to upgrade — do NOT (3.38.6 pin, see toolchain warning).
+
+### Test infrastructure (current state)
+- Test server guest `podhost` runs **v0.22.2** (I upgraded 0.16→0.20→
+  0.21→0.22.2 via POST /api/controller/upgrade), ntfy pod + Funnel +
+  tailarr-gate all deployed and healthy on taila06ea9.
+- Person "Gate E2E" (id 7ed3a78d, badges heresphere+server) exists with
+  the sim node `tailarr-app-gate-e2e` attached — reusable E2E fixture;
+  person keys are SINGLE-USE, mint fresh via {do:"reissue"}.
+- Integration tests added: notifications_inbox_test, gateway_e2e_test
+  (needs fresh key + SERVER_HOST), users_people_render_test (in-process
+  HttpServer fixture — no tailnet needed), tailarr_server_people_test +
+  ntfy_models_test (pure unit).
+- Sim harness gotcha: pumping module routes needs the FULL LunaBIOS shell
+  (LunaButton dereferences LunaRouter.navigator.currentContext).
+
+### Pending / next
+- **Build 13** when desired (inbox polish + label fix are on master).
+- On-device over days: BG refresh cadence, gateway re-sync after admin
+  badge flips, second-share crash (old backlog item, still open).
+- Deep-link route for tailarr://ntfy (parser done, TODO in router).
+- Stage 2/3 notifications (per-user ACLs server-side; APNs push relay).
+- Relay to server session: controller pods upgraded from pre-config-file
+  installs lack .config.json → gateway deploy fails ("controller tailnet
+  IP unknown"); I hand-wrote one on the test box.
+
 ## Session Log — 2026-07-22 (status screen, build 9, App Store decision)
 
 ### Shipped (all pushed to master)
