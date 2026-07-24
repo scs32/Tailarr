@@ -157,14 +157,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - ~~Surface plugin `status()` in Settings > Network~~ DONE 2026-07-22
     (e5742d62): Tailscale Status page — connection state, node card,
     health warnings, peers list. FakeTailscaleBackend integration test.
-  - **Magicsock suspend/resume bug — carry to embed session** (found
-    2026-07-22 via the new status page on Stephen's phone): after iOS
-    suspend/resume the node shows health warning "MagicSock function
-    ReceiveIPv4 is not running" (tailscale#10976 class); traffic still
-    works but silently degrades to DERP; node stop/start clears it.
-    Fix belongs in the plugin's resume path: rebind magicsock (the
-    official iOS client calls magicsock Rebind() on wake) alongside
-    EnsureProxy's proxy-listener rebind, then re-check health.
+  - **Magicsock suspend/resume bug — FIXED in v0.3.3, real-device verdict
+    OPEN (2026-07-24)**: rebind (v0.3.1/0.3.2) proved insufficient; v0.3.3
+    escalates to a full tsnet server restart (see 2026-07-24 session log).
+    Tailarr now pins v0.3.3. REMAINING: Stephen must roam WiFi↔cellular
+    with the Status page open ~60-90s and report whether the warning clears
+    (a warning surviving repeated refreshes = a new finding for the embed
+    session). 3 field screenshots at `~/projects/magicsock-*.jpg`.
   - Adopt the new additive plugin API when useful: restart(),
     isEnrolled(identity), TailscaleSettingsPanel/Store,
     FakeTailscaleBackend (deliberately NOT adopted in build 8 to keep
@@ -412,6 +411,143 @@ The whole stack (Go tsnet proxy, Swift MethodChannel bridge, findProxy/HttpOverr
 ## Session Commands
 
 - **"break time"** - Update this CLAUDE.md file with any new context learned during the session, then provide a summary of what was accomplished/discussed.
+
+---
+
+## Session Log — 2026-07-24 (server-driven everything: services self-config, invite, per-profile isolation, push, Pro/Basic tiers, builds 13→22)
+
+Enormous shipping day. Everything pushed to master; **TestFlight builds 13
+through 22 all LIVE** (same 11.0.0 fast path). Ledger of features, all
+server-driven-first, in commit order:
+
+### Gateway services self-config (`/self/services`, server v0.23→0.26)
+- `NtfyGatewayClient.selfServices()` + `GatewayServicesReconciler`
+  (`lib/system/gateway/gateway_services.dart`): the tailarr-gate hands out
+  every service the device's PERSON is badged for; the app materializes
+  them — sonarr/radarr/lidarr/sabnzbd/nzbget/tautulli configure natively,
+  `tailarr` = the server module, everything else (incl. overseerr, which is
+  feature-flagged off) → External Module bookmark. Provenance tracked per
+  module (`LunaProfile.gatewayManagedModules`, HiveField 50;
+  `LunaExternalModule.gatewayName`, HiveField 2). Contract rules all
+  implemented + unit-locked (`test/gateway_services_test.dart`): empty url
+  keeps stored value, auth:null keeps module + flags missing credential,
+  revoked badge disables AND un-manages (→ Request Access), external→native
+  jump absorbs the bookmark, unknown types → bookmarks, version skew (old
+  404 / notifications payload) degrades silent. **Server-wins**: a granted
+  service overrides even hand-entered config.
+- Test server `podhost` self-upgraded 0.20→0.26 this session via POST
+  /api/controller/upgrade. **GOTCHA relayed to server session**: a bare
+  (no body) upgrade call on v0.22.2 DOWNGRADED to 0.20 (stale "latest");
+  always pass `{"version":"X.Y.Z"}`.
+
+### QR suite invite (one-tap join)
+- Share-config payload gained `enroll:{key,name?}`. Reissue Key / Add User
+  present the invite as a QR (native camera scans it) + a
+  tailarr.com/import link. Import screen's **Join & Set Up**: enroll node →
+  gateway configures notifications + materializes services. Live-verified
+  clean-slate on sim against v0.24/0.26.
+
+### tailscale_embed magicsock saga → v0.3.3
+- Bumped v0.1.0→0.3.1→0.3.2→0.3.3 chasing the "MagicSock ReceiveIPv4 not
+  running" health warning. v0.3.1 (resume rebind) and v0.3.2 (path-change
+  rebind + status watchdog) BOTH failed on real devices (field reports).
+  v0.3.3 (commit 0136b69, framework-v1.92.5-4) is the fix: source review
+  proved Rebind() is a no-op once the receive goroutine has exited; only a
+  full tsnet server restart respawns it, so the watchdog now escalates to
+  an in-place server restart. **OPEN: real-device verdict still pending** —
+  Stephen must roam WiFi↔cellular with the Status page open ~60-90s; a
+  warning that survives repeated refreshes = a NEW finding. 3 field
+  screenshots archived at `~/projects/magicsock-*.jpg`.
+
+### Notifications — always-on, per-profile, real push (server v0.26)
+- Stripped ALL user knobs (build ~notifications route is a status surface;
+  no enable toggle / topics / manual entry). Always-on module.
+- **Real APNs push (stage 3)**: NSE target (`ios/NotificationService/`),
+  App Group `group.com.stephenspeicher.tailarr`, AppDelegate platform
+  channel, `POST /self/push-token`. **Push VERIFIED end-to-end on device**
+  (real content from the user's own server via the NSE). Sandbox flag
+  follows aps-environment (embedded profile), NOT kDebugMode.
+- **Complete per-profile isolation**: NotificationsDatabase keys namespaced
+  `NOTIFICATIONS_<field>@<profile>`; inbox tagged + box-keyed by profile;
+  shared-state file (App Group) is a per-profile map; NSE + BG isolate
+  fetch across all profile slices. Profile switch re-scopes everything.
+- **Startup-race fix** (build 21): auto-config raced the Tailscale node
+  coming up → "Not Connected: Failed host lookup: tailarr-gate" stuck for
+  an hour. Now retries across the connect window + on foreground; throttle
+  1h→2min.
+
+### Server-owned profiles (THE isolation keystone)
+- Invite join creates/reuses a profile OWNED by the server (`serverOwned`
+  HiveField 51), named after it, NAME-LOCKED (excluded from Rename +
+  `_rename` throws `ServerOwnedProfileException`; reuse/isolation keyed by
+  HOST not name). All server config lands there — user's own profiles never
+  touched. Migration converts legacy server-attached profiles (detection:
+  `tailarrServerEnabled && host && tailscaleEnabled`; keeps custom names,
+  renames only `default`); also re-runs after a config restore. Leftover
+  empty `default` removed on join. Multi-server: distinct/deduped names
+  (`Tailarr`, `Tailarr (taila06ea9)`), same-display-name handled — proven
+  in `integration_test/multi_server_profile_test.dart`.
+- **Server display name** (contract for server session): `/api/info.name`
+  (v0.27) → embedded in invite `enroll.name` → profile named after it.
+  App side DONE + forward-compatible (falls back to host-derived).
+
+### Server-driven modules (no user config)
+- Managed service → locked "Server Managed" card; ungranted (on a server
+  profile) → "Request Access" (shares an admin request); standalone → manual
+  editors. Auto-adopt (no "Use Server Config" button). Enable toggle
+  gated the same way. `hasServerGrantList()` = serverOwned OR
+  gatewayManagedModules OR SERVICES_LAST_SYNC>0 (the SABnzbd fix — timestamp
+  alone was too fragile). Notification detail sheet drops raw topic/priority.
+
+### PRODUCT DIRECTION — tiers (decided this session)
+- **Pro** (paid, later): manual/BYO-server profiles. Gated in ONE place —
+  Add Profile → "Pro Mode Coming Soon" dialog. Free = server-driven only.
+  Rationale: make the Suite feel like a product, not a collection of tools;
+  monetize the escape hatch. GPL makes the client gate soft — that's fine
+  for a product-focus (not revenue-max) goal. One-time unlock when built.
+- **Basic** (free, server-tagged): admin marks a person Basic → `ui:{basic:
+  true}` on /self/services (server SHIPPED on branch full-library-stack;
+  UX-only, never gates access). App consumes it (commit db75230f):
+  `LunaProfile.uiBasic` HiveField 52, resolves defaults→preset→(future)
+  overrides via `uiHidesSettings`/`uiShowsDrawer`. **First behavior: hides
+  Settings gear + profile switcher.** NOT yet live-verified (server flag on
+  a branch, test box runs a release). Contract shape: `ui` object rides
+  /self/services, `basic` preset + future explicit `hide_settings`/`landing`
+  /`show_drawer` overrides so the server can re-shape the app without a
+  client release.
+
+### Release-ops notes (this session)
+- **Cert cap hit** (build 13 first try): 11 orphaned "Created via API" dev
+  certs → Archive failed. Revoked orphans via ASC API (kept the local
+  `FL7LS84W49`), reran. Recurs ~every 11 builds — backlog: persist a CI
+  signing identity.
+- **App Group provisioning**: registering `group.com.stephenspeicher.tailarr`
+  in the portal + assigning to both App IDs was the ONLY step with no ASC
+  API — Stephen did it in the dashboard; then I minted dev profiles via the
+  API (`asc_make_profiles.py` pattern) after the assignment landed.
+- Release script polls builds **by version number** now (immune to the
+  ordering/timezone traps that bit builds 10/13). Resilient watcher
+  (retry-tolerant poll loop, not `gh run watch` which dies on transient
+  network errors).
+- **DISK**: hit 100% full twice (dozens of sim builds). Clear
+  `~/Library/Developer/Xcode/DerivedData/*` + `CoreSimulator/Caches/*` +
+  scratchpad images. Watch it — builds fail cryptically ("No space") when
+  full.
+- Sim harness: AppleScript `click at` is FLAKY on Flutter widgets (taps
+  often don't register); deep links + shared-state-file inspection are more
+  reliable for verification. `flutter test` output needs `tr '\r' '\n'`.
+
+### Handoffs drafted (both ready to paste)
+1. **App session** (scs32/tailarr): finish the Basic shell (drawerless via
+   `uiShowsDrawer`, landing into granted module, **Leave Server** escape
+   hatch — REQUIRED before Basic ships or users are trapped), + build the
+   **native Overseerr module** (currently feature-flagged off; un-gate,
+   build against Overseerr API, support Jellyseerr `type:overseerr`) — the
+   real payoff a Basic user lands in.
+2. **Server session**: `/api/info.name` field (v0.27) for profile naming.
+
+### Build ledger (all LIVE): 13,14,15 (push infra),16,17,18,19,20,21,22.
+Build 22 (300fdfa1) = leftover-default fix + Pro gate + Basic groundwork.
 
 ---
 
