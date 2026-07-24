@@ -47,18 +47,36 @@ class _State extends State<ProfilesRoute> with LunaScrollControllerMixin {
   Widget _addProfile() {
     return LunaBlock(
       title: 'settings.AddProfile'.tr(),
-      body: [TextSpan(text: 'settings.AddProfileDescription'.tr())],
-      trailing: const LunaIconButton(icon: LunaIcons.ADD),
-      onTap: () async {
-        final dialogs = SettingsDialogs();
-        final context = LunaState.context;
-        final profiles = LunaProfile.list;
+      body: const [
+        TextSpan(text: 'Manually add a profile for another service — Pro'),
+      ],
+      trailing: const LunaIconButton(icon: Icons.workspace_premium_rounded),
+      onTap: _showProComing,
+    );
+  }
 
-        final selected = await dialogs.addProfile(context, profiles);
-        if (selected.item1) {
-          LunaProfileTools().create(selected.item2);
-        }
-      },
+  /// Manually-added (non-Tailarr-Server) profiles are a forthcoming Pro
+  /// feature. Tailarr's free experience is server-driven: you join a Tailarr
+  /// Server with an invite and everything configures itself.
+  Future<void> _showProComing() async {
+    await LunaDialog.dialog(
+      context: context,
+      title: 'Pro Mode Coming Soon',
+      buttons: [
+        LunaDialog.button(
+          text: 'lunasea.OK'.tr(),
+          onPressed: () => Navigator.of(context, rootNavigator: true).pop(),
+        ),
+      ],
+      content: [
+        LunaDialog.textContent(
+          text: 'Tailarr configures itself from your Tailarr Server — join '
+              'one with an invite and your services set up automatically, '
+              'no typing.\n\nManually adding profiles to connect to other '
+              'services will arrive in a future Pro upgrade.',
+        ),
+      ],
+      contentPadding: LunaDialog.textDialogContentPadding(),
     );
   }
 
