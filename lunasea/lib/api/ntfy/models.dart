@@ -228,6 +228,48 @@ class GatewayServicesResponse {
   }
 }
 
+/// `POST http://tailarr-gate/self/push-token` (tailarr-server v0.26.0+):
+/// registers/unregisters this device's APNs token for content-free wake
+/// pushes. Whois-authenticated like every /self/* route.
+class GatewayPushTokenResponse {
+  final bool ok;
+  final String? error;
+  final bool registered;
+
+  /// How many tokens the person now has (server caps at 10, oldest drop).
+  final int count;
+  final int? statusCode;
+
+  const GatewayPushTokenResponse({
+    required this.ok,
+    required this.error,
+    required this.registered,
+    required this.count,
+    this.statusCode,
+  });
+
+  bool get isUnassigned =>
+      !ok && (error ?? '').toLowerCase().contains('not assigned');
+
+  /// Pre-0.26.0 gateway: no POST handler at all → clean 404. Degrade
+  /// silently to polling.
+  bool get isUnavailable => statusCode == 404;
+
+  factory GatewayPushTokenResponse.fromJson(
+    Map<String, dynamic> json, {
+    int? statusCode,
+  }) {
+    final error = json['error'];
+    return GatewayPushTokenResponse(
+      ok: json['ok'] == true,
+      statusCode: statusCode,
+      error: error == null ? null : error.toString(),
+      registered: json['registered'] == true,
+      count: json['count'] as int? ?? 0,
+    );
+  }
+}
+
 /// Maps a Tailarr topic name to its display label: `tlr-ops` is the server
 /// itself, `tlr-media-<service>` is the service's name.
 String ntfyTopicLabel(String topic) {

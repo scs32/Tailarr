@@ -72,6 +72,46 @@ class NtfyGatewayClient {
       statusCode: response.statusCode,
     );
   }
+
+  /// Registers (or unregisters) an APNs device token for content-free wake
+  /// pushes (server v0.26.0+). Idempotent — re-register freely on every
+  /// launch/token rotation. Old gateways 404 (no POST handler): surfaced
+  /// via [GatewayPushTokenResponse.isUnavailable], not an exception.
+  Future<GatewayPushTokenResponse> selfPushToken({
+    required String token,
+    required bool sandbox,
+    bool register = true,
+  }) async {
+    final response = await httpClient.post(
+      'self/push-token',
+      data: {
+        'token': token,
+        'sandbox': sandbox,
+        'do': register ? 'register' : 'unregister',
+      },
+    );
+    final data = response.data;
+    if (data is! Map<String, dynamic>) {
+      // Pre-0.26.0 gateways may answer the POST with a non-JSON 404 page.
+      if (response.statusCode == 404) {
+        return GatewayPushTokenResponse(
+          ok: false,
+          error: 'not found',
+          registered: false,
+          count: 0,
+          statusCode: response.statusCode,
+        );
+      }
+      throw FormatException(
+        'Unexpected gateway response '
+        '(HTTP ${response.statusCode}): ${response.data}'.trim(),
+      );
+    }
+    return GatewayPushTokenResponse.fromJson(
+      data,
+      statusCode: response.statusCode,
+    );
+  }
 }
 
 class NtfyClient {

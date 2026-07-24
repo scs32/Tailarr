@@ -127,5 +127,33 @@ void main() {
       );
     }
     debugPrint('[gate-e2e] services self-config complete');
+
+    // ── 5. Wake-push token registration (server v0.26.0+): the gateway
+    // accepts the device's APNs token against the whois-resolved person.
+    // A fake-but-well-formed token keeps this test free of APNs/system
+    // dialogs; the server prunes tokens Apple later reports dead. ──
+    final fakeToken = List.filled(32, 'ab').join();
+    final push = await NtfyGatewayClient().selfPushToken(
+      token: fakeToken,
+      sandbox: true,
+    );
+    debugPrint(
+      '[gate-e2e] push-token: ok=${push.ok} registered=${push.registered} '
+      'count=${push.count} error=${push.error}',
+    );
+    expect(push.isUnavailable, isFalse,
+        reason: 'server answered 404 — v0.26.0+ required');
+    expect(push.ok, isTrue, reason: push.error ?? '');
+    expect(push.registered, isTrue);
+    expect(push.count, greaterThan(0));
+
+    // Unregister leaves the fixture clean for the next run.
+    final removal = await NtfyGatewayClient().selfPushToken(
+      token: fakeToken,
+      sandbox: true,
+      register: false,
+    );
+    expect(removal.ok, isTrue, reason: removal.error ?? '');
+    debugPrint('[gate-e2e] push-token round-trip complete');
   });
 }

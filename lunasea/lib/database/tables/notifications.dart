@@ -29,7 +29,17 @@ enum NotificationsDatabase<T> with LunaTableMixin<T> {
   /// Epoch ms of the last successful /self/services reconcile (server
   /// v0.23.0+). Lives here because this table is the gateway self-config
   /// state, notifications and services alike.
-  SERVICES_LAST_SYNC<int>(0);
+  SERVICES_LAST_SYNC<int>(0),
+
+  /// APNs wake-push registration (server v0.26.0+). TOKEN is the last hex
+  /// device token handed to the gateway; STATE is '' (never attempted) |
+  /// 'registered' | 'failed' | 'unavailable' (server too old) |
+  /// 'unassigned' (device not attached to a person); DETAIL carries the
+  /// verbatim error for the failed states.
+  PUSH_TOKEN<String>(''),
+  PUSH_STATE<String>(''),
+  PUSH_DETAIL<String>(''),
+  PUSH_LAST_ATTEMPT<int>(0);
 
   @override
   LunaTable get table => LunaTable.notifications;

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:workmanager/workmanager.dart';
@@ -35,6 +36,9 @@ class LunaNtfy {
       await Workmanager().initialize(ntfyBackgroundDispatcher);
     }
     NtfyStreamManager.instance.initialize();
+    // Idempotent token refresh on every launch (contract: re-register
+    // freely; iOS rotates tokens across restores/reinstalls).
+    unawaited(NtfyPush.register());
   }
 
   Future<int> syncInbox() => NtfySync.syncInbox();
@@ -94,6 +98,9 @@ class LunaNtfy {
       NotificationsDatabase.LAST_SYNC
           .update(DateTime.now().millisecondsSinceEpoch);
       await onConfigChanged();
+      // The person is known to the gateway now — the wake-push token can
+      // register against them.
+      unawaited(NtfyPush.register(force: true));
     } else {
       _recordFailure(
         creds.error ?? 'Gateway returned an incomplete handout',
@@ -109,6 +116,9 @@ class LunaNtfy {
   Future<void> onConfigChanged() async {
     await NtfySync.mirrorConfig();
     NtfyStreamManager.instance.restart();
+    if (!NotificationsDatabase.ENABLED.read()) {
+      unawaited(NtfyPush.unregister());
+    }
     if (!isBackgroundRefreshSupported) return;
     if (NotificationsDatabase.ENABLED.read() &&
         NotificationsDatabase.BACKGROUND_REFRESH.read()) {
@@ -142,6 +152,102 @@ class LunaNtfy {
       constraints: Constraints(networkType: NetworkType.connected),
       existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
     );
+  }
+}
+
+/// APNs wake-push registration (stage 3, server v0.26.0+): the device token
+/// goes to the whois-authenticated gateway, the server fans out content-free
+/// wakes when messages land on the person's topics, and the Notification
+/// Service Extension fetches the real content. The app never talks to the
+/// public relay — no auth material for it exists here.
+class NtfyPush {
+  NtfyPush._();
+
+  static const _channel = MethodChannel('com.stephenspeicher.tailarr/push');
+  static const _ATTEMPT_INTERVAL = Duration(hours: 1);
+
+  /// Registration is opportunistic and idempotent: on every launch, on
+  /// foreground (throttled), and forced after Automatic Setup succeeds.
+  /// Every attempt leaves a persisted trace in PUSH_STATE/PUSH_DETAIL.
+  static Future<void> register({bool force = false}) async {
+    if (!Platform.isIOS) return;
+    if (!NotificationsDatabase.ENABLED.read()) return;
+    final last = NotificationsDatabase.PUSH_LAST_ATTEMPT.read();
+    if (!force &&
+        DateTime.now().millisecondsSinceEpoch - last <
+            _ATTEMPT_INTERVAL.inMilliseconds) {
+      return;
+    }
+    NotificationsDatabase.PUSH_LAST_ATTEMPT
+        .update(DateTime.now().millisecondsSinceEpoch);
+
+    final String token;
+    try {
+      await NtfyLocalNotifications.requestPermissions();
+      token = await _channel.invokeMethod<String>('requestPushToken') ?? '';
+    } catch (error) {
+      NotificationsDatabase.PUSH_STATE.update('failed');
+      NotificationsDatabase.PUSH_DETAIL.update('APNs registration: $error');
+      LunaLogger().debug('push: APNs registration failed: $error');
+      return;
+    }
+    if (token.isEmpty) {
+      NotificationsDatabase.PUSH_STATE.update('failed');
+      NotificationsDatabase.PUSH_DETAIL.update('APNs returned an empty token');
+      return;
+    }
+
+    try {
+      final response = await NtfyGatewayClient().selfPushToken(
+        token: token,
+        // TestFlight/App Store builds use production APNs; only Xcode dev
+        // builds are sandbox.
+        sandbox: kDebugMode,
+      );
+      if (response.ok && response.registered) {
+        NotificationsDatabase.PUSH_TOKEN.update(token);
+        NotificationsDatabase.PUSH_STATE.update('registered');
+        NotificationsDatabase.PUSH_DETAIL.update('');
+        LunaLogger().debug(
+          'push: token registered (${response.count} for this person)',
+        );
+      } else if (response.isUnavailable) {
+        NotificationsDatabase.PUSH_STATE.update('unavailable');
+        NotificationsDatabase.PUSH_DETAIL
+            .update('Server too old for push (needs v0.26.0+)');
+      } else if (response.isUnassigned) {
+        NotificationsDatabase.PUSH_STATE.update('unassigned');
+        NotificationsDatabase.PUSH_DETAIL
+            .update(response.error ?? 'Device not assigned to a user');
+      } else {
+        NotificationsDatabase.PUSH_STATE.update('failed');
+        NotificationsDatabase.PUSH_DETAIL
+            .update(response.error ?? 'Gateway refused the token');
+      }
+    } catch (error) {
+      // Gateway unreachable — polling remains the fallback; retried on the
+      // next launch/foreground.
+      NotificationsDatabase.PUSH_STATE.update('failed');
+      NotificationsDatabase.PUSH_DETAIL.update('Gateway dial: $error');
+      LunaLogger().debug('push: gateway registration failed: $error');
+    }
+  }
+
+  /// Called when notifications are disabled: best-effort token removal —
+  /// the server also self-cleans tokens Apple reports dead.
+  static Future<void> unregister() async {
+    final token = NotificationsDatabase.PUSH_TOKEN.read();
+    if (token.isEmpty) return;
+    NotificationsDatabase.PUSH_TOKEN.update('');
+    NotificationsDatabase.PUSH_STATE.update('');
+    NotificationsDatabase.PUSH_DETAIL.update('');
+    try {
+      await NtfyGatewayClient().selfPushToken(
+        token: token,
+        sandbox: kDebugMode,
+        register: false,
+      );
+    } catch (_) {}
   }
 }
 
@@ -355,10 +461,11 @@ class NtfyStreamManager with WidgetsBindingObserver {
     int backoff = 5;
     while (_foreground && generation == _generation) {
       // Gateway-managed configs re-sync on every (re)connect cycle. The
-      // services reconcile rides the same wake-up (self-throttled, and a
-      // no-op until the user has run Automatic Setup).
+      // services reconcile and push-token refresh ride the same wake-up
+      // (both self-throttled).
       await GatewayServicesSync.refresh();
       await NtfySync.refreshFromGateway();
+      unawaited(NtfyPush.register());
       if (!_foreground || generation != _generation) return;
       final subscription = NtfySync.config();
       if (subscription == null) return;

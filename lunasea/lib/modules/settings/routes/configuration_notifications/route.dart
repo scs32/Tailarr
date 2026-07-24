@@ -62,6 +62,8 @@ class _State extends State<ConfigurationNotificationsRoute>
         NotificationsDatabase.SETUP_STATE,
         NotificationsDatabase.SETUP_ERROR,
         NotificationsDatabase.LAST_SYNC,
+        NotificationsDatabase.PUSH_STATE,
+        NotificationsDatabase.PUSH_DETAIL,
       ],
       builder: (context, _) => LunaListView(
         controller: scrollController,
@@ -80,6 +82,7 @@ class _State extends State<ConfigurationNotificationsRoute>
           _topics(),
           LunaDivider(),
           _backgroundRefreshToggle(),
+          _pushStatus(),
         ],
       ),
     );
@@ -439,6 +442,56 @@ class _State extends State<ConfigurationNotificationsRoute>
                 }
               }
             : null,
+      ),
+    );
+  }
+
+  /// Instant-push registration state — informational, no toggle: push is
+  /// additive over background refresh and manages itself.
+  Widget _pushStatus() {
+    final state = NotificationsDatabase.PUSH_STATE.read();
+    final detail = NotificationsDatabase.PUSH_DETAIL.read();
+    final String label;
+    final Color color;
+    switch (state) {
+      case 'registered':
+        label = 'Active';
+        color = LunaColours.accent;
+        break;
+      case 'unavailable':
+        label = 'Server too old (needs v0.26+)';
+        color = LunaColours.grey;
+        break;
+      case 'unassigned':
+        label = 'Device not assigned to a user';
+        color = LunaColours.orange;
+        break;
+      case 'failed':
+        label = 'Unavailable — using background refresh';
+        color = LunaColours.grey;
+        break;
+      default:
+        label = 'Not set up';
+        color = LunaColours.grey;
+    }
+    return LunaBlock(
+      title: 'Instant Push',
+      body: [
+        TextSpan(
+          text: label,
+          style: TextStyle(color: color, fontWeight: LunaUI.FONT_WEIGHT_BOLD),
+        ),
+        if (detail.isNotEmpty) TextSpan(text: detail),
+        const TextSpan(
+          text: 'Alert content never leaves your server — the public relay '
+              'sees only an opaque device token and the word "wake".',
+        ),
+      ],
+      trailing: Icon(
+        state == 'registered'
+            ? Icons.bolt_rounded
+            : Icons.bolt_outlined,
+        color: color,
       ),
     );
   }

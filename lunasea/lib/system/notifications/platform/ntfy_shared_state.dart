@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:lunasea/api/ntfy/models.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -43,9 +44,38 @@ class NtfySharedState {
   /// The `since` parameter for an inbox poll: everything on first sync.
   String get sinceParameter => since == 0 ? 'all' : since.toString();
 
+  /// The file lives in the App Group container so the Notification Service
+  /// Extension (a separate process) can read the config and advance the
+  /// same markers. Falls back to Application Support when the container is
+  /// unavailable (no entitlement yet, non-iOS, channel missing).
+  static const _channel = MethodChannel('com.stephenspeicher.tailarr/push');
+  static String? _appGroupPath;
+  static bool _appGroupResolved = false;
+
   static Future<File> _file() async {
-    final directory = await getApplicationSupportDirectory();
-    return File('${directory.path}/tailarr_ntfy.json');
+    if (!_appGroupResolved) {
+      _appGroupResolved = true;
+      try {
+        _appGroupPath =
+            await _channel.invokeMethod<String>('getAppGroupPath');
+      } catch (_) {
+        _appGroupPath = null;
+      }
+    }
+    final legacy = File(
+      '${(await getApplicationSupportDirectory()).path}/tailarr_ntfy.json',
+    );
+    final group = _appGroupPath;
+    if (group == null || group.isEmpty) return legacy;
+    final file = File('$group/tailarr_ntfy.json');
+    // One-time migration: carry the pre-App-Group state (config + markers)
+    // over so nothing re-notifies after the upgrade.
+    if (!await file.exists() && await legacy.exists()) {
+      try {
+        await legacy.copy(file.path);
+      } catch (_) {}
+    }
+    return file;
   }
 
   static Future<NtfySharedState> load() async {
