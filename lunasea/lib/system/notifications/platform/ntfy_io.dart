@@ -36,9 +36,26 @@ class LunaNtfy {
       await Workmanager().initialize(ntfyBackgroundDispatcher);
     }
     NtfyStreamManager.instance.initialize();
+    // Notifications are not optional plumbing the user assembles — they
+    // are on, configured by the server. Unconfigured devices quietly ask
+    // the gateway on every launch (hourly throttle; every attempt is
+    // still recorded on the status card).
+    unawaited(_autoConfigureIfUnconfigured());
     // Idempotent token refresh on every launch (contract: re-register
     // freely; iOS rotates tokens across restores/reinstalls).
     unawaited(NtfyPush.register());
+  }
+
+  Future<void> _autoConfigureIfUnconfigured() async {
+    if (NotificationsDatabase.URL.read().isNotEmpty) return;
+    final last = NotificationsDatabase.LAST_ATTEMPT.read();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - last < Duration.millisecondsPerHour) return;
+    try {
+      await autoConfigure();
+    } catch (_) {
+      // Recorded on the status card; retried next launch/module open.
+    }
   }
 
   Future<int> syncInbox() => NtfySync.syncInbox();
@@ -97,7 +114,10 @@ class LunaNtfy {
       NotificationsDatabase.SETUP_DETAIL.update('');
       NotificationsDatabase.LAST_SYNC
           .update(DateTime.now().millisecondsSinceEpoch);
-      await onConfigChanged();
+      // Background delivery is part of the product, not an option: request
+      // permission and schedule as soon as the server configures us.
+      NotificationsDatabase.BACKGROUND_REFRESH.update(true);
+      await enableBackgroundRefresh();
       // The person is known to the gateway now — the wake-push token can
       // register against them.
       unawaited(NtfyPush.register(force: true));

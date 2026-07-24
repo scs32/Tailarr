@@ -5,10 +5,14 @@ import 'package:lunasea/core.dart';
 import 'package:lunasea/database/tables/notifications.dart';
 import 'package:lunasea/extensions/datetime.dart';
 import 'package:lunasea/extensions/string/string.dart';
-import 'package:lunasea/modules/settings.dart';
 import 'package:lunasea/system/gateway/gateway_services.dart';
 import 'package:lunasea/system/notifications/notifications.dart';
 
+/// Notifications are not user-assembled plumbing: they are on, and the
+/// server configures them (topics mirror the person's access). This screen
+/// is a STATUS surface — what state provisioning is in, and a re-sync
+/// affordance — deliberately without toggles, topic pickers, or manual
+/// credential entry.
 class ConfigurationNotificationsRoute extends StatefulWidget {
   const ConfigurationNotificationsRoute({
     Key? key,
@@ -55,10 +59,7 @@ class _State extends State<ConfigurationNotificationsRoute>
       selectItems: [
         NotificationsDatabase.ENABLED,
         NotificationsDatabase.URL,
-        NotificationsDatabase.TOKEN,
         NotificationsDatabase.TOPICS,
-        NotificationsDatabase.BACKGROUND_REFRESH,
-        NotificationsDatabase.GATEWAY_MANAGED,
         NotificationsDatabase.SETUP_STATE,
         NotificationsDatabase.SETUP_ERROR,
         NotificationsDatabase.LAST_SYNC,
@@ -70,44 +71,31 @@ class _State extends State<ConfigurationNotificationsRoute>
         children: [
           LunaModule.NOTIFICATIONS.informationBanner(),
           if (LunaNtfy.isSupported) ..._setupStatusCard(),
-          _enabledToggle(),
-          const LunaHeader(
-            text: 'Manual Setup',
-            subtitle: 'Fallback — for servers without the self-config '
-                'gateway (pre-v0.21) or the official ntfy app',
-          ),
-          _importSubscription(),
-          _serverUrl(),
-          _accessToken(),
-          _topics(),
-          LunaDivider(),
-          _backgroundRefreshToggle(),
-          _pushStatus(),
+          if (LunaNtfy.isSupported) _pushStatus(),
         ],
       ),
     );
   }
 
   /// The provisioning state machine, always visible: NOT SET UP,
-  /// SETTING UP, CONFIGURED (automatic or manual), or FAILED with the
-  /// verbatim error + the exact request that was dialed. A failed attempt
-  /// must never look like "nothing happened".
+  /// SETTING UP, CONFIGURED, or FAILED with the verbatim error + the exact
+  /// request that was dialed. A failed attempt must never look like
+  /// "nothing happened".
   List<Widget> _setupStatusCard() {
     final state = NotificationsDatabase.SETUP_STATE.read();
-    final managed = NotificationsDatabase.GATEWAY_MANAGED.read();
     final url = NotificationsDatabase.URL.read();
 
     if (_settingUp) {
       return [
         const LunaBlock(
-          title: 'Automatic Setup',
+          title: 'Notifications',
           body: [TextSpan(text: 'Setting up — asking your Tailarr Server…')],
           trailing: LunaIconButton(icon: Icons.downloading_rounded),
         ),
       ];
     }
 
-    if (managed && url.isNotEmpty) {
+    if (url.isNotEmpty) {
       final topics = NotificationsDatabase.TOPICS
           .read()
           .map((t) => t.toString())
@@ -115,17 +103,18 @@ class _State extends State<ConfigurationNotificationsRoute>
       final synced = NotificationsDatabase.LAST_SYNC.read();
       return [
         LunaBlock(
-          title: 'Automatic Setup',
+          title: 'Notifications',
           body: [
             const TextSpan(
-              text: 'Configured from your Tailarr Server',
+              text: 'Configured by your Tailarr Server',
               style: TextStyle(
                 color: LunaColours.accent,
                 fontWeight: LunaUI.FONT_WEIGHT_BOLD,
               ),
             ),
-            TextSpan(text: url),
-            TextSpan(text: topics.join(', ')),
+            TextSpan(
+              text: topics.map(ntfyTopicLabel).join(', '),
+            ),
             if (synced > 0)
               TextSpan(
                 text: 'Synced '
@@ -142,25 +131,11 @@ class _State extends State<ConfigurationNotificationsRoute>
       ];
     }
 
-    if (url.isNotEmpty) {
-      return [
-        LunaBlock(
-          title: 'Automatic Setup',
-          body: const [
-            TextSpan(text: 'Configured manually'),
-            TextSpan(text: 'Tap to switch to automatic setup'),
-          ],
-          trailing: const LunaIconButton(icon: Icons.cloud_sync_rounded),
-          onTap: _runAutomaticSetup,
-        ),
-      ];
-    }
-
     if (state == 'failed') {
       final attempted = NotificationsDatabase.LAST_ATTEMPT.read();
       return [
         LunaBlock(
-          title: 'Automatic Setup Failed',
+          title: 'Not Connected',
           body: [
             TextSpan(
               text: NotificationsDatabase.SETUP_ERROR.read(),
@@ -174,7 +149,7 @@ class _State extends State<ConfigurationNotificationsRoute>
               text: (attempted > 0
                       ? 'Attempted ${DateTime.fromMillisecondsSinceEpoch(attempted).asAge()}'
                       : '') +
-                  '${LunaUI.TEXT_BULLET.pad()}Tap to retry, or set up manually below',
+                  '${LunaUI.TEXT_BULLET.pad()}Tap to retry',
             ),
           ],
           trailing: const LunaIconButton(
@@ -188,12 +163,13 @@ class _State extends State<ConfigurationNotificationsRoute>
 
     return [
       LunaBlock(
-        title: 'Set Up Automatically',
+        title: 'Notifications',
         body: const [
           TextSpan(
-            text: 'Fetch your credentials from your Tailarr Server over '
-                'the tailnet — no typing needed',
+            text: 'Configured automatically by your Tailarr Server — '
+                'alerts follow the access you\'ve been granted',
           ),
+          TextSpan(text: 'Tap to connect now'),
         ],
         trailing: const LunaIconButton(
           icon: Icons.cloud_sync_rounded,
@@ -232,7 +208,7 @@ class _State extends State<ConfigurationNotificationsRoute>
         );
       } else {
         showLunaErrorSnackBar(
-          title: 'Automatic Setup Failed',
+          title: 'Setup Failed',
           message: creds.error ?? 'Unknown error',
         );
       }
@@ -242,7 +218,7 @@ class _State extends State<ConfigurationNotificationsRoute>
       showLunaErrorSnackBar(
         title: 'Server Not Reachable',
         message:
-            'Needs Tailscale enabled and a Tailarr Server v0.21+ with notifications set up — or use manual entry below. Details in Settings > System > Logs.',
+            'Needs Tailscale enabled and a Tailarr Server v0.21+ with notifications set up. Details in Settings > System > Logs.',
       );
     }
   }
@@ -272,178 +248,6 @@ class _State extends State<ConfigurationNotificationsRoute>
       // log it, but services self-config is best-effort by design.
       LunaLogger().error('gateway services sync failed', error, stack);
     }
-  }
-
-  Future<void> _onConfigChanged() async {
-    await LunaNtfy().onConfigChanged();
-  }
-
-  Widget _enabledToggle() {
-    return LunaBlock(
-      title: 'settings.EnableModule'.tr(args: [LunaModule.NOTIFICATIONS.title]),
-      trailing: LunaSwitch(
-        value: NotificationsDatabase.ENABLED.read(),
-        onChanged: (value) async {
-          NotificationsDatabase.ENABLED.update(value);
-          await _onConfigChanged();
-          // Fresh enable with nothing configured: try the self-service
-          // gateway before asking the user to type anything.
-          if (value &&
-              LunaNtfy.isSupported &&
-              NotificationsDatabase.URL.read().isEmpty) {
-            await _runAutomaticSetup();
-          }
-        },
-      ),
-    );
-  }
-
-  /// Accepts the server handout — the JSON blob (or future deep link) from
-  /// the server's "Alerts on your phone" card — and fills every field.
-  Widget _importSubscription() {
-    return LunaBlock(
-      title: 'Import Subscription',
-      body: const [
-        TextSpan(
-          text: 'Paste the subscription from your server\'s Notifications page',
-        ),
-      ],
-      trailing: const LunaIconButton(icon: Icons.qr_code_rounded),
-      onTap: () async {
-        final values = await _NotificationsDialogs.pasteSubscription(context);
-        if (!values.item1) return;
-        final subscription = NtfySubscription.parse(values.item2);
-        if (subscription == null) {
-          showLunaErrorSnackBar(
-            title: 'Invalid Subscription',
-            message: 'Expected the JSON or link handed out by Tailarr Server',
-          );
-          return;
-        }
-        NotificationsDatabase.URL.update(subscription.url);
-        NotificationsDatabase.TOKEN.update(subscription.token);
-        NotificationsDatabase.TOPICS.update(subscription.topics);
-        NotificationsDatabase.GATEWAY_MANAGED.update(false);
-        await _onConfigChanged();
-        showLunaSuccessSnackBar(
-          title: 'Subscription Imported',
-          message: subscription.topics.join(', '),
-        );
-      },
-    );
-  }
-
-  Widget _serverUrl() {
-    final url = NotificationsDatabase.URL.read();
-    return LunaBlock(
-      title: 'Server URL',
-      body: [TextSpan(text: url.isEmpty ? 'lunasea.NotSet'.tr() : url)],
-      trailing: const LunaIconButton.arrow(),
-      onTap: () async {
-        final values = await SettingsDialogs().editHost(
-          context,
-          prefill: url,
-        );
-        if (values.item1) {
-          NotificationsDatabase.URL
-              .update(values.item2.trim().replaceAll(RegExp(r'/+$'), ''));
-          NotificationsDatabase.GATEWAY_MANAGED.update(false);
-          _onConfigChanged();
-        }
-      },
-    );
-  }
-
-  Widget _accessToken() {
-    final token = NotificationsDatabase.TOKEN.read();
-    return LunaBlock(
-      title: 'Access Token',
-      body: [
-        TextSpan(
-          text: token.isEmpty
-              ? 'lunasea.NotSet'.tr()
-              : LunaUI.TEXT_OBFUSCATED_PASSWORD,
-        ),
-      ],
-      trailing: const LunaIconButton.arrow(),
-      onTap: () async {
-        final values = await _NotificationsDialogs.editToken(
-          context,
-          prefill: token,
-        );
-        if (values.item1) {
-          NotificationsDatabase.TOKEN.update(values.item2.trim());
-          NotificationsDatabase.GATEWAY_MANAGED.update(false);
-          _onConfigChanged();
-        }
-      },
-    );
-  }
-
-  Widget _topics() {
-    final topics = NotificationsDatabase.TOPICS
-        .read()
-        .map((t) => t.toString())
-        .toList();
-    return LunaBlock(
-      title: 'Topics',
-      body: [
-        TextSpan(
-          text: topics.isEmpty ? 'lunasea.NotSet'.tr() : topics.join(', '),
-        ),
-      ],
-      trailing: const LunaIconButton.arrow(),
-      onTap: () async {
-        final values = await _NotificationsDialogs.editTopics(
-          context,
-          prefill: topics.join(', '),
-        );
-        if (values.item1) {
-          NotificationsDatabase.TOPICS.update(
-            values.item2
-                .split(',')
-                .map((t) => t.trim())
-                .where((t) => t.isNotEmpty)
-                .toList(),
-          );
-          NotificationsDatabase.GATEWAY_MANAGED.update(false);
-          _onConfigChanged();
-        }
-      },
-    );
-  }
-
-  Widget _backgroundRefreshToggle() {
-    return LunaBlock(
-      title: 'Background Refresh',
-      body: const [
-        TextSpan(
-          text: 'Checked periodically while the app is closed — new alerts '
-              'post as notifications. Delivery is opportunistic until instant '
-              'push arrives in a later update.',
-        ),
-      ],
-      trailing: LunaSwitch(
-        value: NotificationsDatabase.BACKGROUND_REFRESH.read(),
-        onChanged: LunaNtfy.isBackgroundRefreshSupported
-            ? (value) async {
-                NotificationsDatabase.BACKGROUND_REFRESH.update(value);
-                if (value) {
-                  final granted = await LunaNtfy().enableBackgroundRefresh();
-                  if (!granted) {
-                    showLunaErrorSnackBar(
-                      title: 'Notifications Not Allowed',
-                      message:
-                          'Allow notifications for Tailarr in system settings',
-                    );
-                  }
-                } else {
-                  await LunaNtfy().disableBackgroundRefresh();
-                }
-              }
-            : null,
-      ),
-    );
   }
 
   /// Instant-push registration state — informational, no toggle: push is
@@ -488,9 +292,7 @@ class _State extends State<ConfigurationNotificationsRoute>
         ),
       ],
       trailing: Icon(
-        state == 'registered'
-            ? Icons.bolt_rounded
-            : Icons.bolt_outlined,
+        state == 'registered' ? Icons.bolt_rounded : Icons.bolt_outlined,
         color: color,
       ),
     );
@@ -511,8 +313,8 @@ class _State extends State<ConfigurationNotificationsRoute>
         );
         if (!subscription.isValid) {
           showLunaErrorSnackBar(
-            title: 'settings.HostRequired'.tr(),
-            message: 'Set a server URL and at least one topic first',
+            title: 'Not Configured',
+            message: 'Connect to your Tailarr Server first',
           );
           return;
         }
@@ -531,97 +333,6 @@ class _State extends State<ConfigurationNotificationsRoute>
           );
         });
       },
-    );
-  }
-}
-
-class _NotificationsDialogs {
-  static Future<Tuple2<bool, String>> _input(
-    BuildContext context, {
-    required String title,
-    required List<String> hints,
-    String prefill = '',
-    String? Function(String?)? validator,
-  }) async {
-    bool flag = false;
-    final formKey = GlobalKey<FormState>();
-    final textController = TextEditingController()..text = prefill;
-
-    void setValues(bool value) {
-      if (formKey.currentState!.validate()) {
-        flag = value;
-        Navigator.of(context).pop();
-      }
-    }
-
-    await LunaDialog.dialog(
-      context: context,
-      title: title,
-      buttons: [
-        LunaDialog.button(
-          text: 'lunasea.Set'.tr(),
-          onPressed: () => setValues(true),
-        ),
-      ],
-      content: [
-        for (final hint in hints)
-          LunaDialog.textContent(
-            text: '${LunaUI.TEXT_BULLET} $hint',
-            textAlign: TextAlign.left,
-          ),
-        Form(
-          key: formKey,
-          child: LunaDialog.textFormInput(
-            controller: textController,
-            title: title,
-            onSubmitted: (_) => setValues(true),
-            validator: validator ?? (_) => null,
-          ),
-        ),
-      ],
-      contentPadding: LunaDialog.inputTextDialogContentPadding(),
-    );
-    return Tuple2(flag, textController.text);
-  }
-
-  static Future<Tuple2<bool, String>> editToken(
-    BuildContext context, {
-    String prefill = '',
-  }) {
-    return _input(
-      context,
-      title: 'Access Token',
-      hints: [
-        'The ntfy access token from your server (starts with tk_)',
-        'The server operator can mint one from the Notifications page',
-      ],
-      prefill: prefill,
-    );
-  }
-
-  static Future<Tuple2<bool, String>> editTopics(
-    BuildContext context, {
-    String prefill = '',
-  }) {
-    return _input(
-      context,
-      title: 'Topics',
-      hints: [
-        'Comma-separated list of topics to subscribe to',
-        'tlr-ops carries server alerts; tlr-media-<service> carries media events',
-      ],
-      prefill: prefill,
-    );
-  }
-
-  static Future<Tuple2<bool, String>> pasteSubscription(BuildContext context) {
-    return _input(
-      context,
-      title: 'Import Subscription',
-      hints: [
-        'Paste the subscription JSON or link from your server',
-        'Format: {"url": …, "token": …, "topics": […]}',
-      ],
     );
   }
 }

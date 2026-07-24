@@ -134,7 +134,10 @@ extension LunaModuleEnablementExtension on LunaModule {
       case LunaModule.LIDARR:
         return LunaProfile.current.lidarrEnabled;
       case LunaModule.NOTIFICATIONS:
-        return NotificationsDatabase.ENABLED.read();
+        // Always on — notifications are configured by the server, not
+        // assembled by the user; the inbox's empty state carries the
+        // provisioning status when nothing is connected yet.
+        return true;
       case LunaModule.NZBGET:
         return LunaProfile.current.nzbgetEnabled;
       case LunaModule.OVERSEERR:
@@ -365,7 +368,7 @@ extension LunaModuleMetadataExtension on LunaModule {
       case LunaModule.LIDARR:
         return 'Lidarr is a music collection manager for Usenet and BitTorrent users. It can monitor multiple RSS feeds for new tracks from your favorite artists and will grab, sort and rename them. It can also be configured to automatically upgrade the quality of files already downloaded when a better quality format becomes available.';
       case LunaModule.NOTIFICATIONS:
-        return 'Notifications subscribes to your Tailarr Server\'s ntfy topics: server alerts and media events land in an in-app inbox, live while the app is open and checked periodically in the background. Instant push delivery arrives in a later update.';
+        return 'Notifications are configured automatically by your Tailarr Server: server alerts and media events for everything you\'ve been granted land in the inbox and arrive as push notifications — nothing to set up.';
       case LunaModule.NZBGET:
         return 'NZBGet is a binary downloader, which downloads files from Usenet based on information given in nzb-files.';
       case LunaModule.RADARR:

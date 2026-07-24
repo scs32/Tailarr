@@ -357,12 +357,11 @@ class _State extends State<PersonDetailsRoute> with LunaScrollControllerMixin {
                     child: LunaButton.text(
                       text: 'Share Config',
                       icon: Icons.ios_share_rounded,
-                      // The shared JSON is exactly what Settings >
-                      // Notifications > Import Subscription accepts.
+                      // Tailarr-app devices self-configure — this handout
+                      // is for the official ntfy app.
                       onTap: () async => Share.share(
-                        'Your Tailarr notification config — in the Tailarr '
-                        'app, open Settings > Notifications > Import '
-                        'Subscription and paste this:\n\n'
+                        'Your Tailarr notification config for the ntfy '
+                        'app (Tailarr itself configures automatically):\n\n'
                         '${creds.subscriptionJson}',
                         sharePositionOrigin:
                             SharedModuleConfiguration.shareOriginOf(context),
