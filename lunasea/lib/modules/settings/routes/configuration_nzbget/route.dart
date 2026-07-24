@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lunasea/core.dart';
 import 'package:lunasea/modules/nzbget.dart';
 import 'package:lunasea/router/routes/settings.dart';
+import 'package:lunasea/modules/settings/core/server_driven_connection.dart';
 
 class ConfigurationNZBGetRoute extends StatefulWidget {
   const ConfigurationNZBGetRoute({
@@ -48,7 +49,10 @@ class _State extends State<ConfigurationNZBGetRoute>
 
   Widget _enabledToggle() {
     return LunaBox.profiles.listenableBuilder(
-      builder: (context, _) => LunaBlock(
+      builder: (context, _) => ServerDrivenConnection.enableBlock(
+        context: context,
+        type: 'nzbget',
+        manualToggle: LunaBlock(
         title: 'settings.EnableModule'.tr(args: [LunaModule.NZBGET.title]),
         trailing: LunaSwitch(
           value: LunaProfile.current.nzbgetEnabled,
@@ -58,7 +62,7 @@ class _State extends State<ConfigurationNZBGetRoute>
             context.read<NZBGetState>().reset();
           },
         ),
-      ),
+      )),
     );
   }
 

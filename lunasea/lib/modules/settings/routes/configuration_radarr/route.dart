@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lunasea/core.dart';
 import 'package:lunasea/modules/radarr.dart';
 import 'package:lunasea/router/routes/settings.dart';
+import 'package:lunasea/modules/settings/core/server_driven_connection.dart';
 
 class ConfigurationRadarrRoute extends StatefulWidget {
   const ConfigurationRadarrRoute({
@@ -50,7 +51,10 @@ class _State extends State<ConfigurationRadarrRoute>
 
   Widget _enabledToggle() {
     return LunaBox.profiles.listenableBuilder(
-      builder: (context, _) => LunaBlock(
+      builder: (context, _) => ServerDrivenConnection.enableBlock(
+        context: context,
+        type: 'radarr',
+        manualToggle: LunaBlock(
         title: 'settings.EnableModule'.tr(args: [LunaModule.RADARR.title]),
         trailing: LunaSwitch(
           value: LunaProfile.current.radarrEnabled,
@@ -60,7 +64,7 @@ class _State extends State<ConfigurationRadarrRoute>
             context.read<RadarrState>().reset();
           },
         ),
-      ),
+      )),
     );
   }
 

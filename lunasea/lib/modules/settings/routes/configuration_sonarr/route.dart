@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lunasea/core.dart';
 import 'package:lunasea/modules/sonarr.dart';
 import 'package:lunasea/router/routes/settings.dart';
+import 'package:lunasea/modules/settings/core/server_driven_connection.dart';
 
 class ConfigurationSonarrRoute extends StatefulWidget {
   const ConfigurationSonarrRoute({
@@ -49,7 +50,10 @@ class _State extends State<ConfigurationSonarrRoute>
 
   Widget _enabledToggle() {
     return LunaBox.profiles.listenableBuilder(
-      builder: (context, _) => LunaBlock(
+      builder: (context, _) => ServerDrivenConnection.enableBlock(
+        context: context,
+        type: 'sonarr',
+        manualToggle: LunaBlock(
         title: 'settings.EnableModule'.tr(args: [LunaModule.SONARR.title]),
         trailing: LunaSwitch(
           value: LunaProfile.current.sonarrEnabled,
@@ -59,7 +63,7 @@ class _State extends State<ConfigurationSonarrRoute>
             context.read<SonarrState>().reset();
           },
         ),
-      ),
+      )),
     );
   }
 

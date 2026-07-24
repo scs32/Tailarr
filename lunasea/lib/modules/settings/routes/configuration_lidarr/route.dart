@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lunasea/core.dart';
 import 'package:lunasea/modules/lidarr.dart';
 import 'package:lunasea/router/routes/settings.dart';
+import 'package:lunasea/modules/settings/core/server_driven_connection.dart';
 
 class ConfigurationLidarrRoute extends StatefulWidget {
   const ConfigurationLidarrRoute({
@@ -48,7 +49,10 @@ class _State extends State<ConfigurationLidarrRoute>
 
   Widget _enabledToggle() {
     return LunaBox.profiles.listenableBuilder(
-      builder: (context, _) => LunaBlock(
+      builder: (context, _) => ServerDrivenConnection.enableBlock(
+        context: context,
+        type: 'lidarr',
+        manualToggle: LunaBlock(
         title: 'settings.EnableModule'.tr(args: [LunaModule.LIDARR.title]),
         trailing: LunaSwitch(
           value: LunaProfile.current.lidarrEnabled,
@@ -58,7 +62,7 @@ class _State extends State<ConfigurationLidarrRoute>
             context.read<LidarrState>().reset();
           },
         ),
-      ),
+      )),
     );
   }
 

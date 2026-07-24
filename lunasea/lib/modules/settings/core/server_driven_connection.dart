@@ -35,6 +35,37 @@ class ServerDrivenConnection {
   static bool shouldRequestAccess(String type) =>
       !isManaged(type) && hasServerGrantList();
 
+  /// The module's Enable toggle, gated for server-owned config. On a server
+  /// profile the enable state is the server's to decide, so:
+  /// - granted (managed) → a read-only "Enabled by your Tailarr Server" row;
+  /// - server present, not granted → the Request Access card (no toggle);
+  /// - standalone (no server) → the normal manual toggle via [manualToggle].
+  static Widget enableBlock({
+    required BuildContext context,
+    required String type,
+    required Widget manualToggle,
+  }) {
+    if (isManaged(type)) {
+      return const LunaBlock(
+        title: 'Enabled',
+        body: [
+          TextSpan(
+            text: 'Managed by your Tailarr Server',
+            style: TextStyle(color: LunaColours.accent),
+          ),
+        ],
+        trailing: LunaIconButton(
+          icon: Icons.cloud_done_rounded,
+          color: LunaColours.accent,
+        ),
+      );
+    }
+    if (shouldRequestAccess(type)) {
+      return requestAccessBlocks(context: context, type: type).first;
+    }
+    return manualToggle;
+  }
+
   /// Replaces the manual editors when a server is present but this service
   /// isn't granted: one tap sends the admin a request (there is no
   /// self-service grant — access is an admin action on the Users screen).
