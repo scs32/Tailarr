@@ -4,6 +4,7 @@ import 'package:lunasea/modules/settings.dart';
 import 'package:lunasea/modules/tautulli.dart';
 import 'package:lunasea/router/routes/settings.dart';
 import 'package:lunasea/system/gateway/gateway_services.dart';
+import 'package:lunasea/modules/settings/core/server_driven_connection.dart';
 
 class ConfigurationTautulliConnectionDetailsRoute extends StatefulWidget {
   const ConfigurationTautulliConnectionDetailsRoute({
@@ -48,11 +49,22 @@ class _State extends State<ConfigurationTautulliConnectionDetailsRoute>
     return LunaBox.profiles.listenableBuilder(
       builder: (context, _) => LunaListView(
         controller: scrollController,
-        children: [
-          _host(),
-          _apiKey(),
-          _customHeaders(),
-        ],
+        children: ServerDrivenConnection.isManaged('tautulli')
+            ? ServerDrivenConnection.managedBlocks(
+                context: context,
+                type: 'tautulli',
+                host: LunaProfile.current.tautulliHost,
+                hasCredential: LunaProfile.current.tautulliKey.isNotEmpty,
+              )
+            : [
+                ...ServerDrivenConnection.adoptBlocks(
+                  context: context,
+                  type: 'tautulli',
+                ),
+                _host(),
+                _apiKey(),
+                _customHeaders(),
+              ],
       ),
     );
   }

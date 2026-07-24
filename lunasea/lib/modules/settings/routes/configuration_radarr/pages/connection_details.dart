@@ -4,6 +4,7 @@ import 'package:lunasea/modules/radarr.dart';
 import 'package:lunasea/modules/settings.dart';
 import 'package:lunasea/router/routes/settings.dart';
 import 'package:lunasea/system/gateway/gateway_services.dart';
+import 'package:lunasea/modules/settings/core/server_driven_connection.dart';
 
 class ConfigurationRadarrConnectionDetailsRoute extends StatefulWidget {
   const ConfigurationRadarrConnectionDetailsRoute({
@@ -48,11 +49,22 @@ class _State extends State<ConfigurationRadarrConnectionDetailsRoute>
     return LunaBox.profiles.listenableBuilder(
       builder: (context, _) => LunaListView(
         controller: scrollController,
-        children: [
-          _host(),
-          _apiKey(),
-          _customHeaders(),
-        ],
+        children: ServerDrivenConnection.isManaged('radarr')
+            ? ServerDrivenConnection.managedBlocks(
+                context: context,
+                type: 'radarr',
+                host: LunaProfile.current.radarrHost,
+                hasCredential: LunaProfile.current.radarrKey.isNotEmpty,
+              )
+            : [
+                ...ServerDrivenConnection.adoptBlocks(
+                  context: context,
+                  type: 'radarr',
+                ),
+                _host(),
+                _apiKey(),
+                _customHeaders(),
+              ],
       ),
     );
   }

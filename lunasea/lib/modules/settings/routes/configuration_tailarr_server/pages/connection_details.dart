@@ -4,6 +4,7 @@ import 'package:lunasea/modules/settings.dart';
 import 'package:lunasea/modules/tailarr_server.dart';
 import 'package:lunasea/router/routes/settings.dart';
 import 'package:lunasea/system/gateway/gateway_services.dart';
+import 'package:lunasea/modules/settings/core/server_driven_connection.dart';
 
 class ConfigurationTailarrServerConnectionDetailsRoute extends StatefulWidget {
   const ConfigurationTailarrServerConnectionDetailsRoute({
@@ -66,14 +67,21 @@ class _State extends State<ConfigurationTailarrServerConnectionDetailsRoute>
         final host = LunaProfile.current.tailarrServerHost;
         return LunaListView(
           controller: scrollController,
-          children: [
-            if (host.isNotEmpty && !_isTailnetHost(host)) _publicHostWarning(),
-            if (_isTailnetHost(host) &&
-                !LunaSeaDatabase.TAILSCALE_ENABLED.read())
-              _tailscaleDisabledWarning(),
-            _host(),
-            _customHeaders(),
-          ],
+          children: ServerDrivenConnection.isManaged('tailarr')
+              ? ServerDrivenConnection.managedBlocks(
+                  context: context,
+                  type: 'tailarr',
+                  host: host,
+                )
+              : [
+                  if (host.isNotEmpty && !_isTailnetHost(host))
+                    _publicHostWarning(),
+                  if (_isTailnetHost(host) &&
+                      !LunaProfile.current.tailscaleEnabled)
+                    _tailscaleDisabledWarning(),
+                  _host(),
+                  _customHeaders(),
+                ],
         );
       },
     );

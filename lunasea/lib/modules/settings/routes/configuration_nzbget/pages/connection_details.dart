@@ -4,6 +4,7 @@ import 'package:lunasea/modules/nzbget.dart';
 import 'package:lunasea/modules/settings.dart';
 import 'package:lunasea/router/routes/settings.dart';
 import 'package:lunasea/system/gateway/gateway_services.dart';
+import 'package:lunasea/modules/settings/core/server_driven_connection.dart';
 
 class ConfigurationNZBGetConnectionDetailsRoute extends StatefulWidget {
   const ConfigurationNZBGetConnectionDetailsRoute({
@@ -48,12 +49,23 @@ class _State extends State<ConfigurationNZBGetConnectionDetailsRoute>
     return LunaBox.profiles.listenableBuilder(
       builder: (context, _) => LunaListView(
         controller: scrollController,
-        children: [
-          _host(),
-          _username(),
-          _password(),
-          _customHeaders(),
-        ],
+        children: ServerDrivenConnection.isManaged('nzbget')
+            ? ServerDrivenConnection.managedBlocks(
+                context: context,
+                type: 'nzbget',
+                host: LunaProfile.current.nzbgetHost,
+                hasCredential: LunaProfile.current.nzbgetPass.isNotEmpty || LunaProfile.current.nzbgetUser.isNotEmpty,
+              )
+            : [
+                ...ServerDrivenConnection.adoptBlocks(
+                  context: context,
+                  type: 'nzbget',
+                ),
+                _host(),
+                _username(),
+                _password(),
+                _customHeaders(),
+              ],
       ),
     );
   }

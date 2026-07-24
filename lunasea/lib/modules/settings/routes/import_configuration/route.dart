@@ -154,6 +154,14 @@ class _State extends State<ImportConfigurationRoute>
     try {
       final profile = LunaProfile.current;
       config.applyToProfile();
+      // An invite-joined device is server-managed from birth — undo the
+      // manual mark a plain share import would deserve.
+      if (!profile.gatewayManagedModules.contains('tailarr')) {
+        profile.gatewayManagedModules = [
+          ...profile.gatewayManagedModules,
+          'tailarr',
+        ];
+      }
       profile.tailscaleAuthKey = config.enrollKey;
       profile.tailscaleEnabled = true;
       if (profile.tailscaleIdentity.isEmpty) {

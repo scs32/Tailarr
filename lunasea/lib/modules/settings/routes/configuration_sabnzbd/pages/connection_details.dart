@@ -4,6 +4,7 @@ import 'package:lunasea/modules/sabnzbd.dart';
 import 'package:lunasea/modules/settings.dart';
 import 'package:lunasea/router/routes/settings.dart';
 import 'package:lunasea/system/gateway/gateway_services.dart';
+import 'package:lunasea/modules/settings/core/server_driven_connection.dart';
 
 class ConfigurationSABnzbdConnectionDetailsRoute extends StatefulWidget {
   const ConfigurationSABnzbdConnectionDetailsRoute({
@@ -48,11 +49,22 @@ class _State extends State<ConfigurationSABnzbdConnectionDetailsRoute>
     return LunaBox.profiles.listenableBuilder(
       builder: (context, _) => LunaListView(
         controller: scrollController,
-        children: [
-          _host(),
-          _apiKey(),
-          _customHeaders(),
-        ],
+        children: ServerDrivenConnection.isManaged('sabnzbd')
+            ? ServerDrivenConnection.managedBlocks(
+                context: context,
+                type: 'sabnzbd',
+                host: LunaProfile.current.sabnzbdHost,
+                hasCredential: LunaProfile.current.sabnzbdKey.isNotEmpty,
+              )
+            : [
+                ...ServerDrivenConnection.adoptBlocks(
+                  context: context,
+                  type: 'sabnzbd',
+                ),
+                _host(),
+                _apiKey(),
+                _customHeaders(),
+              ],
       ),
     );
   }

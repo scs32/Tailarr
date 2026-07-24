@@ -386,6 +386,39 @@ class GatewayServicesSync {
     }
   }
 
+  /// Hand an unmanaged module's configuration to the server: preflight
+  /// that the person is actually granted a service of this type (so we
+  /// never disable a working module by adopting into a missing badge),
+  /// then take ownership and reconcile. Returns null on success or a
+  /// human-readable reason.
+  static Future<String?> adopt(String type) async {
+    final GatewayServicesResponse response;
+    try {
+      response = await NtfyGatewayClient().selfServices();
+    } catch (_) {
+      return 'Your Tailarr Server is not reachable';
+    }
+    if (response.isUnassigned) {
+      return 'This device is not assigned to a user — ask your server admin';
+    }
+    if (!response.ok || !response.isSupported) {
+      return 'Your server does not support service self-configuration (needs v0.23+)';
+    }
+    if (!response.services!.any((s) => s.type == type)) {
+      return 'Your server has not granted you this service';
+    }
+    final profile = LunaProfile.current;
+    if (!profile.gatewayManagedModules.contains(type)) {
+      profile.gatewayManagedModules = [
+        ...profile.gatewayManagedModules,
+        type,
+      ];
+      if (profile.isInBox) profile.save();
+    }
+    await sync();
+    return null;
+  }
+
   /// A manual edit to a module's connection details takes it out of gateway
   /// management so re-syncs never clobber hand-entered values.
   static void markManual(String type) => markManualOn(LunaProfile.current, type);
