@@ -106,6 +106,7 @@ class LunaProfileTools {
     final existing = serverOwnedProfileFor(host);
     if (existing != null) {
       _changeTo(existing.key as String);
+      await _removePristineDefaultProfile();
       return existing.key as String;
     }
     final name = serverProfileName(host, preferredName: preferredName);
@@ -114,7 +115,46 @@ class LunaProfileTools {
       LunaProfile(serverOwned: true, tailarrServerHost: host),
     );
     _changeTo(name);
+    await _removePristineDefaultProfile();
     return name;
+  }
+
+  /// Remove the empty bootstrap 'default' profile left behind once the user
+  /// has joined a server. A fresh install seeds 'default'; the invite then
+  /// creates a separate server-owned profile and switches to it, stranding
+  /// an untouched 'default'. Manual profiles are Pro-gated, so a leftover
+  /// 'default' is always pristine — safe to drop. Never removes the active
+  /// profile, a configured one, or the last remaining profile.
+  Future<void> _removePristineDefaultProfile() async {
+    const name = LunaProfile.DEFAULT_PROFILE;
+    if (LunaSeaDatabase.ENABLED_PROFILE.read() == name) return;
+    if (LunaProfile.list.length <= 1) return;
+    final profile = LunaBox.profiles.read(name);
+    if (profile == null || !_isPristine(profile)) return;
+    try {
+      await _remove(name);
+    } catch (error, stack) {
+      LunaLogger().error('Leftover default cleanup failed', error, stack);
+    }
+  }
+
+  /// A never-configured profile: no server, no Tailscale, no module enabled,
+  /// no gateway provenance. (Not [LunaProfile.isAnythingEnabled], which reads
+  /// the ACTIVE profile, not this one.)
+  static bool _isPristine(LunaProfile p) {
+    return !p.serverOwned &&
+        p.tailarrServerHost.isEmpty &&
+        !p.tailscaleEnabled &&
+        p.tailscaleAuthKey.isEmpty &&
+        p.gatewayManagedModules.isEmpty &&
+        !p.sonarrEnabled &&
+        !p.radarrEnabled &&
+        !p.lidarrEnabled &&
+        !p.sabnzbdEnabled &&
+        !p.nzbgetEnabled &&
+        !p.tautulliEnabled &&
+        !p.overseerrEnabled &&
+        !p.tailarrServerEnabled;
   }
 
   bool changeTo(
