@@ -1381,11 +1381,11 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: "v0.3.2"
-      resolved-ref: "23515fd976725e15e8f66f0b3b32d2ef464e0f06"
+      ref: "v0.3.3"
+      resolved-ref: "0136b6921af8f9bd289169de8496aa67a51f5507"
       url: "https://github.com/scs32/tailscale_embed.git"
     source: git
-    version: "0.3.2"
+    version: "0.3.3"
   term_glyph:
     dependency: transitive
     description:

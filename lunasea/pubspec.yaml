@@ -10,7 +10,7 @@ dependencies:
   tailscale_embed:
     git:
       url: https://github.com/scs32/tailscale_embed.git
-      ref: v0.3.2
+      ref: v0.3.3
   badges: ^3.1.1
   cached_network_image: ^3.4.1
   collection: ^1.17.2
