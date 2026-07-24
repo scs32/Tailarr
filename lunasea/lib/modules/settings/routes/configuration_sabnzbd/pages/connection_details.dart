@@ -57,10 +57,6 @@ class _State extends State<ConfigurationSABnzbdConnectionDetailsRoute>
                 hasCredential: LunaProfile.current.sabnzbdKey.isNotEmpty,
               )
             : [
-                ...ServerDrivenConnection.adoptBlocks(
-                  context: context,
-                  type: 'sabnzbd',
-                ),
                 _host(),
                 _apiKey(),
                 _customHeaders(),

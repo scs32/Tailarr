@@ -103,10 +103,10 @@ class GatewayServicesReconciler {
           return true;
         });
 
-        // Adopt only unconfigured or already-managed slots — a hand-entered
-        // config is never clobbered by a sync.
-        final hadHost = _host(profile, service.type).isNotEmpty;
-        if (hadHost && !managed.contains(service.type)) continue;
+        // Server-granted services are server-owned, full stop: adopt and
+        // lock even a hand-entered config (the server is the source of
+        // truth on a suite). Standalone modules the server doesn't grant
+        // are never touched — they never reach this branch.
 
         // Empty url = service stopped: keep the stored value.
         if (service.url.isNotEmpty) {
@@ -365,16 +365,19 @@ class GatewayServicesSync {
     return GatewayServicesOutcome(response: response, result: result);
   }
 
-  /// Opportunistic re-sync on foreground/stream-reconnect: only once this
-  /// device has gateway-managed provenance (i.e. the user ran Automatic
-  /// Setup), throttled, and silent on every failure — the stored config
-  /// keeps working.
+  /// Opportunistic re-sync on foreground/stream-reconnect. Runs whenever a
+  /// Tailarr Server is configured (so granted services adopt and lock
+  /// automatically — no user action) OR this device already carries
+  /// gateway provenance. Throttled, silent on every failure — the stored
+  /// config keeps working.
   static Future<void> refresh() async {
+    final hasServer = LunaProfile.current.tailarrServerEnabled &&
+        LunaProfile.current.tailarrServerHost.isNotEmpty;
     final hasManagedModules =
         LunaProfile.current.gatewayManagedModules.isNotEmpty ||
             LunaBox.externalModules.data
                 .any((module) => module.gatewayName.isNotEmpty);
-    if (!hasManagedModules) return;
+    if (!hasServer && !hasManagedModules) return;
     final last = _lastAttempt;
     if (last != null && DateTime.now().difference(last) < _REFRESH_INTERVAL) {
       return;
@@ -384,39 +387,6 @@ class GatewayServicesSync {
     } catch (_) {
       // Gateway unreachable — keep the stored config.
     }
-  }
-
-  /// Hand an unmanaged module's configuration to the server: preflight
-  /// that the person is actually granted a service of this type (so we
-  /// never disable a working module by adopting into a missing badge),
-  /// then take ownership and reconcile. Returns null on success or a
-  /// human-readable reason.
-  static Future<String?> adopt(String type) async {
-    final GatewayServicesResponse response;
-    try {
-      response = await NtfyGatewayClient().selfServices();
-    } catch (_) {
-      return 'Your Tailarr Server is not reachable';
-    }
-    if (response.isUnassigned) {
-      return 'This device is not assigned to a user — ask your server admin';
-    }
-    if (!response.ok || !response.isSupported) {
-      return 'Your server does not support service self-configuration (needs v0.23+)';
-    }
-    if (!response.services!.any((s) => s.type == type)) {
-      return 'Your server has not granted you this service';
-    }
-    final profile = LunaProfile.current;
-    if (!profile.gatewayManagedModules.contains(type)) {
-      profile.gatewayManagedModules = [
-        ...profile.gatewayManagedModules,
-        type,
-      ];
-      if (profile.isInBox) profile.save();
-    }
-    await sync();
-    return null;
   }
 
   /// A manual edit to a module's connection details takes it out of gateway

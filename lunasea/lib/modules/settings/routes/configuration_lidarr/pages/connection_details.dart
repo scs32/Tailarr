@@ -57,10 +57,6 @@ class _State extends State<ConfigurationLidarrConnectionDetailsRoute>
                 hasCredential: LunaProfile.current.lidarrKey.isNotEmpty,
               )
             : [
-                ...ServerDrivenConnection.adoptBlocks(
-                  context: context,
-                  type: 'lidarr',
-                ),
                 _host(),
                 _apiKey(),
                 _customHeaders(),

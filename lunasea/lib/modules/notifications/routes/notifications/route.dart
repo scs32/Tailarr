@@ -322,23 +322,15 @@ class _State extends State<NotificationsRoute> with LunaScrollControllerMixin {
                 SelectableText(notification.body!),
                 const SizedBox(height: 12),
               ],
+              // Human-facing only — the ntfy topic, raw priority, and tags
+              // are internal plumbing and stay out of the sheet.
               LunaTableCard(
                 content: [
-                  LunaTableContent(title: 'source', body: label),
-                  LunaTableContent(title: 'topic', body: notification.topic),
+                  LunaTableContent(title: 'from', body: label),
                   LunaTableContent(
                     title: 'received',
                     body: notification.timestamp.asDateTime(),
                   ),
-                  LunaTableContent(
-                    title: 'priority',
-                    body: _priorityLabel(notification.priority),
-                  ),
-                  if (notification.tags.isNotEmpty)
-                    LunaTableContent(
-                      title: 'tags',
-                      body: notification.tags.join(', '),
-                    ),
                 ],
               ),
               Row(
@@ -361,21 +353,6 @@ class _State extends State<NotificationsRoute> with LunaScrollControllerMixin {
         ),
       ),
     );
-  }
-
-  String _priorityLabel(int priority) {
-    switch (priority) {
-      case 1:
-        return 'Minimum (1)';
-      case 2:
-        return 'Low (2)';
-      case 4:
-        return 'High (4)';
-      case 5:
-        return 'Urgent (5)';
-      default:
-        return 'Default (3)';
-    }
   }
 
   IconData _topicIcon(String topic) {

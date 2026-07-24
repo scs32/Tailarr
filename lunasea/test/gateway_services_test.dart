@@ -168,7 +168,9 @@ void main() {
       expect(result.missingAuth, isEmpty);
     });
 
-    test('hand-entered config is never clobbered', () {
+    test('a server-granted service overrides hand-entered config', () {
+      // Server-owned means server-owned: a suite server that grants Sonarr
+      // takes over even a previously hand-entered config, and locks it.
       final profile = LunaProfile(
         sonarrEnabled: true,
         sonarrHost: 'https://my-own-sonarr.local',
@@ -179,11 +181,29 @@ void main() {
         externals: [],
         response: parse(CONTRACT_FIXTURE),
       );
+      expect(profile.sonarrHost, 'https://sonarr.tailXXXX.ts.net');
+      expect(profile.sonarrKey, 'abc123');
+      expect(profile.gatewayManagedModules, contains('sonarr'));
+      expect(result.configured, contains('sonarr'));
+    });
+
+    test('a service the server does not grant is left alone', () {
+      // Standalone module with no matching grant stays manual, untouched.
+      final profile = LunaProfile(
+        sonarrEnabled: true,
+        sonarrHost: 'https://my-own-sonarr.local',
+        sonarrKey: 'my-own-key',
+      );
+      reconcile(
+        profile: profile,
+        externals: [],
+        response: parse('{"ok": true, "kind": "services", "services": ['
+            '{"type": "radarr", "name": "radarr", '
+            '"url": "https://radarr.x.ts.net", "auth": {"api_key": "r"}}]}'),
+      );
       expect(profile.sonarrHost, 'https://my-own-sonarr.local');
       expect(profile.sonarrKey, 'my-own-key');
       expect(profile.gatewayManagedModules, isNot(contains('sonarr')));
-      // The other slots were unconfigured, so they were adopted.
-      expect(result.configured, ['radarr', 'nzbget', 'tailarr']);
     });
 
     test('empty url keeps the stored value, never deconfigures', () {

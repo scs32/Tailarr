@@ -67,38 +67,4 @@ class ServerDrivenConnection {
     ];
   }
 
-  /// Shown above the manual editors when a Tailarr Server is configured
-  /// but this module is still hand-entered: one tap hands ownership over.
-  static List<Widget> adoptBlocks({
-    required BuildContext context,
-    required String type,
-  }) {
-    if (!LunaProfile.current.tailarrServerEnabled) return [];
-    return [
-      LunaBlock(
-        title: 'Use Server Configuration',
-        body: const [
-          TextSpan(
-            text: 'Let your Tailarr Server manage this connection — '
-                'address and credentials stay in sync automatically',
-          ),
-        ],
-        trailing: const LunaIconButton(
-          icon: Icons.cloud_sync_rounded,
-          color: LunaColours.accent,
-        ),
-        onTap: () async {
-          final error = await GatewayServicesSync.adopt(type);
-          if (error != null) {
-            showLunaErrorSnackBar(title: 'Not Available', message: error);
-            return;
-          }
-          showLunaSuccessSnackBar(
-            title: 'Server Managed',
-            message: '${type.toTitleCase()} now follows your Tailarr Server',
-          );
-        },
-      ),
-    ];
-  }
 }
