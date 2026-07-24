@@ -4,6 +4,7 @@ import 'package:lunasea/database/table.dart';
 import 'package:lunasea/database/tables/lunasea.dart';
 import 'package:lunasea/system/filesystem/filesystem.dart';
 import 'package:lunasea/system/platform.dart';
+import 'package:lunasea/utils/profile_tools.dart';
 import 'package:lunasea/vendor.dart';
 
 class LunaDatabase {
@@ -25,6 +26,56 @@ class LunaDatabase {
     await LunaBox.open();
     if (LunaBox.profiles.isEmpty) await bootstrap();
     migrateGlobalTailscaleToProfile();
+    migrateLegacyServerProfiles();
+  }
+
+  /// Invites accepted before the server-owned-profile feature wrote their
+  /// server-driven config onto whatever profile was active (usually
+  /// 'default') without marking it owned or renaming it. Detect those —
+  /// a profile with a Tailarr Server host whose `tailarr` module is
+  /// gateway-managed — and convert them in place: mark serverOwned and
+  /// rename to the server-derived name. Runs once (already-owned profiles
+  /// are skipped) and preserves the stored Tailscale identity, so the node
+  /// enrollment is untouched.
+  void migrateLegacyServerProfiles() {
+    for (final name in LunaProfile.list) {
+      final profile = LunaBox.profiles.read(name);
+      if (profile == null) continue;
+      if (profile.serverOwned) continue;
+      final isServerAttached = profile.tailarrServerHost.isNotEmpty &&
+          profile.gatewayManagedModules.contains('tailarr');
+      if (!isServerAttached) continue;
+
+      // Already carrying its server's base name (or a deduped variant of
+      // it) — just flip the ownership flag, don't rename it to yet another
+      // variant.
+      final base =
+          LunaProfileTools.serverProfileBaseName(profile.tailarrServerHost);
+      if (name == base || name.startsWith('$base (') || name == '$base') {
+        profile.serverOwned = true;
+        profile.save();
+        continue;
+      }
+
+      final desired =
+          LunaProfileTools.serverProfileName(profile.tailarrServerHost);
+      if (desired == name || LunaBox.profiles.contains(desired)) {
+        // Target is taken (a newer join already owns it) — flip in place.
+        profile.serverOwned = true;
+        profile.save();
+        continue;
+      }
+
+      // Rename in place at the box level (no LunaState/router — the UI
+      // isn't up yet): clone under the new key, repoint the active
+      // pointer, drop the old key.
+      final renamed = LunaProfile.clone(profile)..serverOwned = true;
+      LunaBox.profiles.update(desired, renamed);
+      if (LunaSeaDatabase.ENABLED_PROFILE.read() == name) {
+        LunaSeaDatabase.ENABLED_PROFILE.update(desired);
+      }
+      profile.delete();
+    }
   }
 
   /// Pre-per-profile installs kept the Tailscale settings in the global
