@@ -20,6 +20,11 @@ class LunaConfig {
       if (!LunaProfile.list.contains(LunaSeaDatabase.ENABLED_PROFILE.read())) {
         LunaSeaDatabase.ENABLED_PROFILE.update(LunaProfile.list[0]);
       }
+
+      // A restored backup can carry server-attached profiles from a build
+      // that predates serverOwned — the launch migration already ran before
+      // this manual restore, so convert them now too.
+      LunaDatabase().migrateLegacyServerProfiles();
     } catch (error, stack) {
       await LunaDatabase().bootstrap();
       LunaLogger().error(
