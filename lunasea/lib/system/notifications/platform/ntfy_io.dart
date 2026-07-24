@@ -12,6 +12,8 @@ import 'package:lunasea/api/ntfy/models.dart';
 import 'package:lunasea/api/ntfy/ntfy.dart';
 import 'package:lunasea/database/box.dart';
 import 'package:lunasea/database/models/notification.dart';
+import 'package:lunasea/database/models/profile.dart';
+import 'package:lunasea/database/tables/lunasea.dart';
 import 'package:lunasea/database/tables/notifications.dart';
 import 'package:lunasea/system/gateway/gateway_services.dart';
 import 'package:lunasea/system/logger.dart';
@@ -304,18 +306,48 @@ class NtfySync {
     return subscription.isValid ? subscription : null;
   }
 
-  /// Mirrors the Hive-backed settings into the shared-state file the
-  /// background isolate reads. Preserves the since-markers.
+  /// The Hive-stored subscription for a specific profile, read by explicit
+  /// per-profile key (so we can mirror EVERY profile into the shared file,
+  /// not just the active one). Main-isolate only.
+  static NtfySubscription? _hiveSubscriptionFor(String profile) {
+    final url =
+        LunaBox.lunasea.read('NOTIFICATIONS_URL@$profile', fallback: '')
+            as String;
+    final token =
+        LunaBox.lunasea.read('NOTIFICATIONS_TOKEN@$profile', fallback: '')
+            as String;
+    final topics =
+        (LunaBox.lunasea.read('NOTIFICATIONS_TOPICS@$profile', fallback: [])
+                as List)
+            .map((t) => t.toString())
+            .toList();
+    final sub = NtfySubscription(url: url, token: token, topics: topics);
+    return sub.isValid ? sub : null;
+  }
+
+  /// Mirrors EVERY profile's Hive-backed subscription into the shared-state
+  /// file the background isolate + NSE read — so push and background refresh
+  /// cover all server-owned profiles, each attributed to its own inbox.
+  /// Preserves each slice's since-markers.
   static Future<void> mirrorConfig() async {
     final state = await NtfySharedState.load();
-    state.url = NotificationsDatabase.URL.read();
-    state.token = NotificationsDatabase.TOKEN.read();
-    state.topics = NotificationsDatabase.TOPICS
-        .read()
-        .map((t) => t.toString())
-        .toList();
-    state.backgroundEnabled = NotificationsDatabase.ENABLED.read() &&
-        NotificationsDatabase.BACKGROUND_REFRESH.read();
+    final active = LunaSeaDatabase.ENABLED_PROFILE.read();
+    state.activeProfile = active;
+    state.backgroundEnabled = NotificationsDatabase.BACKGROUND_REFRESH.read();
+
+    final present = <String>{};
+    for (final name in LunaProfile.list) {
+      final sub = _hiveSubscriptionFor(name);
+      if (sub == null) continue;
+      present.add(name);
+      final slice = state.slice(name);
+      slice.url = sub.url;
+      slice.token = sub.token;
+      slice.topics = sub.topics;
+    }
+    // Drop slices for profiles that no longer have a subscription (deleted
+    // or de-configured) so their stale config can't wake the device.
+    state.profiles.removeWhere((name, _) => !present.contains(name));
     await state.save();
   }
 
@@ -352,37 +384,43 @@ class NtfySync {
     }
   }
 
-  /// One poll: everything since the inbox marker into Hive. Returns the
-  /// number of messages that were new.
+  /// One poll: everything since the ACTIVE profile's inbox marker into Hive,
+  /// tagged with the active profile. Returns the number of new messages.
   static Future<int> syncInbox() async {
     final subscription = config();
     if (subscription == null) return 0;
+    final profile = LunaSeaDatabase.ENABLED_PROFILE.read();
     final state = await NtfySharedState.load();
+    final slice = state.slice(profile);
     final messages =
-        await NtfyClient(subscription).poll(since: state.sinceParameter);
-    return _store(messages, state);
+        await NtfyClient(subscription).poll(since: slice.sinceParameter);
+    return _store(messages, slice, state);
   }
 
-  /// Stores stream-delivered messages through the same dedupe/marker path.
+  /// Stores stream-delivered messages (active profile) through the same
+  /// dedupe/marker path.
   static Future<int> storeMessages(List<NtfyMessage> messages) async {
+    final profile = LunaSeaDatabase.ENABLED_PROFILE.read();
     final state = await NtfySharedState.load();
-    return _store(messages, state);
+    return _store(messages, state.slice(profile), state);
   }
 
   static Future<int> _store(
     List<NtfyMessage> messages,
+    NtfyProfileState slice,
     NtfySharedState state,
   ) async {
     int fresh = 0;
-    int maxTime = state.since;
+    int maxTime = slice.since;
 
     for (final message in messages) {
       if (message.id.isEmpty) continue;
       if (message.time > maxTime) maxTime = message.time;
+      final key = LunaNotification.boxKey(slice.profile, message.id);
       // Existing entries keep their read flag — repeated polls overlap.
-      if (LunaBox.notifications.contains(message.id)) continue;
+      if (LunaBox.notifications.contains(key)) continue;
       await LunaBox.notifications.update(
-        message.id,
+        key,
         LunaNotification(
           id: message.id,
           time: message.time,
@@ -391,6 +429,7 @@ class NtfySync {
           body: message.message,
           priority: message.priority,
           tags: message.tags,
+          profile: slice.profile,
         ),
       );
       fresh++;
@@ -398,10 +437,10 @@ class NtfySync {
 
     _compact();
 
-    if (maxTime > state.since || maxTime > state.bgSince) {
-      state.since = maxTime;
+    if (maxTime > slice.since || maxTime > slice.bgSince) {
+      slice.since = maxTime;
       // Anything already visible in-app must not re-notify from background.
-      if (maxTime > state.bgSince) state.bgSince = maxTime;
+      if (maxTime > slice.bgSince) slice.bgSince = maxTime;
       await state.save();
     }
     return fresh;
@@ -414,35 +453,42 @@ class NtfySync {
     items.skip(count).forEach((notification) => notification.delete());
   }
 
-  /// Background-isolate fetch: file-backed state only — the Hive boxes are
-  /// owned by the main isolate and must not be opened here. New messages are
-  /// NOT stored; the inbox catches up from its own marker on next launch.
+  /// Background-isolate fetch across EVERY server-owned profile: file-backed
+  /// state only — Hive is owned by the main isolate. New messages are NOT
+  /// stored; each profile's inbox catches up from its own marker on next
+  /// launch. Returns fresh messages (any profile) to post as local
+  /// notifications.
   static Future<List<NtfyMessage>> backgroundFetch() async {
     final state = await NtfySharedState.load();
     if (!state.backgroundEnabled) return [];
-    final subscription = state.subscription;
-    if (subscription == null) return [];
 
-    // First background run with no marker: look back one hour, not the
-    // entire server-side cache.
-    final since = state.bgSince != 0
-        ? state.bgSince
-        : DateTime.now().millisecondsSinceEpoch ~/ 1000 - 3600;
+    final fresh = <NtfyMessage>[];
+    for (final slice in state.subscribed) {
+      final subscription = slice.subscription;
+      if (subscription == null) continue;
+      try {
+        final since = slice.bgSince != 0
+            ? slice.bgSince
+            : DateTime.now().millisecondsSinceEpoch ~/ 1000 - 3600;
+        final messages =
+            await NtfyClient(subscription).poll(since: since.toString());
+        final newForSlice = messages
+            .where((m) => m.id.isNotEmpty && !slice.notifiedIds.contains(m.id))
+            .toList();
 
-    final messages =
-        await NtfyClient(subscription).poll(since: since.toString());
-    final fresh = messages
-        .where((m) => m.id.isNotEmpty && !state.notifiedIds.contains(m.id))
-        .toList();
-
-    state.bgSince = since;
-    for (final message in messages) {
-      if (message.time > state.bgSince) state.bgSince = message.time;
+        slice.bgSince = since;
+        for (final message in messages) {
+          if (message.time > slice.bgSince) slice.bgSince = message.time;
+        }
+        slice.notifiedIds = [
+          ...newForSlice.map((m) => m.id),
+          ...slice.notifiedIds,
+        ];
+        fresh.addAll(newForSlice);
+      } catch (_) {
+        // One server unreachable shouldn't block the others.
+      }
     }
-    state.notifiedIds = [
-      ...fresh.map((m) => m.id),
-      ...state.notifiedIds,
-    ];
     await state.save();
     return fresh;
   }
@@ -502,10 +548,11 @@ class NtfyStreamManager with WidgetsBindingObserver {
       try {
         // Catch up first so the stream only has to carry live messages.
         await NtfySync.syncInbox();
+        final active = LunaSeaDatabase.ENABLED_PROFILE.read();
         final state = await NtfySharedState.load();
         final cancelToken = _cancelToken = CancelToken();
         final stream = NtfyClient(subscription).stream(
-          since: state.sinceParameter,
+          since: state.slice(active).sinceParameter,
           cancelToken: cancelToken,
         );
         await for (final message in stream) {

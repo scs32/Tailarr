@@ -1,5 +1,11 @@
 import 'package:lunasea/database/table.dart';
+import 'package:lunasea/database/tables/lunasea.dart';
 
+/// Notification + gateway self-config + push state, scoped PER PROFILE.
+/// Every server-owned profile joins a different Tailarr Server (its own
+/// person, topics, inbox, push registration), so none of this can be
+/// global — the key is namespaced by the enabled profile so switching
+/// profiles switches the entire notification world with zero leakage.
 enum NotificationsDatabase<T> with LunaTableMixin<T> {
   ENABLED<bool>(false),
   URL<String>(''),
@@ -43,6 +49,18 @@ enum NotificationsDatabase<T> with LunaTableMixin<T> {
 
   @override
   LunaTable get table => LunaTable.notifications;
+
+  /// Per-profile key: `NOTIFICATIONS_<FIELD>@<profile>`. Reads/writes/watches
+  /// all resolve against the currently enabled profile, so every consumer
+  /// (settings UI, stream manager, gateway sync, push) is profile-scoped
+  /// for free. Legacy global keys (`NOTIFICATIONS_<FIELD>`) are simply left
+  /// behind — notifications self-configure from the gateway, so a profile
+  /// with no stored config just re-fetches.
+  @override
+  String get key {
+    final profile = LunaSeaDatabase.ENABLED_PROFILE.read();
+    return '${table.key.toUpperCase()}_${name}@$profile';
+  }
 
   @override
   final T fallback;

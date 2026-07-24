@@ -198,7 +198,11 @@ class _State extends State<ImportConfigurationRoute>
       } catch (_) {}
 
       if (!mounted) return;
-      context.read<TailarrServerState>().reset();
+      // Config landed AFTER the profile switch's initial state reset, so the
+      // module states still read the mid-switch empty profile ("Not enabled"
+      // until toggled). Reset every module state now that the profile is
+      // fully configured.
+      LunaState.reset(context);
       final summary = [
         ...?services?.configured.map((t) => t.toTitleCase()),
         if ((services?.bookmarked ?? []).isNotEmpty)

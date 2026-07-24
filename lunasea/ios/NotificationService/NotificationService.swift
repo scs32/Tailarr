@@ -29,24 +29,31 @@ class NotificationService: UNNotificationServiceExtension {
             return
         }
 
-        guard let state = SharedState.load() else {
+        let slices = SharedState.load()
+        guard !slices.isEmpty else {
             contentHandler(content)
             return
         }
 
-        NtfyFetcher.fetchUnseen(state: state) { messages in
+        // A content-free wake can come from ANY server the device is
+        // registered with (iOS gives one token per app), so fetch every
+        // profile's slice and show the newest unseen message across all.
+        NtfyFetcher.fetchUnseenAcross(slices) { results in
             defer { contentHandler(content) }
-            guard let newest = messages.last else { return }
+            let all = results.flatMap { $0.messages }.sorted { $0.time < $1.time }
+            guard let newest = all.last else { return }
 
             content.title = newest.displayTitle
             content.body = newest.message ?? ""
-            if messages.count > 1 {
-                content.body += " (+\(messages.count - 1) more)"
+            if all.count > 1 {
+                content.body += " (+\(all.count - 1) more)"
             }
             content.threadIdentifier = newest.topic
 
-            // Advance the shared markers so BG refresh doesn't re-notify.
-            state.markNotified(messages)
+            // Advance each slice's markers so BG refresh doesn't re-notify.
+            for result in results where !result.messages.isEmpty {
+                result.slice.markNotified(result.messages)
+            }
         }
     }
 
@@ -59,53 +66,71 @@ class NotificationService: UNNotificationServiceExtension {
     }
 }
 
-/// Minimal mirror of the app's shared-state file (tailarr_ntfy.json in the
-/// App Group container). Read/modify/write kept small and atomic; the app
-/// side treats unknown keys as passthrough so the two writers coexist.
+/// One profile's slice of the app's shared-state file (tailarr_ntfy.json in
+/// the App Group container). The file holds every server-owned profile's
+/// subscription + markers under `profiles.<name>`; each slice reads/advances
+/// its own entry. markNotified re-reads the whole file so concurrent slices
+/// don't clobber each other's markers.
 final class SharedState {
+    let profile: String
     let url: String
     let token: String
     let topics: [String]
     let bgSince: Int
     let notifiedIds: [String]
-    private var raw: [String: Any]
     private let fileURL: URL
 
-    private init?(raw: [String: Any], fileURL: URL) {
+    private init?(profile: String, entry: [String: Any], fileURL: URL) {
         guard
-            let url = raw["url"] as? String, !url.isEmpty,
-            let topics = raw["topics"] as? [String], !topics.isEmpty
+            let url = entry["url"] as? String, !url.isEmpty,
+            let topics = entry["topics"] as? [String], !topics.isEmpty
         else { return nil }
+        self.profile = profile
         self.url = url
-        self.token = raw["token"] as? String ?? ""
+        self.token = entry["token"] as? String ?? ""
         self.topics = topics
-        self.bgSince = raw["bg_since"] as? Int ?? 0
-        self.notifiedIds = raw["notified_ids"] as? [String] ?? []
-        self.raw = raw
+        self.bgSince = entry["bg_since"] as? Int ?? 0
+        self.notifiedIds = entry["notified_ids"] as? [String] ?? []
         self.fileURL = fileURL
     }
 
-    static func load() -> SharedState? {
+    private static func fileURL() -> URL? {
+        FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: NotificationService.appGroupId)?
+            .appendingPathComponent("tailarr_ntfy.json")
+    }
+
+    /// Every profile slice with a usable subscription.
+    static func load() -> [SharedState] {
         guard
-            let container = FileManager.default.containerURL(
-                forSecurityApplicationGroupIdentifier: NotificationService.appGroupId)
-        else { return nil }
-        let fileURL = container.appendingPathComponent("tailarr_ntfy.json")
-        guard
+            let fileURL = fileURL(),
             let data = try? Data(contentsOf: fileURL),
-            let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return nil }
-        return SharedState(raw: raw, fileURL: fileURL)
+            let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let profiles = raw["profiles"] as? [String: Any]
+        else { return [] }
+        return profiles.compactMap { (name, value) in
+            guard let entry = value as? [String: Any] else { return nil }
+            return SharedState(profile: name, entry: entry, fileURL: fileURL)
+        }
     }
 
     func markNotified(_ messages: [NtfyMessage]) {
-        var since = bgSince
+        guard
+            let data = try? Data(contentsOf: fileURL),
+            var raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            var profiles = raw["profiles"] as? [String: Any],
+            var entry = profiles[profile] as? [String: Any]
+        else { return }
+
+        var since = entry["bg_since"] as? Int ?? bgSince
         for message in messages where message.time > since { since = message.time }
-        raw["bg_since"] = since
-        raw["notified_ids"] = Array(
-            (messages.map { $0.id } + notifiedIds).prefix(25))
-        if let data = try? JSONSerialization.data(withJSONObject: raw) {
-            try? data.write(to: fileURL, options: .atomic)
+        let priorIds = entry["notified_ids"] as? [String] ?? notifiedIds
+        entry["bg_since"] = since
+        entry["notified_ids"] = Array((messages.map { $0.id } + priorIds).prefix(25))
+        profiles[profile] = entry
+        raw["profiles"] = profiles
+        if let out = try? JSONSerialization.data(withJSONObject: raw) {
+            try? out.write(to: fileURL, options: .atomic)
         }
     }
 }
@@ -128,7 +153,33 @@ struct NtfyMessage {
     }
 }
 
+struct SliceResult {
+    let slice: SharedState
+    let messages: [NtfyMessage]
+}
+
 enum NtfyFetcher {
+    /// Fetch unseen messages for every profile slice concurrently, so a wake
+    /// from any registered server surfaces the right content.
+    static func fetchUnseenAcross(
+        _ slices: [SharedState],
+        completion: @escaping ([SliceResult]) -> Void
+    ) {
+        let group = DispatchGroup()
+        var results: [SliceResult] = []
+        let lock = NSLock()
+        for slice in slices {
+            group.enter()
+            fetchUnseen(state: slice) { messages in
+                lock.lock()
+                results.append(SliceResult(slice: slice, messages: messages))
+                lock.unlock()
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) { completion(results) }
+    }
+
     /// One-shot poll of everything unseen since the background marker.
     /// Wakes are coalesced server-side (one per 10s burst), so ALL unseen
     /// messages are fetched, never just one.

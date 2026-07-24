@@ -77,8 +77,9 @@ class _State extends State<NotificationsRoute> with LunaScrollControllerMixin {
   }
 
   void _markAllRead() {
+    final active = LunaSeaDatabase.ENABLED_PROFILE.read();
     for (final notification in LunaBox.notifications.data) {
-      if (!notification.read) {
+      if (!notification.read && notification.matchesProfile(active)) {
         notification.read = true;
         notification.save();
       }
@@ -163,7 +164,10 @@ class _State extends State<NotificationsRoute> with LunaScrollControllerMixin {
       onRefresh: _refresh,
       child: LunaBox.notifications.listenableBuilder(
         builder: (context, _) {
-          final notifications = LunaBox.notifications.data.toList()
+          final active = LunaSeaDatabase.ENABLED_PROFILE.read();
+          final notifications = LunaBox.notifications.data
+              .where((n) => n.matchesProfile(active))
+              .toList()
             ..sort((a, b) => b.time.compareTo(a.time));
           if (notifications.isEmpty) return _empty();
           WidgetsBinding.instance.addPostFrameCallback((_) => _markAllRead());

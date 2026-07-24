@@ -24,6 +24,12 @@ class LunaNotification extends HiveObject {
   @HiveField(7, defaultValue: false)
   bool read;
 
+  /// The profile (Tailarr Server) this alert belongs to. The inbox filters
+  /// on it so each server-owned profile sees only its own notifications.
+  /// Empty on legacy pre-per-profile entries (shown under any profile).
+  @HiveField(8, defaultValue: '')
+  final String profile;
+
   LunaNotification({
     required this.id,
     required this.time,
@@ -33,7 +39,17 @@ class LunaNotification extends HiveObject {
     this.priority = 3,
     this.tags = const [],
     this.read = false,
+    this.profile = '',
   });
+
+  /// The box key: profile-namespaced so the same ntfy message id on two
+  /// different servers can't collide, and per-profile dedupe still works.
+  static String boxKey(String profile, String id) => '$profile $id';
+
+  /// Whether this entry belongs to [activeProfile]. Legacy untagged entries
+  /// (empty profile) show under any profile.
+  bool matchesProfile(String activeProfile) =>
+      profile.isEmpty || profile == activeProfile;
 
   DateTime get timestamp =>
       DateTime.fromMillisecondsSinceEpoch(time * 1000);
@@ -48,6 +64,7 @@ class LunaNotification extends HiveObject {
       'priority': priority,
       if (tags.isNotEmpty) 'tags': tags,
       'read': read,
+      if (profile.isNotEmpty) 'profile': profile,
     };
   }
 }

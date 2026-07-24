@@ -10,6 +10,7 @@ import 'package:lunasea/system/network/platform/network_stub.dart'
     if (dart.library.html) 'package:lunasea/system/network/platform/network_html.dart';
 import 'package:lunasea/router/router.dart';
 import 'package:lunasea/system/logger.dart';
+import 'package:lunasea/system/notifications/notifications.dart';
 import 'package:lunasea/types/exception.dart';
 import 'package:lunasea/vendor.dart';
 import 'package:lunasea/widgets/ui.dart';
@@ -224,6 +225,10 @@ class LunaProfileTools {
     // uses a different identity (or stops it when disabled); TailscaleGuard
     // covers the gap in the UI.
     IO.syncTailscaleToProfile();
+    // Notifications are per-profile: re-mirror the new profile's
+    // subscription and restart the ntfy stream so the inbox, badge and
+    // push follow the profile switch.
+    LunaNtfy().onConfigChanged();
   }
 
   Future<void> _create(String profile) async {

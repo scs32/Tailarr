@@ -130,7 +130,10 @@ class LunaDrawer extends StatelessWidget {
   Widget _unreadBadge(LunaModule module) {
     return LunaBox.notifications.listenableBuilder(
       builder: (context, _) {
-        final unread = LunaBox.notifications.data.where((n) => !n.read).length;
+        final active = LunaSeaDatabase.ENABLED_PROFILE.read();
+        final unread = LunaBox.notifications.data
+            .where((n) => !n.read && n.matchesProfile(active))
+            .length;
         if (unread == 0) return const SizedBox();
         return Container(
           margin: const EdgeInsets.only(left: 8.0),
