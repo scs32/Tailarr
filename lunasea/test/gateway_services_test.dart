@@ -108,6 +108,22 @@ void main() {
       expect(response.isUnavailable, isFalse);
     });
 
+    test('no ui object → full experience (default people, older servers)', () {
+      final response = parse(CONTRACT_FIXTURE);
+      expect(response.ui.basic, isFalse);
+    });
+
+    test('ui.basic true → Basic preset', () {
+      final response = parse(
+        '{"ok": true, "kind": "services", "ui": {"basic": true}, '
+        '"services": [{"type": "overseerr", "name": "jellyseerr", '
+        '"url": "https://j.x.ts.net", "auth": {"api_key": "k"}}]}',
+      );
+      expect(response.ui.basic, isTrue);
+      // UX policy never changes the handed-out service set.
+      expect(response.services, hasLength(1));
+    });
+
     test('unknown future types parse and read as non-native', () {
       final response = parse(
         '{"ok": true, "kind": "services", "services": ['

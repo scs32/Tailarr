@@ -175,6 +175,23 @@ class LunaProfile extends HiveObject {
   @HiveField(51, defaultValue: false)
   bool serverOwned;
 
+  /// The server tagged this profile's person "Basic" (`ui.basic` in
+  /// /self/services). The app resolves it to a simplified shell — Settings
+  /// hidden, no drawer, launched straight into the granted module. UX only:
+  /// access is still governed by badges. Persisted so it applies before the
+  /// first gateway call each session.
+  @JsonKey(defaultValue: false)
+  @HiveField(52, defaultValue: false)
+  bool uiBasic;
+
+  /// Whether the Settings surface is hidden for this profile (resolved from
+  /// [uiBasic] today; an explicit server override later).
+  bool get uiHidesSettings => uiBasic;
+
+  /// Whether the navigation drawer is shown (Basic users get a drawerless,
+  /// single-purpose shell).
+  bool get uiShowsDrawer => !uiBasic;
+
   @JsonKey()
   @HiveField(46, defaultValue: <String, String>{})
   Map<String, String> tailarrServerHeaders;
@@ -237,6 +254,7 @@ class LunaProfile extends HiveObject {
     //Gateway self-config
     required this.gatewayManagedModules,
     required this.serverOwned,
+    required this.uiBasic,
     //Tautulli
     required this.tautulliEnabled,
     required this.tautulliHost,
@@ -291,6 +309,7 @@ class LunaProfile extends HiveObject {
     //Gateway self-config
     List<String>? gatewayManagedModules,
     bool? serverOwned,
+    bool? uiBasic,
     //Tautulli
     bool? tautulliEnabled,
     String? tautulliHost,
@@ -344,6 +363,7 @@ class LunaProfile extends HiveObject {
       // Gateway self-config
       gatewayManagedModules: gatewayManagedModules ?? [],
       serverOwned: serverOwned ?? false,
+      uiBasic: uiBasic ?? false,
       // Tautulli
       tautulliEnabled: tautulliEnabled ?? false,
       tautulliHost: tautulliHost ?? '',

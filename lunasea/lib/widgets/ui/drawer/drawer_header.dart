@@ -12,22 +12,27 @@ class LunaDrawerHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return LunaSeaDatabase.ENABLED_PROFILE.listenableBuilder(
-      builder: (context, _) => Container(
+      builder: (context, _) {
+        // Basic (server-tagged) profiles get a stripped shell: no Settings
+        // gear, no profile switching.
+        final basic = LunaProfile.current.uiHidesSettings;
+        return Container(
         child: LunaAppBar.dropdown(
           backgroundColor: Colors.transparent,
           hideLeading: true,
           useDrawer: false,
-          title: LunaBox.profiles.keys.length == 1
+          title: LunaBox.profiles.keys.length == 1 || basic
               ? 'Tailarr'
               : LunaSeaDatabase.ENABLED_PROFILE.read(),
-          profiles: LunaBox.profiles.keys.cast<String>().toList(),
+          profiles: basic ? [] : LunaBox.profiles.keys.cast<String>().toList(),
           actions: [
-            LunaIconButton(
-              icon: LunaIcons.SETTINGS,
-              onPressed: page == LunaModule.SETTINGS.key
-                  ? Navigator.of(context).pop
-                  : LunaModule.SETTINGS.launch,
-            )
+            if (!basic)
+              LunaIconButton(
+                icon: LunaIcons.SETTINGS,
+                onPressed: page == LunaModule.SETTINGS.key
+                    ? Navigator.of(context).pop
+                    : LunaModule.SETTINGS.launch,
+              )
           ],
         ),
         decoration: BoxDecoration(
@@ -41,7 +46,8 @@ class LunaDrawerHeader extends StatelessWidget {
             fit: BoxFit.cover,
           ),
         ),
-      ),
+      );
+      },
     );
   }
 }

@@ -171,6 +171,24 @@ class GatewayService {
   }
 }
 
+/// Per-person UX policy the server drives through `/self/services` (`ui`
+/// object, server v0.27.0+). Absent → the full default experience. `basic`
+/// is a preset the app resolves to a simplified shell; explicit overrides
+/// (added later) win over it, so the server can re-shape the app without a
+/// client release. UX only — it never gates access to a service.
+class GatewayUiPolicy {
+  final bool basic;
+
+  const GatewayUiPolicy({this.basic = false});
+
+  /// The default (no `ui` object) — full experience.
+  static const GatewayUiPolicy full = GatewayUiPolicy();
+
+  factory GatewayUiPolicy.fromJson(Map<String, dynamic> json) {
+    return GatewayUiPolicy(basic: json['basic'] == true);
+  }
+}
+
 /// `GET http://tailarr-gate/self/services` — same whois-authenticated
 /// gateway as /self/notifications, answering "which services is this
 /// device's person badged for".
@@ -183,6 +201,9 @@ class GatewayServicesResponse {
   /// (< 0.23.0) behind a new gateway answers with the notifications
   /// payload, which must read as "feature unavailable", not an error.
   final List<GatewayService>? services;
+
+  /// Per-person UX policy — `full` when the server omits `ui`.
+  final GatewayUiPolicy ui;
   final int? statusCode;
 
   const GatewayServicesResponse({
@@ -190,6 +211,7 @@ class GatewayServicesResponse {
     required this.error,
     required this.kind,
     required this.services,
+    this.ui = GatewayUiPolicy.full,
     this.statusCode,
   });
 
@@ -224,6 +246,9 @@ class GatewayServicesResponse {
               .map(GatewayService.fromJson)
               .toList()
           : null,
+      ui: json['ui'] is Map<String, dynamic>
+          ? GatewayUiPolicy.fromJson(json['ui'] as Map<String, dynamic>)
+          : GatewayUiPolicy.full,
     );
   }
 }

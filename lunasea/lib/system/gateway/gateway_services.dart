@@ -359,6 +359,9 @@ class GatewayServicesSync {
         if (module.isInBox) module.delete();
       },
     );
+    // Per-person UX policy — resolved and persisted on the profile so the
+    // simplified shell applies before the first gateway call each session.
+    profile.uiBasic = response.ui.basic;
     if (profile.isInBox) profile.save();
     for (final module in externals) {
       if (module.isInBox) module.save();
