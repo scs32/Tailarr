@@ -91,4 +91,32 @@ void main() {
     // numeric branch when both base and base+tailnet are occupied.)
     expect(name, 'Tailarr 2');
   });
+
+  testWidgets('a server-provided name is used over the host-derived one',
+      (t) async {
+    await ensureBooted();
+    final name = LunaProfileTools.serverProfileName(
+      'https://tailarr.tail95fc29.ts.net',
+      preferredName: 'Living Room',
+    );
+    expect(name, 'Living Room');
+  });
+
+  testWidgets('two servers sharing a display name still get distinct profiles',
+      (t) async {
+    await ensureBooted();
+    const hostA = 'https://tailarr.tail95fc29.ts.net';
+    const hostB = 'https://tailarr.taila06ea9.ts.net';
+
+    final nameA =
+        LunaProfileTools.serverProfileName(hostA, preferredName: 'Home');
+    expect(nameA, 'Home');
+    await seedServer(nameA, hostA);
+
+    // Second server also named "Home" — disambiguated, never a collision.
+    final nameB =
+        LunaProfileTools.serverProfileName(hostB, preferredName: 'Home');
+    expect(nameB, 'Home (taila06ea9)');
+    expect(nameB, isNot('Home'));
+  });
 }

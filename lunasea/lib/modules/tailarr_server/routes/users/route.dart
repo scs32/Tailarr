@@ -396,6 +396,11 @@ class _State extends State<UsersRoute> with LunaScrollControllerMixin {
     final values = await LunaDialogs().editText(context, 'User Name');
     if (!values.item1 || values.item2.trim().isEmpty) return;
     final name = values.item2.trim();
+    // Best-effort: the server's display name for the joined device's profile.
+    String serverName = '';
+    try {
+      serverName = (await api.getInfo()).name;
+    } catch (_) {}
     await api.addPerson(name).then((result) {
       if (result.ok && result.key.isNotEmpty) {
         _fetch();
@@ -408,6 +413,7 @@ class _State extends State<UsersRoute> with LunaScrollControllerMixin {
               : SharedModuleConfiguration.invite(
                   serverHost: profile.tailarrServerHost,
                   enrollKey: result.key,
+                  serverName: serverName,
                   headers: Map<String, String>.from(
                     profile.tailarrServerHeaders,
                   ),

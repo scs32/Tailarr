@@ -39,6 +39,13 @@ class SharedModuleConfiguration {
   /// for. Only ever carried alongside [LunaModule.TAILARR_SERVER].
   final String enrollKey;
 
+  /// The server's admin-chosen display name, carried in the invite so the
+  /// joined device names its server-owned profile after the server rather
+  /// than the generic MagicDNS hostname (every controller is "tailarr").
+  /// Empty when the server doesn't provide one — the profile then falls
+  /// back to the host-derived name.
+  final String serverName;
+
   const SharedModuleConfiguration({
     required this.module,
     required this.host,
@@ -47,6 +54,7 @@ class SharedModuleConfiguration {
     this.pass = '',
     this.headers = const {},
     this.enrollKey = '',
+    this.serverName = '',
   });
 
   bool get isInvite => enrollKey.isNotEmpty;
@@ -57,6 +65,7 @@ class SharedModuleConfiguration {
   factory SharedModuleConfiguration.invite({
     required String serverHost,
     required String enrollKey,
+    String serverName = '',
     Map<String, String> headers = const {},
   }) {
     return SharedModuleConfiguration(
@@ -64,6 +73,7 @@ class SharedModuleConfiguration {
       host: serverHost,
       headers: headers,
       enrollKey: enrollKey,
+      serverName: serverName,
     );
   }
 
@@ -150,6 +160,9 @@ class SharedModuleConfiguration {
         enrollKey: json['enroll'] is Map
             ? (json['enroll']['key']?.toString() ?? '')
             : '',
+        serverName: json['enroll'] is Map
+            ? (json['enroll']['name']?.toString() ?? '')
+            : '',
       );
     } catch (_) {
       return null;
@@ -165,7 +178,11 @@ class SharedModuleConfiguration {
       if (user.isNotEmpty) 'user': user,
       if (pass.isNotEmpty) 'pass': pass,
       if (headers.isNotEmpty) 'headers': headers,
-      if (enrollKey.isNotEmpty) 'enroll': {'key': enrollKey},
+      if (enrollKey.isNotEmpty)
+        'enroll': {
+          'key': enrollKey,
+          if (serverName.isNotEmpty) 'name': serverName,
+        },
     };
     return base64Url.encode(utf8.encode(jsonEncode(payload))).replaceAll('=', '');
   }

@@ -22,6 +22,12 @@ class TailarrServerInfo {
   /// reliably mint tagged enrollment keys.
   final String? tsapiMode;
 
+  /// The admin-chosen display name of this Tailarr Server (`name` in
+  /// `/api/info`, server v0.27.0+). Empty on older servers. Carried into
+  /// invites so a joined device names its server-owned profile after the
+  /// server instead of the generic "tailarr" MagicDNS hostname.
+  final String name;
+
   const TailarrServerInfo({
     required this.apiVersion,
     required this.version,
@@ -29,6 +35,7 @@ class TailarrServerInfo {
     required this.controllerPods,
     required this.upgradeAvailable,
     required this.tsapiMode,
+    required this.name,
   });
 
   factory TailarrServerInfo.fromJson(Map<String, dynamic> json) {
@@ -41,6 +48,7 @@ class TailarrServerInfo {
           .toList(),
       upgradeAvailable: _bool(json['upgrade_available']),
       tsapiMode: (json['tsapi'] as Map?)?['mode']?.toString(),
+      name: _string(json['name']),
     );
   }
 }

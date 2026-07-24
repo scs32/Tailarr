@@ -155,8 +155,10 @@ class _State extends State<ImportConfigurationRoute>
       // Every server-driven thing this join creates lands on a profile the
       // SERVER owns (name locked, config server-managed), created fresh or
       // reused per server host — the user's own profiles are never touched.
-      final profileName =
-          await LunaProfileTools().enterServerOwnedProfile(config.host);
+      final profileName = await LunaProfileTools().enterServerOwnedProfile(
+        config.host,
+        preferredName: config.serverName,
+      );
       final profile = LunaProfile.current;
       config.applyToProfile();
       // Invite-joined = server-managed from birth (not a manual import).

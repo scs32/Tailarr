@@ -388,6 +388,12 @@ class _State extends State<PersonDetailsRoute> with LunaScrollControllerMixin {
       buttonColor: LunaColours.accent,
     );
     if (!confirmed) return;
+    // Best-effort: the server's display name, so the joined device names its
+    // profile after the server. Empty when the server doesn't provide one.
+    String serverName = '';
+    try {
+      serverName = (await api!.getInfo()).name;
+    } catch (_) {}
     await api!.reissuePersonKey(widget.id).then((result) {
       if (result.ok && result.key.isNotEmpty) {
         final profile = LunaProfile.current;
@@ -399,6 +405,7 @@ class _State extends State<PersonDetailsRoute> with LunaScrollControllerMixin {
               : SharedModuleConfiguration.invite(
                   serverHost: profile.tailarrServerHost,
                   enrollKey: result.key,
+                  serverName: serverName,
                   headers: Map<String, String>.from(
                     profile.tailarrServerHeaders,
                   ),

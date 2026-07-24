@@ -27,6 +27,28 @@ void main() {
     );
   });
 
+  test('invite carries an optional server display name', () {
+    final invite = SharedModuleConfiguration.invite(
+      serverHost: 'https://tailarr.tail95fc29.ts.net',
+      enrollKey: 'tskey-auth-kFAKE',
+      serverName: 'Living Room',
+    );
+    final decoded =
+        SharedModuleConfiguration.decode(invite.link.split('#').last);
+    expect(decoded!.isInvite, isTrue);
+    expect(decoded.serverName, 'Living Room');
+
+    // Absent name decodes empty (older admin builds / servers).
+    final noName = SharedModuleConfiguration.invite(
+      serverHost: 'https://tailarr.tail95fc29.ts.net',
+      enrollKey: 'tskey-auth-kFAKE',
+    );
+    expect(
+      SharedModuleConfiguration.decode(noName.link.split('#').last)!.serverName,
+      isEmpty,
+    );
+  });
+
   test('plain module shares still decode without an enroll key', () {
     const share = SharedModuleConfiguration(
       module: LunaModule.SONARR,

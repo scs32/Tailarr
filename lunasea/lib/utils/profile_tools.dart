@@ -70,16 +70,21 @@ class LunaProfileTools {
         : labels.first[0].toUpperCase() + labels.first.substring(1);
   }
 
-  static String serverProfileName(String host) {
-    final base = serverProfileBaseName(host);
+  /// The profile name for a server, de-duplicated against existing profiles.
+  /// Prefers the server's admin-chosen [preferredName] (from the invite);
+  /// falls back to the host-derived name. On a collision it appends the
+  /// tailnet label, then a number — so two servers sharing a display name
+  /// (e.g. both "Home") still get distinct profiles ("Home", "Home
+  /// (tail95fc29)", "Home 2").
+  static String serverProfileName(String host, {String? preferredName}) {
+    final trimmed = preferredName?.trim() ?? '';
+    final base = trimmed.isNotEmpty ? trimmed : serverProfileBaseName(host);
     final labels = (Uri.tryParse(host)?.host ?? host)
         .split('.')
         .where((l) => l.isNotEmpty)
         .toList();
     final existing = LunaProfile.list.toSet();
     if (!existing.contains(base)) return base;
-    // Collision: append the tailnet label (tailarr.tail95fc29.ts.net →
-    // "Tailarr (tail95fc29)").
     if (labels.length >= 2) {
       final tailnet = '$base (${labels[1]})';
       if (!existing.contains(tailnet)) return tailnet;
@@ -94,13 +99,16 @@ class LunaProfileTools {
   /// Create (or reuse) the server-owned profile for [host] and switch to it.
   /// Returns the profile name. All subsequent server-driven configuration
   /// lands here, never on the user's own profiles.
-  Future<String> enterServerOwnedProfile(String host) async {
+  Future<String> enterServerOwnedProfile(
+    String host, {
+    String? preferredName,
+  }) async {
     final existing = serverOwnedProfileFor(host);
     if (existing != null) {
       _changeTo(existing.key as String);
       return existing.key as String;
     }
-    final name = serverProfileName(host);
+    final name = serverProfileName(host, preferredName: preferredName);
     await LunaBox.profiles.update(
       name,
       LunaProfile(serverOwned: true, tailarrServerHost: host),
