@@ -75,56 +75,49 @@ void main() {
     expect(LunaBox.profiles.read('My Setup')!.serverOwned, isFalse);
   });
 
-  testWidgets('a profile already named after its server flips in place',
+  testWidgets('a custom-named legacy profile is marked owned, not renamed',
       (tester) async {
     await ensureBooted();
 
-    // A legacy profile that happens to already carry the server's name is
-    // just marked owned — never renamed to a deduped variant.
+    // A user's meaningfully-named server profile (predating the feature and
+    // the gateway-managed marker) is marked owned but keeps its name.
     await LunaBox.profiles.update(
-      'Tailarr',
+      'Apple Container',
       LunaProfile(
+        tailscaleEnabled: true,
+        tailscaleIdentity: 'apple-container',
         tailarrServerEnabled: true,
         tailarrServerHost: 'https://tailarr.tail95fc29.ts.net',
-        gatewayManagedModules: ['tailarr'],
       ),
     );
 
     LunaDatabase().migrateLegacyServerProfiles();
 
-    expect(LunaProfile.list, ['Tailarr']);
-    expect(LunaBox.profiles.read('Tailarr')!.serverOwned, isTrue);
+    expect(LunaProfile.list, contains('Apple Container'));
+    expect(LunaBox.profiles.read('Apple Container')!.serverOwned, isTrue);
   });
 
-  testWidgets('a second distinct server coexists with a deduped name',
+  testWidgets('detection no longer requires the gateway-managed marker',
       (tester) async {
     await ensureBooted();
 
-    // One server already owns "Tailarr"; a legacy profile for a DIFFERENT
-    // server is renamed to a distinct deduped name and marked owned.
+    // Older invite: server host + Tailscale enrolled, but no 'tailarr' in
+    // gatewayManagedModules (that tracking came later). Still converted.
     await LunaBox.profiles.update(
-      'Tailarr',
+      LunaProfile.DEFAULT_PROFILE,
       LunaProfile(
-        serverOwned: true,
+        tailscaleEnabled: true,
+        tailscaleIdentity: 'default',
+        tailarrServerEnabled: true,
         tailarrServerHost: 'https://tailarr.tail95fc29.ts.net',
       ),
     );
-    await LunaBox.profiles.update(
-      'legacy',
-      LunaProfile(
-        tailarrServerEnabled: true,
-        tailarrServerHost: 'https://tailarr.taila06ea9.ts.net',
-        gatewayManagedModules: ['tailarr'],
-      ),
-    );
+    LunaSeaDatabase.ENABLED_PROFILE.update(LunaProfile.DEFAULT_PROFILE);
 
     LunaDatabase().migrateLegacyServerProfiles();
 
-    expect(LunaProfile.list, isNot(contains('legacy')));
-    expect(LunaProfile.list, contains('Tailarr (taila06ea9)'));
-    expect(
-      LunaBox.profiles.read('Tailarr (taila06ea9)')!.serverOwned,
-      isTrue,
-    );
+    expect(LunaProfile.list, contains('Tailarr'));
+    expect(LunaProfile.list, isNot(contains('default')));
+    expect(LunaBox.profiles.read('Tailarr')!.serverOwned, isTrue);
   });
 }

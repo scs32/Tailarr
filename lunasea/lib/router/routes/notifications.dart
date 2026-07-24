@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:lunasea/database/tables/notifications.dart';
 import 'package:lunasea/modules.dart';
 import 'package:lunasea/modules/notifications/routes/notifications/route.dart';
 import 'package:lunasea/router/routes.dart';
@@ -21,7 +20,11 @@ enum NotificationsRoutes with LunaRoutesMixin {
 
   @override
   bool isModuleEnabled(BuildContext context) {
-    return NotificationsDatabase.ENABLED.read();
+    // Notifications are always on (server-configured, not user-assembled) —
+    // matching LunaModule.NOTIFICATIONS.isEnabled. The inbox's own empty
+    // state carries the "not connected yet" status; the route must never
+    // fall through to the generic "Not Enabled" page.
+    return true;
   }
 
   @override

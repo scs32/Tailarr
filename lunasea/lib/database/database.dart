@@ -42,16 +42,20 @@ class LunaDatabase {
       final profile = LunaBox.profiles.read(name);
       if (profile == null) continue;
       if (profile.serverOwned) continue;
-      final isServerAttached = profile.tailarrServerHost.isNotEmpty &&
-          profile.gatewayManagedModules.contains('tailarr');
+      // A profile is server-attached if it points at a Tailarr Server over
+      // Tailscale — regardless of whether its modules were gateway-managed
+      // yet (older invites predate that marker). The services sync adopts
+      // its modules on the next launch; here we only need to mark ownership.
+      final isServerAttached = profile.tailarrServerEnabled &&
+          profile.tailarrServerHost.isNotEmpty &&
+          profile.tailscaleEnabled;
       if (!isServerAttached) continue;
 
-      // Already carrying its server's base name (or a deduped variant of
-      // it) — just flip the ownership flag, don't rename it to yet another
-      // variant.
-      final base =
-          LunaProfileTools.serverProfileBaseName(profile.tailarrServerHost);
-      if (name == base || name.startsWith('$base (') || name == '$base') {
+      // Respect an existing custom name (e.g. "Apple Container", "Mini VM")
+      // — only the generic 'default' is worth renaming to the server name.
+      // Renaming touches the box key + active pointer, so it's done only in
+      // that one safe case.
+      if (name != LunaProfile.DEFAULT_PROFILE) {
         profile.serverOwned = true;
         profile.save();
         continue;
@@ -60,15 +64,13 @@ class LunaDatabase {
       final desired =
           LunaProfileTools.serverProfileName(profile.tailarrServerHost);
       if (desired == name || LunaBox.profiles.contains(desired)) {
-        // Target is taken (a newer join already owns it) — flip in place.
         profile.serverOwned = true;
         profile.save();
         continue;
       }
 
-      // Rename in place at the box level (no LunaState/router — the UI
-      // isn't up yet): clone under the new key, repoint the active
-      // pointer, drop the old key.
+      // Rename at the box level (no LunaState/router — the UI isn't up yet):
+      // clone under the new key, repoint the active pointer, drop the old.
       final renamed = LunaProfile.clone(profile)..serverOwned = true;
       LunaBox.profiles.update(desired, renamed);
       if (LunaSeaDatabase.ENABLED_PROFILE.read() == name) {
