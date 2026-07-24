@@ -48,15 +48,38 @@ class LunaNtfy {
     unawaited(NtfyPush.register());
   }
 
+  /// Retry an unconfigured device's gateway setup — called on launch and on
+  /// every foreground. Public so the lifecycle observer can re-trigger it
+  /// once the Tailscale node has had time to connect.
+  Future<void> retryAutoConfigureIfUnconfigured() =>
+      _autoConfigureIfUnconfigured();
+
   Future<void> _autoConfigureIfUnconfigured() async {
     if (NotificationsDatabase.URL.read().isNotEmpty) return;
     final last = NotificationsDatabase.LAST_ATTEMPT.read();
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - last < Duration.millisecondsPerHour) return;
-    try {
-      await autoConfigure();
-    } catch (_) {
-      // Recorded on the status card; retried next launch/module open.
+    // Short cooldown, not hourly: a startup-race failure should re-attempt on
+    // the next foreground/module-open, not sit "Not Connected" for an hour.
+    if (now - last < const Duration(minutes: 2).inMilliseconds) return;
+
+    // The gateway is a bare MagicDNS short name routed through the embedded
+    // Tailscale node, which comes up a few seconds AFTER launch. A single
+    // immediate attempt loses that race ("Failed host lookup: tailarr-gate")
+    // and the hourly throttle then leaves it stuck. Retry across the startup
+    // window: stop on success or a definitive refusal (device unassigned /
+    // server too old); keep retrying only transport/routing failures.
+    for (var attempt = 0; attempt < 6; attempt++) {
+      try {
+        final creds = await autoConfigure();
+        if (creds == null || creds.ok || creds.isUnassigned) return;
+        // A parsed-but-incomplete handout isn't going to fix itself by
+        // retrying — stop and leave the recorded failure.
+        return;
+      } catch (_) {
+        // Transport/routing error — the node likely isn't up yet. Wait and
+        // retry through the connect window.
+        await Future.delayed(const Duration(seconds: 5));
+      }
     }
   }
 
@@ -515,6 +538,9 @@ class NtfyStreamManager with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _foreground = true;
       restart();
+      // Foregrounding is another chance to configure an unconfigured device
+      // whose launch attempt lost the Tailscale-startup race (throttled).
+      unawaited(LunaNtfy().retryAutoConfigureIfUnconfigured());
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       _foreground = false;
