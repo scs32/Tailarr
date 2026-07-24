@@ -18,14 +18,24 @@ class ServerDrivenConnection {
   static bool isManaged(String type) =>
       LunaProfile.current.gatewayManagedModules.contains(type);
 
-  /// True when a Tailarr Server is configured and has reported its service
-  /// list at least once. In that world every service the person is granted
-  /// is already adopted+managed, so an UNmanaged service means "not granted
-  /// to you" — the screen offers to request access instead of manual entry.
+  /// True when a Tailarr Server owns this profile's configuration and its
+  /// grant set is known — every granted service is already adopted+managed,
+  /// so an UNmanaged service means "not granted to you" and the screen
+  /// offers Request Access instead of manual entry.
+  ///
+  /// The grant set is known via ANY of: the profile is server-owned (born
+  /// from an invite), it already has gateway-managed modules (a sync or a
+  /// restore populated them), or a services sync has completed. Relying on
+  /// SERVICES_LAST_SYNC alone was too fragile — a server-owned profile whose
+  /// timestamp wasn't set (restored/migrated) wrongly fell back to a manual
+  /// toggle for services the person doesn't have.
   static bool hasServerGrantList() {
     final profile = LunaProfile.current;
-    return profile.tailarrServerEnabled &&
-        profile.tailarrServerHost.isNotEmpty &&
+    if (!profile.tailarrServerEnabled || profile.tailarrServerHost.isEmpty) {
+      return false;
+    }
+    return profile.serverOwned ||
+        profile.gatewayManagedModules.isNotEmpty ||
         NotificationsDatabase.SERVICES_LAST_SYNC.read() > 0;
   }
 
