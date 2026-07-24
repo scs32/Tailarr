@@ -70,7 +70,18 @@ class _State extends State<ProfilesRoute> with LunaScrollControllerMixin {
       onTap: () async {
         final dialogs = SettingsDialogs();
         final context = LunaState.context;
-        final profiles = LunaProfile.list;
+        // Server-owned profiles have server-driven, locked names.
+        final profiles = LunaProfile.list.where((name) {
+          return !(LunaBox.profiles.read(name)?.serverOwned ?? false);
+        }).toList();
+
+        if (profiles.isEmpty) {
+          showLunaInfoSnackBar(
+            title: 'No Profiles to Rename',
+            message: 'Server-managed profiles are named by their server',
+          );
+          return;
+        }
 
         final selected = await dialogs.renameProfile(context, profiles);
         if (selected.item1) {
@@ -113,10 +124,24 @@ class _State extends State<ProfilesRoute> with LunaScrollControllerMixin {
   Widget _enabledProfile() {
     const db = LunaSeaDatabase.ENABLED_PROFILE;
     return db.listenableBuilder(
-      builder: (context, _) => LunaBlock(
-        title: 'settings.EnabledProfile'.tr(),
-        body: [TextSpan(text: db.read())],
-        trailing: const LunaIconButton(icon: LunaIcons.USER),
+      builder: (context, _) {
+        final name = db.read();
+        final serverOwned =
+            LunaBox.profiles.read(name)?.serverOwned ?? false;
+        return LunaBlock(
+          title: 'settings.EnabledProfile'.tr(),
+          body: [
+            TextSpan(text: name),
+            if (serverOwned)
+              const TextSpan(
+                text: 'Managed by your Tailarr Server',
+                style: TextStyle(color: LunaColours.accent),
+              ),
+          ],
+          trailing: LunaIconButton(
+            icon: serverOwned ? Icons.dns_rounded : LunaIcons.USER,
+            color: serverOwned ? LunaColours.accent : LunaColours.white,
+          ),
         onTap: () async {
           final dialogs = SettingsDialogs();
           final enabledProfile = LunaSeaDatabase.ENABLED_PROFILE.read();
@@ -137,7 +162,8 @@ class _State extends State<ProfilesRoute> with LunaScrollControllerMixin {
             LunaProfileTools().changeTo(selected.item2);
           }
         },
-      ),
+        );
+      },
     );
   }
 }

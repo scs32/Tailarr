@@ -152,22 +152,26 @@ class _State extends State<ImportConfigurationRoute>
 
     setState(() => _joiningStep = 'Joining network…');
     try {
+      // Every server-driven thing this join creates lands on a profile the
+      // SERVER owns (name locked, config server-managed), created fresh or
+      // reused per server host — the user's own profiles are never touched.
+      final profileName =
+          await LunaProfileTools().enterServerOwnedProfile(config.host);
       final profile = LunaProfile.current;
       config.applyToProfile();
-      // An invite-joined device is server-managed from birth — undo the
-      // manual mark a plain share import would deserve.
+      // Invite-joined = server-managed from birth (not a manual import).
       if (!profile.gatewayManagedModules.contains('tailarr')) {
         profile.gatewayManagedModules = [
           ...profile.gatewayManagedModules,
           'tailarr',
         ];
       }
+      profile.serverOwned = true;
       profile.tailscaleAuthKey = config.enrollKey;
       profile.tailscaleEnabled = true;
       if (profile.tailscaleIdentity.isEmpty) {
-        profile.tailscaleIdentity = LunaProfileTools.generateTailscaleIdentity(
-          LunaSeaDatabase.ENABLED_PROFILE.read(),
-        );
+        profile.tailscaleIdentity =
+            LunaProfileTools.generateTailscaleIdentity(profileName);
       }
       profile.save();
 

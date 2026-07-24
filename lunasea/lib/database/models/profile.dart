@@ -166,6 +166,15 @@ class LunaProfile extends HiveObject {
   @HiveField(50, defaultValue: <String>[])
   List<String> gatewayManagedModules;
 
+  /// This profile was created by joining a Tailarr Server via invite and is
+  /// OWNED by that server: its name is locked (server-driven), and all of
+  /// its configuration is managed by the server. Isolating server config in
+  /// its own profile is what guarantees a user's hand-built profiles are
+  /// never overwritten. The owning server is [tailarrServerHost].
+  @JsonKey(defaultValue: false)
+  @HiveField(51, defaultValue: false)
+  bool serverOwned;
+
   @JsonKey()
   @HiveField(46, defaultValue: <String, String>{})
   Map<String, String> tailarrServerHeaders;
@@ -227,6 +236,7 @@ class LunaProfile extends HiveObject {
     required this.tailarrServerHeaders,
     //Gateway self-config
     required this.gatewayManagedModules,
+    required this.serverOwned,
     //Tautulli
     required this.tautulliEnabled,
     required this.tautulliHost,
@@ -280,6 +290,7 @@ class LunaProfile extends HiveObject {
     Map<String, String>? tailarrServerHeaders,
     //Gateway self-config
     List<String>? gatewayManagedModules,
+    bool? serverOwned,
     //Tautulli
     bool? tautulliEnabled,
     String? tautulliHost,
@@ -332,6 +343,7 @@ class LunaProfile extends HiveObject {
       tailarrServerHeaders: tailarrServerHeaders ?? {},
       // Gateway self-config
       gatewayManagedModules: gatewayManagedModules ?? [],
+      serverOwned: serverOwned ?? false,
       // Tautulli
       tautulliEnabled: tautulliEnabled ?? false,
       tautulliHost: tautulliHost ?? '',

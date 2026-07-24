@@ -34,6 +34,80 @@ class LunaProfileTools {
 
     return slug.isEmpty ? 'profile-$suffix' : '$slug-$suffix';
   }
+
+  /// The profile that a Tailarr Server at [host] owns, or null. A server
+  /// owns at most one profile (matched by host), keeping its config isolated
+  /// from the user's own profiles.
+  static LunaProfile? serverOwnedProfileFor(String host) {
+    final normalized = host.trim().replaceAll(RegExp(r'/+$'), '');
+    for (final name in LunaProfile.list) {
+      final profile = LunaBox.profiles.read(name);
+      if (profile != null &&
+          profile.serverOwned &&
+          profile.tailarrServerHost
+                  .trim()
+                  .replaceAll(RegExp(r'/+$'), '') ==
+              normalized) {
+        return profile;
+      }
+    }
+    return null;
+  }
+
+  /// A locked, human-readable profile name derived from a Tailarr Server
+  /// host (`https://tailarr.tailXXXX.ts.net` → `Tailarr`), disambiguated by
+  /// the tailnet label only when a DIFFERENT profile already holds the base
+  /// name. Server-owned profiles reuse their existing name (matched on
+  /// host), so this only runs when minting a new one.
+  /// The base (pre-dedup) profile name for a server host — pure, no box
+  /// access. `https://tailarr.tailXXXX.ts.net` → `Tailarr`.
+  static String serverProfileBaseName(String host) {
+    final authority = Uri.tryParse(host)?.host ?? host;
+    final labels = authority.split('.').where((l) => l.isNotEmpty).toList();
+    return labels.isEmpty
+        ? 'Tailarr'
+        : labels.first[0].toUpperCase() + labels.first.substring(1);
+  }
+
+  static String serverProfileName(String host) {
+    final base = serverProfileBaseName(host);
+    final labels = (Uri.tryParse(host)?.host ?? host)
+        .split('.')
+        .where((l) => l.isNotEmpty)
+        .toList();
+    final existing = LunaProfile.list.toSet();
+    if (!existing.contains(base)) return base;
+    // Collision: append the tailnet label (tailarr.tail95fc29.ts.net →
+    // "Tailarr (tail95fc29)").
+    if (labels.length >= 2) {
+      final tailnet = '$base (${labels[1]})';
+      if (!existing.contains(tailnet)) return tailnet;
+    }
+    var n = 2;
+    while (existing.contains('$base $n')) {
+      n++;
+    }
+    return '$base $n';
+  }
+
+  /// Create (or reuse) the server-owned profile for [host] and switch to it.
+  /// Returns the profile name. All subsequent server-driven configuration
+  /// lands here, never on the user's own profiles.
+  Future<String> enterServerOwnedProfile(String host) async {
+    final existing = serverOwnedProfileFor(host);
+    if (existing != null) {
+      _changeTo(existing.key as String);
+      return existing.key as String;
+    }
+    final name = serverProfileName(host);
+    await LunaBox.profiles.update(
+      name,
+      LunaProfile(serverOwned: true, tailarrServerHost: host),
+    );
+    _changeTo(name);
+    return name;
+  }
+
   bool changeTo(
     String profile, {
     bool showSnackbar = true,
@@ -130,6 +204,8 @@ class LunaProfileTools {
       LunaLogger().exception(error, trace);
     } on ProfileAlreadyExistsException catch (error, trace) {
       LunaLogger().exception(error, trace);
+    } on ServerOwnedProfileException catch (error, trace) {
+      LunaLogger().exception(error, trace);
     } catch (error, trace) {
       LunaLogger().error('Failed to rename profile', error, trace);
     }
@@ -185,6 +261,11 @@ class LunaProfileTools {
       throw ProfileNotFoundException(oldProfile);
     }
 
+    // A server-owned profile's name is dictated by its Tailarr Server.
+    if (LunaBox.profiles.read(oldProfile)?.serverOwned ?? false) {
+      throw ServerOwnedProfileException(oldProfile);
+    }
+
     if (LunaBox.profiles.contains(newProfile)) {
       throw ProfileAlreadyExistsException(newProfile);
     }
@@ -226,5 +307,15 @@ class ActiveProfileRemovalException with ErrorExceptionMixin {
   @override
   String toString() {
     return 'ActiveProfileRemovalException: "$profile" can\'t be removed as it is in use';
+  }
+}
+
+class ServerOwnedProfileException with ErrorExceptionMixin {
+  final String profile;
+  const ServerOwnedProfileException(this.profile);
+
+  @override
+  String toString() {
+    return 'ServerOwnedProfileException: "$profile" is owned by a Tailarr Server; its name is locked';
   }
 }
