@@ -217,12 +217,22 @@ class NtfyPush {
       return;
     }
 
+    // The APNs environment follows the SIGNING, not the Dart build mode: a
+    // dev-signed release build (cable install) still gets sandbox tokens.
+    // The native side reads aps-environment from the embedded profile.
+    bool sandbox;
+    try {
+      sandbox =
+          await _channel.invokeMethod<String>('getPushEnvironment') ==
+              'development';
+    } catch (_) {
+      sandbox = kDebugMode;
+    }
+
     try {
       final response = await NtfyGatewayClient().selfPushToken(
         token: token,
-        // TestFlight/App Store builds use production APNs; only Xcode dev
-        // builds are sandbox.
-        sandbox: kDebugMode,
+        sandbox: sandbox,
       );
       if (response.ok && response.registered) {
         NotificationsDatabase.PUSH_TOKEN.update(token);

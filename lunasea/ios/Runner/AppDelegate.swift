@@ -53,6 +53,8 @@ import workmanager_apple
                 result(FileManager.default
                     .containerURL(forSecurityApplicationGroupIdentifier: AppDelegate.appGroupId)?
                     .path)
+            case "getPushEnvironment":
+                result(AppDelegate.pushEnvironment())
             case "requestPushToken":
                 guard mainEngine, let self = self else {
                     result(FlutterError(
@@ -69,6 +71,22 @@ import workmanager_apple
                 result(FlutterMethodNotImplemented)
             }
         }
+    }
+
+    /// Which APNs environment this binary's tokens belong to. Decided by
+    /// the aps-environment entitlement in the embedded provisioning
+    /// profile — NOT the Dart build mode: a release-mode build signed with
+    /// a development profile still gets sandbox tokens. App Store builds
+    /// carry no embedded profile → production.
+    private static func pushEnvironment() -> String {
+        guard
+            let path = Bundle.main.path(
+                forResource: "embedded", ofType: "mobileprovision"),
+            let raw = try? String(contentsOfFile: path, encoding: .isoLatin1),
+            let keyRange = raw.range(of: "<key>aps-environment</key>")
+        else { return "production" }
+        let tail = raw[keyRange.upperBound...].prefix(120)
+        return tail.contains("development") ? "development" : "production"
     }
 
     override func application(
