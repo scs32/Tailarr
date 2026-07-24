@@ -17,6 +17,58 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Backlog
 
+- **Multi-server profiles are NOT isolation-safe yet (2026-07-24)**:
+  module connections are per-profile (`LunaProfile`) and properly
+  isolated, but ALL of notifications/push/services-sync bookkeeping is
+  GLOBAL (`NotificationsDatabase` + the `notifications` inbox box + the
+  `tailarr_ntfy.json` shared-state file are single-instance, not
+  per-profile). So two DIFFERENT Tailarr servers on two server-owned
+  profiles would collide: shared notification URL/token/topics (last sync
+  wins), one mixed inbox, one push-token registration, and — subtler —
+  `SERVICES_LAST_SYNC` is global, so a sync on profile A makes profile
+  B's ungranted connection screens show "Request Access" off A's
+  timestamp (`hasServerGrantList()` reads the global value). Switching
+  between ONE server profile and the user's own profiles is fine; running
+  two servers is not. Fix = scope notifications/push/inbox/services-sync
+  state per-profile (big-ish: new per-profile storage + migration).
+
+- **Legacy server-profile migration detection is too strict
+  (2026-07-24)**: `migrateLegacyServerProfiles` requires
+  `tailarrServerHost.isNotEmpty && gatewayManagedModules.contains(
+  'tailarr')`. An invite profile from BEFORE gateway-managed tracking
+  (or a manually-configured suite profile) has the host but not the
+  managed marker → skipped, so its name never converts. This is the
+  likely cause of Stephen's "migration didn't work as expected" report.
+  Broaden detection to `tailarrServerEnabled && host.isNotEmpty &&
+  tailscaleEnabled` (reaching a Tailarr Server implies an enrolled node).
+
+- **Build-18 lockup on the Profiles screen (UNRESOLVED, 2026-07-24)**:
+  Stephen reported "Locked up. I don't think the migration went well" with
+  the Profiles screen open and a Delete Profile dialog listing his
+  server profiles ("Apple Container", "Mini VM"; active still "default").
+  Artifact: `~/projects/build18-lockup-profiles-delete.jpg`. The three
+  visible symptoms (this + "Notifications Is Not Enabled" + SABnzbd
+  manual-enable) were all traced to unconverted legacy server profiles
+  and fixed in 987753d3 (notifications always-enabled guard; broadened
+  migration detection: tailarrServerEnabled && host && tailscaleEnabled,
+  custom names kept, only 'default' renamed). The LOCKUP itself is not
+  yet root-caused — suspects: (a) profile-switch churn restarting the
+  embedded Tailscale node per profile when several server profiles on
+  different tailnets exist (TailscaleGuard "Connecting…" overlay blocks
+  input); (b) the per-profile onConfigChanged() added to _changeTo
+  (mirror + stream restart) under multi-profile load. NEXT: get a repro
+  (what action locked it — likely a profile switch or delete) or an
+  .ips crash/hang log; consider debouncing node restarts across rapid
+  profile switches.
+
+- **No in-app way to revoke a device for a user (2026-07-24)**: the
+  person-detail Devices list is READ-ONLY — an admin can't remove/revoke
+  a specific device without manually editing in the Tailscale admin
+  console. Add a per-device revoke action (Users → person → Devices →
+  device → remove) wired to a server endpoint (likely needs a new
+  tailarr-server route to deauthorize/remove the node + drop its
+  person binding).
+
 - **Share-config flow polish**: Stephen found the import flow "a bit
   wonky" on device (2026-07-19) — revisit UX after TestFlight feedback.
   (Feature itself SHIPPED in build 6 — see 2026-07-19 session log.)
