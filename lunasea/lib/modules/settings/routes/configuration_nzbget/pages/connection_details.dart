@@ -56,7 +56,12 @@ class _State extends State<ConfigurationNZBGetConnectionDetailsRoute>
                 host: LunaProfile.current.nzbgetHost,
                 hasCredential: LunaProfile.current.nzbgetPass.isNotEmpty || LunaProfile.current.nzbgetUser.isNotEmpty,
               )
-            : [
+            : ServerDrivenConnection.shouldRequestAccess('nzbget')
+                ? ServerDrivenConnection.requestAccessBlocks(
+                    context: context,
+                    type: 'nzbget',
+                  )
+                : [
                 _host(),
                 _username(),
                 _password(),

@@ -164,15 +164,18 @@ class GatewayServicesReconciler {
     }
 
     // Revocations: a managed native type missing from the listing is
-    // disabled (host/key kept, provenance kept so a re-grant re-enables);
-    // a managed bookmark is marked, never silently deleted.
-    for (final type in managed) {
+    // disabled AND un-managed (host/key kept for reference, but provenance
+    // dropped so the connection screen shows "Request Access" rather than a
+    // stale managed card; a re-grant re-adopts it). Bookmarks are marked,
+    // never silently deleted.
+    for (final type in managed.toList()) {
       if (!NATIVE_TYPES.contains(type)) continue;
       if (seenNative.contains(type)) continue;
       if (_enabled(profile, type)) {
         _setEnabled(profile, type, false);
         disabled.add(type);
       }
+      managed.remove(type);
     }
     for (final module in externalModules) {
       if (module.gatewayName.isEmpty) continue;

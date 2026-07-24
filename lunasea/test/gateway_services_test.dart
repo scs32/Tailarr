@@ -280,8 +280,10 @@ void main() {
       expect(profile.radarrEnabled, isFalse);
       expect(profile.radarrHost, 'https://radarr.x.ts.net');
       expect(profile.radarrKey, 'def456');
-      // Provenance survives revocation so a re-grant re-enables in place.
-      expect(profile.gatewayManagedModules, contains('radarr'));
+      // Revocation drops provenance so the connection screen offers
+      // "Request Access" rather than a stale managed card; a re-grant
+      // re-adopts it.
+      expect(profile.gatewayManagedModules, isNot(contains('radarr')));
       expect(result.disabled, ['radarr']);
 
       final regrant = reconcile(

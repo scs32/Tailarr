@@ -56,7 +56,12 @@ class _State extends State<ConfigurationRadarrConnectionDetailsRoute>
                 host: LunaProfile.current.radarrHost,
                 hasCredential: LunaProfile.current.radarrKey.isNotEmpty,
               )
-            : [
+            : ServerDrivenConnection.shouldRequestAccess('radarr')
+                ? ServerDrivenConnection.requestAccessBlocks(
+                    context: context,
+                    type: 'radarr',
+                  )
+                : [
                 _host(),
                 _apiKey(),
                 _customHeaders(),

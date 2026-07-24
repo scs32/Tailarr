@@ -56,7 +56,12 @@ class _State extends State<ConfigurationTautulliConnectionDetailsRoute>
                 host: LunaProfile.current.tautulliHost,
                 hasCredential: LunaProfile.current.tautulliKey.isNotEmpty,
               )
-            : [
+            : ServerDrivenConnection.shouldRequestAccess('tautulli')
+                ? ServerDrivenConnection.requestAccessBlocks(
+                    context: context,
+                    type: 'tautulli',
+                  )
+                : [
                 _host(),
                 _apiKey(),
                 _customHeaders(),

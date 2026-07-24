@@ -56,7 +56,12 @@ class _State extends State<ConfigurationSonarrConnectionDetailsRoute>
                 host: LunaProfile.current.sonarrHost,
                 hasCredential: LunaProfile.current.sonarrKey.isNotEmpty,
               )
-            : [
+            : ServerDrivenConnection.shouldRequestAccess('sonarr')
+                ? ServerDrivenConnection.requestAccessBlocks(
+                    context: context,
+                    type: 'sonarr',
+                  )
+                : [
                 _host(),
                 _apiKey(),
                 _customHeaders(),
