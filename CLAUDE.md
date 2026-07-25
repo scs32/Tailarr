@@ -414,6 +414,96 @@ The whole stack (Go tsnet proxy, Swift MethodChannel bridge, findProxy/HttpOverr
 
 ---
 
+## Session Log — 2026-07-24 (later: TestFlight feedback triage + localization rebrand landmine)
+
+Short session. Reviewed TestFlight feedback via the ASC API, triaged it
+against the backlog with full-res screenshots, and fixed a real rebrand
+bug + its root cause. One commit (`ed214089`), NOT yet built/shipped.
+
+### TestFlight state (ASC API pull)
+- **17 testers** (all anonymous public-link, unchanged). **0 crash
+  submissions.** 15 screenshot feedback items.
+- **14 of the 15 are Stephen's own dogfooding** (device `iPhone16_1`,
+  iOS 27.0) from the build 13-22 session — they map 1:1 to known backlog
+  items. The only genuinely-external one is the OLD 2026-07-18 "when's it
+  hitting the App Store?" note (iPhone13_1, iOS 18.7.8) — no new outside
+  feedback since.
+- Screenshots archived in this session's scratchpad `shots/` (ASC image
+  assets; pull script pattern: GET /v1/apps/{id}/betaFeedbackScreenshot
+  Submissions, download `attributes.screenshots[].url`).
+
+### Feedback → backlog mapping (from the screenshots)
+- **"Magic socks" ×4** incl. "tried refreshing, still around" → Tailscale
+  Status page shows Connection **Running (orange)** + Health Warning
+  "MagicSock ReceiveIPv4 is not running" **while 8/8 peers are online and
+  working**, survives repeated refreshes. **This is the CONFIRMED
+  real-device FAILURE of v0.3.3** — per the backlog's own test criterion
+  (warning surviving repeated refreshes = new finding). Verdict is no
+  longer "pending"; carry to the tailscale_embed session: either the
+  watchdog restart isn't clearing the health flag or the warning is
+  cosmetic while traffic works.
+- **"Try again always works but shouldn't"** → Sonarr module "An Error Has
+  Occurred / Try Again" on COLD load. Same Tailscale-startup race as
+  notifications, but `2614f283` only fixed the notifications auto-config
+  path — the individual SERVICE MODULES still cold-load before the tunnel
+  is up and don't auto-retry. Open. (Notifications "Not Connected: Failed
+  host lookup tailarr-gate" screenshot = same race, inbox-connection side.)
+- **SABnzbd "I should see request"** → SABnzbd showed the normal manual
+  editor (Enable toggle + Connection Details), NOT a Request Access /
+  Server-Managed card → the `hasServerGrantList()` gating is still leaking
+  on an ungranted service. Verify against build 22 / re-check the
+  SERVICES_LAST_SYNC fragility.
+- **"Locked up… migration"** → the Delete Profile dialog listing "Apple
+  Container" + "Mini VM" with the tap ripple ON "Mini VM". NEW CLUE: the
+  lockup fires when DELETING a server-owned profile (node-forget/cleanup
+  churn), matching backlog suspect (a). Still not root-caused.
+- **"picked up name from server"** → drawer shows "Tailarr" +
+  "Tailarr (tail600657)" (host-derived disambig). Expected until the
+  server ships **`/api/info.name` (v0.27)**; app side already falls back.
+- **"Notifications Is Not Enabled" / "no request for Annan"** → early-build
+  (11:31) empty states + leftover `default` profile; both addressed by
+  later build-22 commits (always-on notifications, leftover-default
+  removal). Verify gone on 22.
+
+### SHIPPED (commit `ed214089`) — localization rebrand landmine FIXED
+- **Root cause found**: the Tier-1 rebrand (2026-07-04) branded only the
+  **bundled** `assets/localization/*.json`, never the per-module **source**
+  `localization/*/*.json`. But CI regenerates bundles FROM source at build
+  time (`generate_localization.dart`, testflight.yml line 65 — also part of
+  `npm run generate`). So **every build silently reverted the branding to
+  "LunaSea"** — that's why build 22 showed "LunaSea" on the Profiles card
+  despite the committed bundle saying "Tailarr". The committed branded
+  bundles were a lie; they never shipped.
+- **Fix (source is now the source of truth)**: naive `LunaSea→Tailarr`
+  across all 15 source files (**179 occurrences**) + added the missing
+  **`lunasea.OK`** key to `localization/lunasea/en.json` (the Pro Mode
+  dialog's OK button was rendering the raw key `lunasea.OK` — the key
+  existed nowhere; code at `profiles/route.dart:67` already calls
+  `'lunasea.OK'.tr()`, no code change needed). Regenerated bundles.
+- **Provably safe**: after branding sources + regen, the ONLY diff to the
+  committed shipping bundles is `en.json +1` (the new key). Every
+  non-English bundle came out byte-identical to what was committed —
+  proving the committed bundles were exactly a naive replace of source all
+  along. Now regeneration is stable for ALL languages, not just English.
+- Verified at DATA layer only (key resolves in loaded bundle, all JSON
+  valid, 0 "LunaSea" left in source or bundles). NOT sim/device-rendered.
+- Side note (untouched): the dead `settings.Account*`/cloud-backup string
+  family (stripped feature in the v11 fork) now reads "Tailarr Account" —
+  harmless if those screens are unreachable; pull if desired.
+
+### NEXT
+- **Build 23 not yet cut.** Only content since build 22 is this l10n fix
+  (low-risk, user-visible). No blocking reason to build; caveats: (a) it
+  ships ONLY the cosmetic fixes, none of the meatier open items above;
+  (b) cert cap recurs ~every 11 builds (hit at 13) → ~build 24, keep the
+  orphan-revoke step ready; (c) fix verified at data layer only — a quick
+  sim build would confirm the two strings render before a TestFlight cycle.
+- Open bugs still unfixed: magicsock-survives-refresh (embed session),
+  profile-delete lockup, SABnzbd request-access gating, service-module
+  cold-load retry race, `/api/info.name` (server side).
+
+---
+
 ## Session Log — 2026-07-24 (server-driven everything: services self-config, invite, per-profile isolation, push, Pro/Basic tiers, builds 13→22)
 
 Enormous shipping day. Everything pushed to master; **TestFlight builds 13
