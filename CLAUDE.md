@@ -17,278 +17,128 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Backlog
 
-- **Demo mode (in-app, read-only) — DESIGN in `docs/demo-mode-design.md`
-  (2026-07-25)**: the free tier is server-driven only (**non-server =
-  Pro**), which leaves a serverless first-timer / App Review reviewer with
-  no self-serve function → App Store Guideline 4.2 risk. Fix = a bundled,
-  offline **demo mode** (NOT a demo server — hosting canned data is pure
-  overhead). Throwaway `demo` profile (new HiveField 53) with modules
-  pre-configured against a `https://demo.tailarr` sentinel host; a
-  `DemoAdapter` (Dio `HttpClientAdapter`, same fake-adapter pattern as
-  `test/tailscale_retry_test.dart`) serves `assets/demo/*.json` fixtures
-  (Blender open movies — Sintel/Big Buck Bunny — so it's honest); swapped
-  in per-module beside `attachTailscaleConnectRetry(dio)`. Entry: "Try the
-  demo" on the empty-state landing (`Join invite` / `Try demo` /
-  `Unlock Pro`) + persistent "Demo — Exit" banner. Tiny diff, no
-  module-screen changes. Pairs with the non-server=Pro gate (open: first
-  manual connection hard-gated vs. free trial). Full plan + code sketch in
-  the design doc.
+Bugs, features, and cleanups. Monetization/tier work lives in **Pro Backlog**
+below. (Pruned 2026-07-25 — removed items now shipped or superseded:
+per-profile notification isolation, legacy server-profile migration detection,
+the Users PEOPLE model, ntfy notifications stage 1, the second-share crash
+[sharing was replaced by gateway auto-config], share-config UX polish, and
+stale live-E2E test-infra notes. Session logs retain the detail.)
 
 - **Remove the Test Connection button on Request-Access modules
   (2026-07-25)**: a module the server owns but hasn't granted this device
   shows the "Request Access" card (see `ServerDrivenConnection`), but the
-  connection screen still renders a Test Connection action — which is
-  meaningless/misleading when there's no host/credential to test and the
-  user's only move is to ask the admin. Hide (or disable) Test Connection
-  whenever `shouldRequestAccess(type)` is true (and arguably on
-  `isManaged`/Server-Managed screens too, where testing is the re-sync's
-  job). Audit all 6 module connection routes for the button.
+  connection screen still renders a Test Connection action — meaningless when
+  there's no host/credential to test and the only move is to ask the admin.
+  Hide/disable Test Connection whenever `shouldRequestAccess(type)` is true
+  (and arguably on `isManaged`/Server-Managed screens, where testing is the
+  re-sync's job). Audit all 6 module connection routes.
 
-- **Multi-server profiles are NOT isolation-safe yet (2026-07-24)**:
-  module connections are per-profile (`LunaProfile`) and properly
-  isolated, but ALL of notifications/push/services-sync bookkeeping is
-  GLOBAL (`NotificationsDatabase` + the `notifications` inbox box + the
-  `tailarr_ntfy.json` shared-state file are single-instance, not
-  per-profile). So two DIFFERENT Tailarr servers on two server-owned
-  profiles would collide: shared notification URL/token/topics (last sync
-  wins), one mixed inbox, one push-token registration, and — subtler —
-  `SERVICES_LAST_SYNC` is global, so a sync on profile A makes profile
-  B's ungranted connection screens show "Request Access" off A's
-  timestamp (`hasServerGrantList()` reads the global value). Switching
-  between ONE server profile and the user's own profiles is fine; running
-  two servers is not. Fix = scope notifications/push/inbox/services-sync
-  state per-profile (big-ish: new per-profile storage + migration).
-
-- **Legacy server-profile migration detection is too strict
-  (2026-07-24)**: `migrateLegacyServerProfiles` requires
-  `tailarrServerHost.isNotEmpty && gatewayManagedModules.contains(
-  'tailarr')`. An invite profile from BEFORE gateway-managed tracking
-  (or a manually-configured suite profile) has the host but not the
-  managed marker → skipped, so its name never converts. This is the
-  likely cause of Stephen's "migration didn't work as expected" report.
-  Broaden detection to `tailarrServerEnabled && host.isNotEmpty &&
-  tailscaleEnabled` (reaching a Tailarr Server implies an enrolled node).
-
-- **Build-18 lockup on the Profiles screen (UNRESOLVED, 2026-07-24)**:
-  Stephen reported "Locked up. I don't think the migration went well" with
-  the Profiles screen open and a Delete Profile dialog listing his
-  server profiles ("Apple Container", "Mini VM"; active still "default").
-  Artifact: `~/projects/build18-lockup-profiles-delete.jpg`. The three
-  visible symptoms (this + "Notifications Is Not Enabled" + SABnzbd
-  manual-enable) were all traced to unconverted legacy server profiles
-  and fixed in 987753d3 (notifications always-enabled guard; broadened
-  migration detection: tailarrServerEnabled && host && tailscaleEnabled,
-  custom names kept, only 'default' renamed). The LOCKUP itself is not
-  yet root-caused — suspects: (a) profile-switch churn restarting the
-  embedded Tailscale node per profile when several server profiles on
-  different tailnets exist (TailscaleGuard "Connecting…" overlay blocks
-  input); (b) the per-profile onConfigChanged() added to _changeTo
-  (mirror + stream restart) under multi-profile load. NEXT: get a repro
-  (what action locked it — likely a profile switch or delete) or an
-  .ips crash/hang log; consider debouncing node restarts across rapid
-  profile switches.
+- **Build-18 profile-delete lockup (UNRESOLVED, 2026-07-24)**: app locked up
+  with a Delete Profile dialog open on server-owned profiles (screenshot
+  `~/projects/build18-lockup-profiles-delete.jpg`). Not root-caused; suspects:
+  (a) profile-switch churn restarting the embedded node per profile across
+  tailnets (TailscaleGuard overlay blocks input); (b) the per-profile
+  `onConfigChanged()` in `_changeTo` under multi-profile load. NEXT: a repro
+  (which action locked it) or an `.ips` hang log; consider debouncing node
+  restarts across rapid profile switches.
 
 - **No in-app way to revoke a device for a user (2026-07-24)**: the
-  person-detail Devices list is READ-ONLY — an admin can't remove/revoke
-  a specific device without manually editing in the Tailscale admin
-  console. Add a per-device revoke action (Users → person → Devices →
-  device → remove) wired to a server endpoint (likely needs a new
-  tailarr-server route to deauthorize/remove the node + drop its
-  person binding).
+  person-detail Devices list is READ-ONLY — an admin can't remove/revoke a
+  specific device without the Tailscale admin console. Add a per-device revoke
+  action (Users → person → Devices → device → remove) wired to a new
+  tailarr-server route that deauthorizes/removes the node + drops its person
+  binding.
 
-- **Share-config flow polish**: Stephen found the import flow "a bit
-  wonky" on device (2026-07-19) — revisit UX after TestFlight feedback.
-  (Feature itself SHIPPED in build 6 — see 2026-07-19 session log.)
-
-- **Share-config: second share crashed on device (UNRESOLVED,
-  2026-07-19)**: Stephen shared Sonarr config to another build-7 user →
-  worked. Radarr share, same method, minutes later → "didn't work" AND
-  an iOS app crash (whose phone crashed — sender or recipient — is
-  UNKNOWN; ask first). Investigated same day: Sonarr/Radarr share +
-  import code paths are identical; full double-share (sender) and
-  double-import-while-warm (recipient) reproduced CLEAN on simulator
-  (debug build, tailarr:/// scheme) — no crash either direction. So it's
-  environmental: prime suspects are (a) a release-only native crash, or
-  (b) iOS opening the SECOND universal link in Safari instead of the app
-  (looks like "didn't work"; recipient may have a remembered
-  open-in-Safari preference). NEXT STEP — get the crash log: on the
-  phone that crashed, Settings > Privacy & Security > Analytics &
-  Improvements > Analytics Data → newest `Tailarr-2026-07-19-*.ips`,
-  AirDrop it over; or pull TestFlight crash reports via the ASC API key
-  on this Mac (they lag ~a day). Also ask the recipient what the second
-  link tap actually did (Safari / nothing / app-then-crash).
+- **Service-module cold-load retry — DONE for connection + proxy-502 errors
+  (build 25/26), watch for gaps**: `attachTailscaleConnectRetry` now retries
+  connection-class failures AND the embedded-proxy "Proxy failed to establish
+  tunnel (502)" during the connect window. If a NEW cold-load error shape slips
+  past `isTailscaleConnectFailure` on device, add its signature there.
 
 - **Tailarr Server module v2 remainder**: controller self-upgrade screen,
   catalog/install wizard, pod busy auto-refresh, diagnose viewer, Kuma
   monitoring, shares management.
 
-- **Users → PEOPLE model (server v0.19/v0.20) — DONE in-app 2026-07-22**:
-  Users screen is person-centric (person tiles → new PERSON_DETAILS route:
-  rename, per-person access toggles w/ server-grant warning, devices
-  read-only, reissue key, delete, ntfy credentials + "Share Config" whose
-  JSON imports straight into Settings > Notifications). Unassigned bucket
-  (old anonymous-key machines) renders only when non-empty, with
-  assign-to-person picker + legacy per-device toggles/adopt. Legacy
-  fallback: no `people` key in GET /api/users (server <0.19) → old flat
-  list (api_version is still 1 — detect by key presence ONLY).
-  Verified live against v0.20.0: add/rename/grant/reissue/delete/assign
-  all exercised over the API; real payloads locked in as fixtures in
-  test/tailarr_server_people_test.dart. NOT yet verified: ntfy-credential
-  happy path (test server has ntfy:false — needs the notifications
-  system pod), on-device UI walk.
-  **Gateway self-config (server v0.21.0) — DONE in-app 2026-07-22**:
-  notifications module now auto-configures from the hidden tailarr-gate
-  node (`GET http://tailarr-gate/self/notifications`, whois-authed, plain
-  HTTP over the tsnet — bare short name routes via the plugin).
-  Settings > Notifications gains "Automatic Setup" (also auto-attempted
-  when enabling with nothing configured); GATEWAY_MANAGED configs
-  silently re-query on every stream reconnect so topics follow admin
-  badge flips; any manual edit reverts to manual mode. Admin handout
-  sheet copy reframed as "for the official ntfy app / manual setups".
-  Live-verified on the v0.21.0 test server (integration_test/
-  gateway_e2e_test.dart): enroll person key → device born-owned with
-  badges → gateway returns matching topics → module auto-configures →
-  polls the ops topic. **Server bug found while deploying**: on the
-  hand-bootstrapped test box the controller pod had no .config.json, so
-  _ensure_gateway() failed with "controller tailnet IP unknown"; I wrote
-  a minimal one (include_tailscale: yes) and re-ran /api/ntfy/setup —
-  relay to the server session (fresh installs are presumably fine, but
-  older upgraded installs may hit this).
-  **Build-11 bug report triage (2026-07-22 late)**: Stephen's phone showed
-  neither people UI nor working auto-setup against his live server
-  (tailarr.tail95fc29.ts.net, v0.22.2). Verdict: (1) Users screen — APP
-  INNOCENT: the exact live payload (+unknown future keys) renders 3
-  person cards in integration_test/users_people_render_test.dart (serves
-  the fixture from an in-process HttpServer through the full app shell);
-  his phone was almost certainly querying a different host/profile — the
-  Users screen now SHOWS the queried host in empty/legacy states plus a
-  "Legacy User Model" banner when the fallback triggers. (2) Auto-setup —
-  was the server's silently-missing gateway (fixed in v0.22.1/2), but the
-  app's silence was its own sin: provisioning is now a PERSISTED state
-  machine (NotificationsDatabase SETUP_STATE/ERROR/DETAIL/LAST_ATTEMPT/
-  LAST_SYNC) with an always-visible status card (not set up / setting up
-  / configured+topics+synced-age+re-sync / FAILED with verbatim error +
-  exact request dialed), inbox empty-state links to it, opportunistic
-  attempt on module open (hourly throttle, always traced), manual entry
-  demoted to a "fallback" section. Gateway E2E re-verified green against
-  v0.22.2 (test server upgraded; Gate E2E person key reissued — keys are
-  single-use, reissue via {do:"reissue"}).
-  **Test server note**: the apple-container guest is now named `podhost`
-  (podman inside; controller pod `tailarr` + sidecar `tailscale-tailarr`;
-  reach the API via `container exec podhost podman exec tailscale-tailarr
-  wget -qO- http://tailarr:8080/api/...`). I self-upgraded it
-  v0.16.0 → **v0.20.0** on 2026-07-22 via POST /api/controller/upgrade.
-
-- **tailscale_embed remainder** (bumped to 39b8afd 2026-07-20 — short-name
-  routing + zone-pinning fixes; identities/onKeyConsumed adopted earlier):
-  - ~~Surface plugin `status()` in Settings > Network~~ DONE 2026-07-22
-    (e5742d62): Tailscale Status page — connection state, node card,
-    health warnings, peers list. FakeTailscaleBackend integration test.
-  - **Magicsock suspend/resume bug — FIXED in v0.3.3, real-device verdict
-    OPEN (2026-07-24)**: rebind (v0.3.1/0.3.2) proved insufficient; v0.3.3
-    escalates to a full tsnet server restart (see 2026-07-24 session log).
-    Tailarr now pins v0.3.3. REMAINING: Stephen must roam WiFi↔cellular
-    with the Status page open ~60-90s and report whether the warning clears
-    (a warning surviving repeated refreshes = a new finding for the embed
-    session). 3 field screenshots at `~/projects/magicsock-*.jpg`.
-  - Adopt the new additive plugin API when useful: restart(),
-    isEnrolled(identity), TailscaleSettingsPanel/Store,
-    FakeTailscaleBackend (deliberately NOT adopted in build 8 to keep
-    the bug-fix diff minimal).
-  - ~~Framework distribution before next bump~~ DONE 2026-07-20: plugin
-    history rewritten (filter-repo, binaries purged — ALL pre-rewrite
-    hashes incl. efc0e02 are dead; never pin them). xcframework now
-    downloads from the plugin's GitHub Releases (framework-v1.92.5,
-    SHA-256-pinned via ios/Framework.lock) at pod-install time —
-    transparent to Tailarr; verified locally and in CI (build 8).
+- **tailscale_embed remainder** (pinned v0.3.3 / 39b8afd):
+  - **Magicsock warning survives refresh — real-device FAILURE confirmed
+    (2026-07-24 TestFlight)**: v0.3.3's watchdog restart isn't clearing the
+    "MagicSock ReceiveIPv4 is not running" health flag while all peers work.
+    Belongs to the embed session (github.com/scs32/tailscale_embed), NOT this
+    repo — carry it there. Field screenshots `~/projects/magicsock-*.jpg`.
+  - Adopt the additive plugin API when useful: `restart()`,
+    `isEnrolled(identity)`, `TailscaleSettingsPanel/Store`,
+    `FakeTailscaleBackend`.
   - Plugin's own live E2E (two identities, live switch, rollback, key
-    consumption) still pending a real key in the embed session.
+    consumption) pending a real key in the embed session.
 
-- **Live E2E is re-pointed nowhere** (2026-07-19): the test server on this
-  Mac was re-bootstrapped (tailarr-server v0.10.1 OAuth-first flow) onto a
-  NEW tailnet `taila06ea9` as hostname `tailarr` — the reusable tailde95ff
-  key can NO LONGER reach it. To run `integration_test/e2e_test.dart`
-  again, get a key for taila06ea9 that can reach the controller (mind the
-  ACL fences: a minted tag:tailarr-user key may not see the controller
-  API), and update SERVER_HOST to https://tailarr.taila06ea9.ts.net.
+- **App Store submission** (active): GO decision. **Zagreus** (GPL LunaSea
+  fork, live since 2025-09-25 with paid IAP) is the low-risk precedent — copy
+  their disclaimer pattern ("remote control app, requires your own server") +
+  17+. Exception email sent to Jagandeep Brar (non-blocking goodwill).
+  Remaining: listing copy (lead with tailnet-privacy, say "open source",
+  tailarr.com support URL), per-device-class screenshots, privacy
+  questionnaire ("Data Not Collected"), export compliance (WireGuard/TLS →
+  exempt), review notes (demo mode + optional reviewer invite). OPEN: debut as
+  "1.0" vs the 11.0.0 lineage string — verify ASC accepts a lower version
+  string after 11.0.0 TestFlight builds BEFORE promising it.
 
-- **Notifications via ntfy — STAGE 1 BUILT in-app 2026-07-22** (3-stage
-  plan: 1 = in-app inbox + poll/stream + BG refresh, 2 = server per-user
-  ACLs, 3 = APNs push relay). What shipped in the working tree (not yet
-  committed at time of writing):
-  - `lib/api/ntfy/` — standalone NtfyClient (poll + ndjson stream) +
-    NtfySubscription parser (JSON handout AND `tailarr://ntfy?...` URI);
-    this fetcher is the exact unit stage 3's push wake-up will call.
-  - Inbox module (LunaModule.NOTIFICATIONS, HiveField 13, global not
-    per-profile), `/notifications` route, drawer unread badge,
-    Settings > Notifications (enable, import-JSON, url/token/topics,
-    background toggle, test connection).
-  - Storage: LunaNotification (Hive typeId 30) in LunaBox.notifications
-    keyed by ntfy message id (natural dedupe), compacted to 200;
-    NotificationsDatabase table (global).
-  - Foreground: NtfyStreamManager (first WidgetsBindingObserver in the
-    app) reconnects with backoff while resumed. Background: workmanager
-    0.9 (BGAppRefreshTask id `com.stephenspeicher.tailarr.ntfy-refresh`
-    in Info.plist + AppDelegate) + flutter_local_notifications; the BG
-    isolate NEVER touches Hive — config + since-markers live in a shared
-    JSON file (`tailarr_ntfy.json`, two markers: inbox `since` vs
-    notify `bg_since`), inbox catches up on next launch.
-  - Verified: analyzer clean, test/ntfy_models_test.dart 9/9,
-    integration_test/notifications_inbox_test.dart 3/3 on sim, sim build
-    + settings-screen screenshot. NOT yet verified: live server
-    (needs a read token: `podman exec ntfy ntfy token add <user>`),
-    on-device BG refresh, deep-link registration (TODO in
-    router/routes/notifications.dart).
-  - Original stage-2/3 plan: LunaSea's
-  push pipeline is dead (v11 fork stripped Firebase; notify.lunasea.app
-  gone — vestiges: lib/system/webhooks.dart + per-module
-  LunaWebhooks.handle()). Revive with ntfy (ntfy.sh) instead:
-  1. Zero-code first: document native ntfy Connect in Sonarr v4/Radarr/
-     Prowlarr (paste topic); Tautulli via its webhook agent.
-  2. The differentiator: a Notifications setup screen that mints an
-     unguessable ntfy topic and AUTO-PROVISIONS the connection into each
-     configured service via the API clients Tailarr already has.
-  3. Suite angle: ntfy as a tailarr-server catalog pod — webhooks stay
-     on the tailnet; self-hosted ntfy needs `upstream-base-url: ntfy.sh`
-     for iOS APNs wake. ntfy click-URL can deep link `tailarr://`.
-  - Trade-off accepted: users install the ntfy app; notifications wear
-    ntfy's icon. Eventual "branded 1.0" upgrade path: own Firebase +
-    revive lunasea-notification-service as a pod ($0 in money, real
-    engineering) — topic-provisioning work carries over.
-  - Rejected: Gotify (no iOS app), Pushover (paid), Notifiarr (same
-    centralized-hosted-service model that died with LunaSea).
+- **Security audit** (recommended before App Store submission): whole-app,
+  read-only. Tier-1 surfaces — Hive-box encryption/key handling; the
+  `NETWORKING_TLS_VALIDATION` accept-all-certs toggle (`network_io.dart`);
+  share-config/invite payloads; the App-Group `tailarr_ntfy.json` (holds the
+  ntfy token). Tier-2 — deep/universal-link import (Test Connection runs on an
+  UNSAVED payload), external-module bookmarks/WebViews. Tier-3 — dependency
+  CVE scan; residual secret-in-error paths the log redactor doesn't cover.
+  Include the tailarr-server repo (`~/projects/podscale`) for the suite's
+  gateway/whois trust model. (Log-credential redaction already shipped, build
+  26.)
 
-- **App Store submission** (active as of 2026-07-22): decision made to
-  proceed. Risk assessment: LOW — **Zagreus** (apps.apple.com id6752225616,
-  Zebrra Labs LLC) is a public GPL-3.0 LunaSea fork (github.com/IsThisMeta/
-  zagreus) live on the App Store since 2025-09-25, 5.0★, with PAID IAP
-  tiers + its own hosted push notifications; no takedown in ~10 months.
-  Their App-Review handling = plain description disclaimer ("purely a
-  remote control application, no functionality without a server") + 17+
-  rating + standard Apple EULA — copy that pattern; our Funnel demo
-  server idea is optional strength on top.
-  - **Exception email SENT 2026-07-22** to Jagandeep Brar
-    (me@jagandeepbrar.io) — suite-first framing, soft ask for an App
-    Store distribution exception; a reply saying "fine by me" is the
-    target artifact. Not blocking — submission proceeds in parallel.
-  - Remaining: build 9 (status page); listing copy (lead with
-    tailnet-privacy differentiator, say "open source" openly, 17+,
-    tailarr.com as support+marketing URL); screenshots per device class;
-    privacy questionnaire ("Data Not Collected"); export compliance
-    (standard WireGuard encryption → exempt); review notes (+optional
-    Funnel demo + share-config link for the reviewer).
-  - **V1 question open**: Stephen half-tempted to call it V1. Version
-    string is 11.0.0 (LunaSea lineage); if debuting as "1.0", verify
-    ASC accepts a lower version string after TestFlight 11.0.0 builds
-    BEFORE promising it.
-
-- **Suite invite** (dream feature): tailnet enrollment key + module config
-  in ONE link. Share-config payload is versioned with room for an
-  `enroll: {control_url?, key}` field. Pairs with sovereign mode
-  (tailarr-server docs/sovereign-mode-design.md).
+- **Suite invite** (dream feature): tailnet enrollment key + module config in
+  ONE link. Share-config payload is versioned with room for an
+  `enroll: {control_url?, key}` field. Pairs with sovereign mode.
 
 - **Sovereign mode** (design only): embedded headscale in tailarr-server —
-  full writeup in that repo's docs/sovereign-mode-design.md (2026-07-19).
+  full writeup in that repo's `docs/sovereign-mode-design.md` (2026-07-19).
+
+## Pro Backlog
+
+Monetization / tier work. Product direction (decided 2026-07-24, refined
+2026-07-25): **Free = talk to a Tailarr Server** (your own via invite, or the
+in-app demo). **Pro = point the app at services yourself, with no server**
+(manual host + key entry). Multiple profiles is NOT the axis — server vs.
+non-server is. GPL makes the client gate soft; accepted — the goal is
+product-focus, not revenue-max (Zagreus ships paid IAP as precedent).
+
+- **Non-server = Pro gate (core mechanic)**: today only Add Profile is gated
+  ("Pro Mode Coming Soon" dialog, `profiles/route.dart`); the single default
+  profile's MANUAL editors are still OPEN. To make non-server = Pro, gate the
+  manual host/credential editors themselves — standalone (not `serverOwned`) +
+  not-Pro → a Pro upsell instead of the editors (`ServerDrivenConnection` owns
+  the manual-vs-managed decision). Keep a manual path reachable ONLY via demo
+  mode / Pro unlock so the free tier is never a functionless wall (App Review
+  4.2). Needs a first-run empty-state landing: **Join invite** (primary) /
+  **Try demo** / **Unlock Pro**.
+
+- **Demo mode (in-app, read-only) — DESIGN in `docs/demo-mode-design.md`
+  (2026-07-25)**: the reviewability + curiosity mechanism that makes fully
+  gating manual config safe for App Review (a serverless first-run otherwise =
+  4.2 risk). Bundled, offline fixtures — NOT a demo server (hosting canned data
+  is pure overhead). Throwaway `demo` profile (new HiveField 53) with modules
+  pre-configured against a `https://demo.tailarr` sentinel; a `DemoAdapter`
+  (Dio `HttpClientAdapter`, same fake-adapter pattern as
+  `test/tailscale_retry_test.dart`) serves `assets/demo/*.json` (Blender open
+  movies — Sintel/Big Buck Bunny — so it's honest), swapped in per-module
+  beside `attachTailscaleConnectRetry(dio)`. Entry: "Try the demo" on the
+  landing + persistent "Demo — Exit" banner. Tiny diff, no module-screen
+  changes. Full plan + code sketch in the design doc.
+
+- **First manual connection: hard-gated vs. free trial (OPEN decision)**:
+  hard-gated is cleaner for "non-server is Pro"; a trial softens conversion but
+  muddies the line.
+
+- **Pro unlock mechanism (not built)**: one-time StoreKit IAP unlock. Pairs
+  with the gate above — the unlock flips the "not-Pro" check the manual editors
+  and Add Profile read.
 
 ## Build Commands
 
