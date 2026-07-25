@@ -29,14 +29,28 @@ class ServerDrivenConnection {
   /// SERVICES_LAST_SYNC alone was too fragile — a server-owned profile whose
   /// timestamp wasn't set (restored/migrated) wrongly fell back to a manual
   /// toggle for services the person doesn't have.
-  static bool hasServerGrantList() {
-    final profile = LunaProfile.current;
-    if (!profile.tailarrServerEnabled || profile.tailarrServerHost.isEmpty) {
-      return false;
-    }
+  static bool hasServerGrantList() => hasServerGrantListFor(
+        LunaProfile.current,
+        servicesSynced: NotificationsDatabase.SERVICES_LAST_SYNC.read() > 0,
+      );
+
+  /// Pure form of [hasServerGrantList] — the Hive reads are hoisted to the
+  /// caller so this predicate is directly unit-testable.
+  ///
+  /// Note the absence of a `tailarrServerEnabled && tailarrServerHost`
+  /// precondition: an invite-joined profile reaches its server through the
+  /// hidden `tailarr-gate` node, NOT a user-entered Tailarr Server host, so it
+  /// is legitimately serverOwned with the module disabled. Requiring the
+  /// module to be enabled here dropped exactly those profiles back to manual
+  /// editors for services the person doesn't have.
+  static bool hasServerGrantListFor(
+    LunaProfile profile, {
+    required bool servicesSynced,
+  }) {
     return profile.serverOwned ||
         profile.gatewayManagedModules.isNotEmpty ||
-        NotificationsDatabase.SERVICES_LAST_SYNC.read() > 0;
+        servicesSynced ||
+        (profile.tailarrServerEnabled && profile.tailarrServerHost.isNotEmpty);
   }
 
   /// The connection screen for [type] should show "Request Access" (no

@@ -15,6 +15,7 @@ import 'package:lunasea/database/models/notification.dart';
 import 'package:lunasea/database/models/profile.dart';
 import 'package:lunasea/database/tables/lunasea.dart';
 import 'package:lunasea/database/tables/notifications.dart';
+import 'package:lunasea/system/gateway/gateway_host.dart';
 import 'package:lunasea/system/gateway/gateway_services.dart';
 import 'package:lunasea/system/logger.dart';
 import 'package:lunasea/system/notifications/platform/ntfy_shared_state.dart';
@@ -109,7 +110,7 @@ class LunaNtfy {
         .update(DateTime.now().millisecondsSinceEpoch);
     final NtfyGatewayCredentials creds;
     try {
-      creds = await NtfyGatewayClient().selfNotifications();
+      creds = await (await gatewayClient()).selfNotifications();
     } on DioException catch (error, stack) {
       // Capture exactly what came back (or didn't) — this detail decides
       // whether the next fix is app- or server-side.
@@ -255,7 +256,7 @@ class NtfyPush {
     }
 
     try {
-      final response = await NtfyGatewayClient().selfPushToken(
+      final response = await (await gatewayClient()).selfPushToken(
         token: token,
         sandbox: sandbox,
       );
@@ -297,7 +298,7 @@ class NtfyPush {
     NotificationsDatabase.PUSH_STATE.update('');
     NotificationsDatabase.PUSH_DETAIL.update('');
     try {
-      await NtfyGatewayClient().selfPushToken(
+      await (await gatewayClient()).selfPushToken(
         token: token,
         sandbox: kDebugMode,
         register: false,
@@ -382,7 +383,7 @@ class NtfySync {
     if (!NotificationsDatabase.ENABLED.read()) return;
     if (!NotificationsDatabase.GATEWAY_MANAGED.read()) return;
     try {
-      final creds = await NtfyGatewayClient().selfNotifications();
+      final creds = await (await gatewayClient()).selfNotifications();
       if (!creds.ok || !creds.subscription.isValid) return;
       final changed = creds.url != NotificationsDatabase.URL.read() ||
           creds.token != NotificationsDatabase.TOKEN.read() ||

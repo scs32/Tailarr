@@ -6,11 +6,11 @@
 library gateway_services;
 
 import 'package:lunasea/api/ntfy/models.dart';
-import 'package:lunasea/api/ntfy/ntfy.dart';
 import 'package:lunasea/database/box.dart';
 import 'package:lunasea/database/models/external_module.dart';
 import 'package:lunasea/database/models/profile.dart';
 import 'package:lunasea/database/tables/notifications.dart';
+import 'package:lunasea/system/gateway/gateway_host.dart';
 import 'package:lunasea/system/logger.dart';
 
 /// What one reconcile pass actually changed — feeds the setup snackbar.
@@ -338,7 +338,7 @@ class GatewayServicesSync {
   /// outcome. Throws on transport errors.
   static Future<GatewayServicesOutcome> sync() async {
     _lastAttempt = DateTime.now();
-    final response = await NtfyGatewayClient().selfServices();
+    final response = await (await gatewayClient()).selfServices();
     LunaLogger().debug(
       'gateway services → HTTP ${response.statusCode} ok=${response.ok} '
       'kind=${response.kind} error=${response.error} '
@@ -377,12 +377,15 @@ class GatewayServicesSync {
   /// gateway provenance. Throttled, silent on every failure — the stored
   /// config keeps working.
   static Future<void> refresh() async {
-    final hasServer = LunaProfile.current.tailarrServerEnabled &&
-        LunaProfile.current.tailarrServerHost.isNotEmpty;
-    final hasManagedModules =
-        LunaProfile.current.gatewayManagedModules.isNotEmpty ||
-            LunaBox.externalModules.data
-                .any((module) => module.gatewayName.isNotEmpty);
+    final profile = LunaProfile.current;
+    // serverOwned covers invite-joined profiles whose Tailarr Server module
+    // is (correctly) disabled — they still re-sync so a granted service
+    // adopts and locks without any user action.
+    final hasServer = profile.serverOwned ||
+        (profile.tailarrServerEnabled && profile.tailarrServerHost.isNotEmpty);
+    final hasManagedModules = profile.gatewayManagedModules.isNotEmpty ||
+        LunaBox.externalModules.data
+            .any((module) => module.gatewayName.isNotEmpty);
     if (!hasServer && !hasManagedModules) return;
     final last = _lastAttempt;
     if (last != null && DateTime.now().difference(last) < _REFRESH_INTERVAL) {
