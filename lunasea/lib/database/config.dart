@@ -41,7 +41,16 @@ class LunaConfig {
     Map<String, dynamic> config = {};
     config[LunaBox.externalModules.key] = LunaBox.externalModules.export();
     config[LunaBox.indexers.key] = LunaBox.indexers.export();
-    config[LunaBox.profiles.key] = LunaBox.profiles.export();
+    // Security: a backup is a plaintext, user-shareable file. Strip the
+    // Tailscale auth/enroll key from every profile — it is a live tailnet
+    // enrollment credential that must not travel in a shared/cloud backup.
+    // Everything else is intended for restore; the auth key is re-entered on
+    // re-enrollment. See docs/security-audit-2026-07-25.md (M3).
+    final profiles = LunaBox.profiles.export();
+    for (final profile in profiles) {
+      profile['tailscaleAuthKey'] = '';
+    }
+    config[LunaBox.profiles.key] = profiles;
     for (final table in LunaTable.values) config[table.key] = table.export();
 
     return json.encode(config);

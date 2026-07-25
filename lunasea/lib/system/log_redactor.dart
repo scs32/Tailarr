@@ -47,9 +47,27 @@ class LogRedactor {
       RegExp(r'tk_[A-Za-z0-9_-]+'),
       (_) => 'tk_$mask',
     ),
-    // Authorization: Bearer <token>
+    // Auth-bearing HTTP headers (any scheme) as they appear in a Dio error's
+    // header-map toString or a raw header line: X-Api-Key / Authorization /
+    // Proxy-Authorization / X-Auth-Token. Capture the whole value up to a
+    // structural delimiter so `Authorization: Bearer <jwt>` is fully covered.
+    _Rule(
+      RegExp(
+          '''((?:x-api-key|x-auth-token|authorization|proxy-authorization)"?\\s*[:=]\\s*"?)[^,"'}\\]\\n]+''',
+          caseSensitive: false),
+      (m) => '${m[1]}$mask',
+    ),
+    // Bare Bearer token not preceded by a header name (free text / URLs).
     _Rule(
       RegExp(r'(bearer\s+)[A-Za-z0-9._~+/=-]+', caseSensitive: false),
+      (m) => '${m[1]}$mask',
+    ),
+    // Secret VALUES in a JSON body/map: {"apikey":"…"}, "token":"…",
+    // "password":"…" — the shape a service response or logged payload uses.
+    _Rule(
+      RegExp(
+          r'''("(?:api[_-]?key|api[_-]?token|apitoken|token|passwd|password|secret)"\s*:\s*")[^"]*''',
+          caseSensitive: false),
       (m) => '${m[1]}$mask',
     ),
   ];

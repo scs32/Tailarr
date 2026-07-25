@@ -91,14 +91,18 @@ stale live-E2E test-infra notes. Session logs retain the detail.)
   `NSAllowsArbitraryLoads`→`NSAllowsLocalNetworking`), M6 dropped the iOS
   "Always" location over-ask, M4 Android `allowBackup=false`, corrected the
   false "encrypted Hive" doc claim.
+  **Quick-wins batch LANDED 2026-07-25** (not yet built): M3 backup now strips
+  `tailscaleAuthKey` from every profile; L3 `LogRedactor` closed (auth-header +
+  JSON-value rules + tests); L7 dropped the legacy Android storage perms +
+  deduped POST_NOTIFICATIONS.
   **Hardening fast-follow (OPEN)**: M2 encrypt Hive at rest (`HiveAesCipher`
-  + secure-storage key; migration — the load-bearing fix); M3 config backup
-  carries all secrets incl. the Tailscale auth key (encrypt or strip); M5
-  Test-Connection SSRF guard; L1 ntfy App-Group file exclude-from-backup; L2
-  secret copies use the general/synced pasteboard (no expiry); L3 `LogRedactor`
-  gaps (custom `X-Api-Key`/`Authorization` headers, bare JSON values); L5 stale
-  security deps (dio/go_router/share_plus/retrofit/flutter_local_notifications;
-  Hive 2.x). Android `usesCleartextTraffic` left ON (LAN-HTTP support) —
+  + secure-storage key; migration — the load-bearing fix; would also let L1's
+  ntfy token be Keychain-backed, so L1 rides M2 rather than a native
+  exclude-from-backup flag); M3-full (encrypt the whole backup, not just strip
+  the key); M5 Test-Connection SSRF guard; L2 secret copies use the
+  general/synced pasteboard (no expiry — needs a native `UIPasteboard` channel);
+  L5 stale security deps (dio/go_router/share_plus/retrofit/
+  flutter_local_notifications; Hive 2.x). Android `usesCleartextTraffic` left ON (LAN-HTTP support) —
   revisit once non-server=Pro makes the free tier tailnet-only. L6 (committed
   `aps-environment=development`) is FINE — the distribution profile overrides
   it to production (push verified live). Suite audit of tailarr-server

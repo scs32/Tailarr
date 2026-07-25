@@ -48,10 +48,11 @@ void main() {
       expect(out.contains('tskey-<redacted>'), isTrue);
     });
 
-    test('redacts an ntfy token and Bearer header', () {
+    test('redacts an ntfy token and a bare Bearer token', () {
       expect(LogRedactor.scrub('token tk_jlwm13ca86zm18zq'),
           allOf(isNot(contains('jlwm13ca86zm18zq')), contains('tk_<redacted>')));
-      expect(LogRedactor.scrub('Authorization: Bearer eyJhbGc.payload.sig'),
+      // A Bearer token NOT preceded by a header name (free text / URL).
+      expect(LogRedactor.scrub('sent Bearer eyJhbGc.payload.sig upstream'),
           allOf(isNot(contains('eyJhbGc.payload.sig')),
               contains('Bearer <redacted>')));
     });
@@ -63,6 +64,28 @@ void main() {
           '(502 Bad Gateway), uri = //radarr.tail600657.ts.net:443';
       expect(LogRedactor.scrub(clean), clean);
       expect(LogRedactor.scrub('An Error Has Occurred'), 'An Error Has Occurred');
+    });
+
+    test('redacts auth-bearing headers of any scheme (L3)', () {
+      expect(LogRedactor.scrub('headers: {X-Api-Key: abc123SECRET, foo: bar}'),
+          allOf(isNot(contains('abc123SECRET')), contains('X-Api-Key: <redacted>'),
+              contains('foo: bar')));
+      expect(
+          LogRedactor.scrub('Authorization: Basic dXNlcjpwYXNzd29yZA=='),
+          allOf(isNot(contains('dXNlcjpwYXNz')),
+              contains('Authorization: <redacted>')));
+      expect(LogRedactor.scrub('{"authorization":"Bearer eyJra.pay.sig"}'),
+          isNot(contains('eyJra.pay.sig')));
+    });
+
+    test('redacts secret values in a JSON body/map (L3)', () {
+      expect(LogRedactor.scrub('{"apikey":"LIVEKEY123","page":2}'),
+          allOf(isNot(contains('LIVEKEY123')), contains('"apikey":"<redacted>"'),
+              contains('"page":2')));
+      expect(LogRedactor.scrub('{"password":"hunter2"}'),
+          isNot(contains('hunter2')));
+      expect(LogRedactor.scrub('{"token": "tok_abc"}'),
+          isNot(contains('tok_abc')));
     });
 
     test('is idempotent — safe to re-scrub on export', () {
