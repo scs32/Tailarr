@@ -38,7 +38,12 @@ bool isTailscaleConnectFailure(DioException e) {
       return text.contains('Failed host lookup') ||
           text.contains('Connection refused') ||
           text.contains('SocketException') ||
-          text.contains('Network is unreachable');
+          text.contains('Network is unreachable') ||
+          // The embedded Tailscale proxy couldn't dial the service yet — its
+          // CONNECT tunnel fails with a 502 while the netmap/peer route is
+          // still settling during the connect window. Same race, different
+          // surface: "Proxy failed to establish tunnel (502 Bad Gateway)".
+          text.contains('Proxy failed to establish tunnel');
     default:
       return false;
   }

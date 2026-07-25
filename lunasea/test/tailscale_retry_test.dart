@@ -89,6 +89,15 @@ void main() {
       );
     });
 
+    test('an embedded-proxy 502 (tunnel not up yet) is a connect failure', () {
+      expect(
+        isTailscaleConnectFailure(of(DioExceptionType.unknown,
+            error: 'HttpException: Proxy failed to establish tunnel '
+                '(502 Bad Gateway), uri = //radarr.tail600657.ts.net:443')),
+        isTrue,
+      );
+    });
+
     test('server-side and post-connect errors are NOT connect failures', () {
       expect(isTailscaleConnectFailure(of(DioExceptionType.badResponse)),
           isFalse); // 404/401 — the server answered
