@@ -150,6 +150,9 @@ class _State extends State<NotificationsRoute> with LunaScrollControllerMixin {
 
   Future<void> _clearInbox() async {
     if (LunaBox.notifications.isEmpty) return;
+    // Remember every id so a refresh/poll can't resurrect the cleared inbox.
+    await LunaNtfy()
+        .recordDismissed(LunaBox.notifications.data.map((n) => n.id).toList());
     await LunaBox.notifications.clear();
     showLunaSuccessSnackBar(
       title: 'Inbox Cleared',
@@ -248,7 +251,11 @@ class _State extends State<NotificationsRoute> with LunaScrollControllerMixin {
     return Dismissible(
       key: ValueKey('notification-${notification.id}'),
       direction: DismissDirection.endToStart,
-      onDismissed: (_) => notification.delete(),
+      onDismissed: (_) {
+        // Remember the dismissal so a refresh/poll can't resurrect it.
+        LunaNtfy().recordDismissed([notification.id]);
+        notification.delete();
+      },
       background: Container(
         color: LunaColours.red,
         alignment: Alignment.centerRight,
@@ -345,6 +352,7 @@ class _State extends State<NotificationsRoute> with LunaScrollControllerMixin {
                       icon: Icons.delete_rounded,
                       color: LunaColours.red,
                       onTap: () async {
+                        await LunaNtfy().recordDismissed([notification.id]);
                         await notification.delete();
                         if (context.mounted) Navigator.of(context).pop();
                       },

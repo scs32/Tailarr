@@ -9,6 +9,7 @@ class LunaNtfy {
   void restartStream() {}
   Future<void> onConfigChanged() async {}
   Future<void> migrateProfileName(String oldName, String newName) async {}
+  Future<void> recordDismissed(Iterable<String> ids) async {}
   Future<bool> enableBackgroundRefresh() async => false;
   Future<void> disableBackgroundRefresh() async {}
   Future<dynamic> autoConfigure() async => null;

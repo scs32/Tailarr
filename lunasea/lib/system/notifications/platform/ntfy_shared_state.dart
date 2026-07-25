@@ -18,6 +18,13 @@ class NtfyProfileState {
   int bgSince;
   List<String> notifiedIds;
 
+  /// Message ids the user deleted from the inbox. A poll re-fetches messages
+  /// at/after [since] (ntfy `since` is inclusive), and the inbox dedupes by
+  /// "is this id still stored?" — so without this, deleting a notification and
+  /// refreshing resurrects it. Bounded; ids age out as messages leave ntfy's
+  /// cache and can't be re-polled anyway.
+  List<String> dismissedIds;
+
   NtfyProfileState({
     required this.profile,
     this.url = '',
@@ -26,6 +33,7 @@ class NtfyProfileState {
     this.since = 0,
     this.bgSince = 0,
     this.notifiedIds = const [],
+    this.dismissedIds = const [],
   });
 
   NtfySubscription? get subscription {
@@ -44,6 +52,7 @@ class NtfyProfileState {
         // Guards against double-notifying messages published in the same
         // second the marker points at (ntfy `since` is inclusive-ish).
         'notified_ids': notifiedIds.take(25).toList(),
+        'dismissed_ids': dismissedIds.take(500).toList(),
       };
 
   factory NtfyProfileState.fromJson(String profile, Map data) {
@@ -57,6 +66,8 @@ class NtfyProfileState {
       bgSince: data['bg_since'] as int? ?? 0,
       notifiedIds:
           (data['notified_ids'] as List? ?? []).map((i) => i.toString()).toList(),
+      dismissedIds:
+          (data['dismissed_ids'] as List? ?? []).map((i) => i.toString()).toList(),
     );
   }
 }
@@ -108,6 +119,7 @@ class NtfySharedState {
         since: old.since,
         bgSince: old.bgSince,
         notifiedIds: old.notifiedIds,
+        dismissedIds: old.dismissedIds,
       );
     }
     if (activeProfile == oldName) activeProfile = newName;

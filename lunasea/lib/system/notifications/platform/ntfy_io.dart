@@ -86,6 +86,22 @@ class LunaNtfy {
 
   Future<int> syncInbox() => NtfySync.syncInbox();
 
+  /// Record that these message ids were deleted from the inbox so a later poll
+  /// can't resurrect them (see [NtfyProfileState.dismissedIds]). Scoped to the
+  /// active profile — the slice the inbox sync uses.
+  Future<void> recordDismissed(Iterable<String> ids) async {
+    final incoming = ids.where((id) => id.isNotEmpty).toList();
+    if (incoming.isEmpty) return;
+    final profile = LunaSeaDatabase.ENABLED_PROFILE.read();
+    final state = await NtfySharedState.load();
+    final slice = state.slice(profile);
+    // Insertion-ordered set: existing ids first, new last; keep the newest 500.
+    final merged = <String>{...slice.dismissedIds, ...incoming}.toList();
+    slice.dismissedIds =
+        merged.length > 500 ? merged.sublist(merged.length - 500) : merged;
+    await state.save();
+  }
+
   void restartStream() => NtfyStreamManager.instance.restart();
 
   /// Self-service setup via the tailarr-gate node (server v0.21.0+): the
@@ -504,6 +520,9 @@ class NtfySync {
     for (final message in messages) {
       if (message.id.isEmpty) continue;
       if (message.time > maxTime) maxTime = message.time;
+      // The user deleted this one — a poll re-fetches it (ntfy `since` is
+      // inclusive), so honor the dismissal instead of resurrecting it.
+      if (slice.dismissedIds.contains(message.id)) continue;
       final key = LunaNotification.boxKey(slice.profile, message.id);
       // Existing entries keep their read flag — repeated polls overlap.
       if (LunaBox.notifications.contains(key)) continue;

@@ -64,6 +64,7 @@ void main() {
               since: 4242,
               bgSince: 99,
               notifiedIds: const ['m1', 'm2'],
+              dismissedIds: const ['d1', 'd2'],
             ),
             'Home': NtfyProfileState(profile: 'Home', since: 7),
           },
@@ -80,6 +81,16 @@ void main() {
       expect(moved.since, 4242);
       expect(moved.bgSince, 99);
       expect(moved.notifiedIds, ['m1', 'm2']);
+      expect(moved.dismissedIds, ['d1', 'd2']);
+    });
+
+    test('dismissedIds survive a JSON round-trip', () {
+      final slice = NtfyProfileState(
+        profile: 'p',
+        dismissedIds: const ['a', 'b', 'c'],
+      );
+      final restored = NtfyProfileState.fromJson('p', slice.toJson());
+      expect(restored.dismissedIds, ['a', 'b', 'c']);
     });
 
     test('retargets the active profile when it was the one renamed', () {
