@@ -317,6 +317,78 @@ The whole stack (Go tsnet proxy, Swift MethodChannel bridge, findProxy/HttpOverr
 
 ---
 
+## Session Log — 2026-07-25 (later: builds 24-26, security audit, PUSH RELAY FIXED)
+
+Huge session. Highlights, newest concern first:
+
+### Push notifications were silently NOT push — root-caused to the relay's APNs key
+Stephen: "notifications seem slow / not sure they're push." Traced the whole
+pipeline: app registers APNs token → controller `_push_waker_loop` streams every
+ntfy topic (admin acct) → on each message hits the hosted relay
+`push.tailarr.com/wake` → APNs → NSE. All app/controller pieces were HEALTHY.
+Probed the relay directly (`POST /wake` with a fake token): **production APNs
+returned `apns 403 {"reason":"BadEnvironmentKeyInToken"}`; sandbox returned
+`BadDeviceToken` (healthy).** Root cause: the relay's APNs auth key
+`2ZSZ3JB589` ("Tailarr Push Relay") was created **Sandbox-only**. TestFlight =
+production APNs → every wake rejected → nothing delivered → devices fell back to
+iOS background poll = "slow." **App and podscale server were both innocent.**
+- **FIX (done, live):** Stephen created a Production-capable APNs key
+  **`ZZN87K3868`** (Team scoped / Sandbox & Production) — APNs key environment is
+  immutable, so a NEW key was required, not an edit. I have **SSH access to the
+  relay** (`ssh relay`, ubuntu@; service `tailarr-relay.service`, Go binary
+  `/usr/local/bin/tailarr-relay`, config `/etc/tailarr-relay/env` +
+  `AuthKey_*.p8`, both 0600 owned by `tailarr-relay`). Installed the new .p8,
+  repointed `APNS_KEY_ID`/`APNS_KEY_FILE`, restarted, verified production now
+  returns `BadDeviceToken` (auth OK). Real test push (via
+  `POST https://tailarr.tail600657.ts.net/api/ntfy/test`) LANDED on Stephen's
+  phone. Fixed for ALL TestFlight users; no build/resubmit needed (key isn't
+  build-bound). Old sandbox key `2ZSZ3JB589` to be REVOKED in the Apple portal
+  (no ASC API for APNs keys — portal click only); its dead .p8 removed from the
+  relay. `env.bak.<ts>` backup left on the relay.
+- Relay probe cheatsheet: `curl -sX POST -d '{"token":"<64hex>","sandbox":false,
+  "kind":"alert"}' https://push.tailarr.com/wake` → healthy = `BadDeviceToken`,
+  broken-auth = `BadEnvironmentKeyInToken`/`InvalidProviderToken`.
+
+### Security audit (client + server) — full reports in docs/
+- `docs/security-audit-2026-07-25.md` (client, 4 reviewers) → **pre-store batch
+  SHIPPED to master** (`47128cf5`): H1 invite consent gate, H2 error-dialog/
+  clipboard redaction, M1 `openLink` scheme allowlist, H3 transport floor
+  (TLS-validate default TRUE + iOS ATS→NSAllowsLocalNetworking), M4 Android
+  allowBackup=false, M6 location trim. **Quick-wins** (`2415a12b`): M3 backup
+  strips the Tailscale auth key, L3 LogRedactor header/JSON rules, L7 Android
+  perm cleanup. OPEN: **M2 encrypt Hive at rest** (load-bearing; needs migration
+  + device verify — deliberately NOT rushed), M5 SSRF guard, L2 pasteboard, L5
+  deps.
+- `docs/security-audit-server-2026-07-25.md` (podscale, 4 reviewers) — server is
+  defensively solid (no `shell=True`, great secret-at-rest, correct whois model).
+  Fixes are a SERVER-SESSION job (prompt drafted): H1 API bearer off-by-default
+  (unauth `op_exec`/`op_install`, ACL is the only gate), H2 catalog-install name
+  skips `NAME_RE` → path traversal + ACL grant injection, M1 gate-compromise
+  cred harvest, M2 key-reissue-doesn't-revoke, M3 NFS host_path injection.
+
+### Builds + features shipped this session (all on master, TestFlight live)
+- **Build 24**: notifications field-naming diagnostic (`cea6b9fa`) + server-driven
+  profile rename (`90815c3d` — follows `server.name` on /self/services;
+  server v0.49.0 ships it; profile auto-renames "Tailarr"→"Oracle Tailarr").
+- **Build 25**: cold-load connect-window retry (`a6560b6f` — Dio interceptor on
+  all 6 module clients; retries connection failures while the tunnel comes up).
+- **Build 26**: proxy-502 added to the retry classifier (`d0f60020`) + **log
+  credential redaction** (`73f1722d` — `LogRedactor` scrubs apikey/token/NZBGet-
+  password/tskey/Bearer at write + export). Then the security batch above.
+- Cert cap did NOT recur (24/25/26 all clean).
+- Backlog pruned + split into **Backlog** / **Pro Backlog** (`75dab9e8`);
+  **demo-mode design** doc `docs/demo-mode-design.md` (in-app read-only demo,
+  the App-Review-4.2 answer for non-server=Pro — NOT a hosted demo server).
+
+### Still open / next
+- Client build 27 to ship the security batch (device-verify the consent dialog +
+  TLS-default-on first; add self-signed-cert caveat to What-to-Test).
+- Server-session security prompt (H1/H2/M1-M3).
+- M2 Hive encryption (deliberate, device-verified).
+- magicsock health-warning bug — in the tailscale_embed session (prompt sent).
+
+---
+
 ## Session Log — 2026-07-25 (self-config root cause: gate dialed by bare short name → build 23)
 
 Stephen filed **two TestFlight bugs to be looked at together** (build 22,
