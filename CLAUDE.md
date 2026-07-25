@@ -346,6 +346,97 @@ The whole stack (Go tsnet proxy, Swift MethodChannel bridge, findProxy/HttpOverr
 
 ---
 
+## Session Log — 2026-07-25 (marathon: builds 24→29, push fixed, audits, M2, magicsock outage fix)
+
+Enormous continuous session. Everything below is on master + pushed;
+**TestFlight builds 24 through 29 are all LIVE** (same 11.0.0 fast path). The
+earlier "(later: builds 24-26…)" log below has fuller detail on the first half;
+this entry is the resumable summary of the whole day.
+
+### PUSH NOTIFICATIONS — FIXED (was never actually pushing)
+Stephen: "notifications seem slow / not sure they're push." Root cause was NOT
+the app or the podscale server — both innocent. The hosted APNs relay
+`push.tailarr.com` had a **Sandbox-only APNs auth key** (`2ZSZ3JB589`), so every
+TestFlight (production) wake got `apns 403 BadEnvironmentKeyInToken` → nothing
+delivered → devices fell back to slow iOS background poll. Stephen created a
+**Production-capable key `ZZN87K3868`**; I installed it on the relay, repointed
+`APNS_KEY_ID`/`APNS_KEY_FILE`, restarted, verified prod now returns
+`BadDeviceToken` (healthy), real push landed. Old sandbox key to be revoked in
+the Apple portal (no ASC API for APNs keys). **INFRA ACCESS (durable):**
+`ssh relay` = push.tailarr.com (service `tailarr-relay.service`, Go binary,
+config `/etc/tailarr-relay/env` + `AuthKey_*.p8`). `ssh tailarr` = the
+controller (Oracle box 141.148.178.154; pods `tailarr`/`ntfy`/`tailarr-gate`).
+Relay probe: `curl -sX POST -d '{"token":"<64hex>","sandbox":false,
+"kind":"alert"}' https://push.tailarr.com/wake` → healthy=`BadDeviceToken`.
+
+### magicsock outage — ROOT-CAUSED + FIXED (embed session), shipped build 29
+TestFlight feedback showed Users/Radarr/**Tailscale Status page** all throwing
+"An Error Has Occurred / Try Again" in clusters, "Try Again didn't work". Both
+sides proved: the **v0.3.3 watchdog full-restart** = a ~45s app-wide tailnet
+OUTAGE (node down while `Up()` runs; `status()` throws; dial falls back to
+direct; all `*.ts.net`/100.x fail). The "ReceiveIPv4 not running" warning ITSELF
+is benign (traffic flows over DERP). Decision: **Option A** — embed session
+shipped **v0.3.5** (rebind-only, auto-restart removed; keeps v0.3.4 telemetry).
+App side: pinned **v0.3.5** (framework-v1.92.5-6, SHA cba3bae6…), added a
+**Self-Heal Telemetry card** to the Status page (rebinds/restarts + timestamps),
+and softened the Status error to "reconnecting, refreshes automatically".
+**SOAK PENDING:** Stephen roams WiFi↔cellular, sees the warning, screenshots the
+telemetry card while showing AND cleared — clean proof = **restarts=0, rebinds
+increments**. That's the last confirmation the embed session needs.
+
+### Security audits (client + server) — `docs/security-audit-*.md`
+Two 4-reviewer read-only audits. **Client batch SHIPPED (build 27)**: invite
+consent gate (H1), error-dialog/clipboard redaction (H2), `openLink` scheme
+allowlist (M1), transport floor (H3: TLS-validate default TRUE + iOS ATS→
+NSAllowsLocalNetworking), Android allowBackup=false (M4), location trim (M6),
+backup strips the Tailscale key (M3), LogRedactor header/JSON rules (L3), Android
+perm cleanup (L7). **Server audit → SERVER-SESSION prompt handed off** (they're
+working it): H1 API bearer off-by-default (unauth `op_exec`/`op_install`), H2
+catalog-install NAME_RE gap → ACL grant injection, M1 gate cred-harvest, M2
+key-reissue-doesn't-revoke, M3 NFS host_path injection. Server is otherwise
+defensively solid (no shell=True, good secret-at-rest, correct whois model).
+
+### M2 — Hive encryption at rest, SHIPPED build 28, device-verified
+Every box now opens with a `HiveAesCipher`; key in the iOS Keychain via
+`flutter_secure_storage`. One-time plaintext→encrypted migration on first launch.
+**Device-verified on the sim** (the gotcha: Hive encrypts VALUES not keys — box
+keys stay readable; verify via absence of value strings + high-entropy value
+bytes). Migration data-loss-on-crash risk ACCEPTED: no real users yet + state is
+server-driven (self-heals on rejoin). `lib/database/encryption.dart`.
+
+### Smaller fixes shipped this session
+- **Server-driven profile rename** (build 24): profile follows `server.name` from
+  /self/services live; renames "Tailarr"→"Oracle Tailarr". Migrates name-keyed
+  notification/inbox/shared-state.
+- **Cold-load retry** (build 25/26): `attachTailscaleConnectRetry` Dio
+  interceptor on all module clients — retries connection + proxy-502 failures
+  during the connect window.
+- **Inbox delete-resurrects** (build 29): `NtfyProfileState.dismissedIds` — a
+  poll no longer re-adds a deleted notification.
+- **Request-Access UX** (build 29): parent screens hide the Connection Details
+  row when `shouldRequestAccess`; connection-details page drops Test Connection
+  on managed and the whole bar on request-access.
+
+### Release ops — now scripted + documented (see "## Release Ops (standing)")
+- **`scripts/asc_release.py`** — full ASC release with **retry-on-transient 5xx**
+  (the Public Beta group-add hit a spurious 500 on build 29 that would've
+  silently dropped it) + optional `--revoke-cert`.
+- **`scripts/revoke_oldest_cert.py --revoke`** — net-flat cert-cap policy, run
+  after each build goes live (keeps local `FL7LS84W49` + newest; revokes oldest
+  orphan). No more cap failures.
+- **Build-live push** to Stephen via `ssh tailarr` → publish to the `tlr-ops`
+  ntfy topic with the publisher creds (rides the now-fixed push pipeline).
+
+### Next (nothing running)
+- **magicsock soak screenshots** (Stephen's action → embed session).
+- **App Store submission** (the next big strategic item — listing copy,
+  screenshots, privacy/export questionnaires; I offered to draft the copy).
+- non-server=Pro + demo mode (design done, `docs/demo-mode-design.md`; decision
+  pending). Device revoke; Server module v2 remainder; profile-delete lockup.
+- Revoke the old sandbox APNs key `2ZSZ3JB589` in the Apple portal.
+
+---
+
 ## Session Log — 2026-07-25 (later: builds 24-26, security audit, PUSH RELAY FIXED)
 
 Huge session. Highlights, newest concern first:
