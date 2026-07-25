@@ -105,8 +105,16 @@ stale live-E2E test-infra notes. Session logs retain the detail.)
   flutter_local_notifications; Hive 2.x). Android `usesCleartextTraffic` left ON (LAN-HTTP support) —
   revisit once non-server=Pro makes the free tier tailnet-only. L6 (committed
   `aps-environment=development`) is FINE — the distribution profile overrides
-  it to production (push verified live). Suite audit of tailarr-server
-  (`~/projects/podscale`) gateway/whois trust model still pending.
+  it to production (push verified live).
+  **Server-side audit DONE 2026-07-25 → `docs/security-audit-server-2026-07-25.md`**
+  (four reviewers over `~/projects/podscale`). Server is defensively solid (no
+  `shell=True`, excellent secret-at-rest, correct whois model). Fixes are a
+  SERVER-SESSION job: H1 API bearer OFF by default (unauth `op_exec`/`op_install`
+  — only the tailnet ACL gates it); H2 catalog-install name skips `NAME_RE` →
+  path traversal + ACL grant injection (`dst:["*"]` escapes the fences); M1 gate
+  compromise harvests all users' creds (controller trusts caller-supplied `ip`);
+  M2 key reissue doesn't revoke the old key; M3 NFS `host_path` export injection;
+  L1-L6 hardening.
 
 - **Suite invite** (dream feature): tailnet enrollment key + module config in
   ONE link. Share-config payload is versioned with room for an
