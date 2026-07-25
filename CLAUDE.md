@@ -163,6 +163,28 @@ product-focus, not revenue-max (Zagreus ships paid IAP as precedent).
   with the gate above — the unlock flips the "not-Pro" check the manual editors
   and Add Profile read.
 
+## Release Ops (standing)
+
+TestFlight release flow (per build): trigger `testflight.yml` → CI builds +
+uploads → run the ASC release script (poll VALID skipping the previous build's
+id → betaAppReviewSubmission → Public Beta group `9d6bdfdb-…` → whatsNew). Same
+11.0.0 version string → beta review auto-APPROVES fast. Then, as the LAST step:
+
+- **Cert-cap policy (net-flat) — ALWAYS run after a build goes live:**
+  `python3 scripts/revoke_oldest_cert.py --revoke`. Each CI build mints one
+  "Created via API" dev cert (`-allowProvisioningUpdates`); Apple caps them
+  (~11) and Archive then fails. The script revokes exactly the OLDEST orphan
+  while keeping the local `FL7LS84W49` and the NEWEST (in-use) cert — so the
+  count stays flat and the cap is never hit again. Run it only AFTER the build
+  is live (nothing signing then). Replaces the old reactive bulk-revoke.
+  (Adopted 2026-07-25 after build 28; first steady-state revoke done then.)
+
+- **Notify Stephen of a live build via Tailarr push:** `scripts` (or the
+  session helper) publishes to the `tlr-ops` ntfy topic through the controller
+  (`ssh tailarr` → read publisher creds from `/root/Pods/.ntfy.json` → POST to
+  the ntfy public_url). This rides the real APNs push pipeline (fixed
+  2026-07-25 — see the push-relay session log).
+
 ## Build Commands
 
 ### Flutter App (from `lunasea/` directory)
