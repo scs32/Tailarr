@@ -101,6 +101,7 @@ class _State extends State<ConfigurationGeneralTailscaleStatusRoute>
           _connectionBlock(status),
           _nodeCard(status),
           if (status.health.isNotEmpty) _healthCard(status),
+          if (status.recovery != null) _recoveryCard(status.recovery!),
           if (status.running) ..._peers(status),
         ],
       ),
@@ -181,6 +182,34 @@ class _State extends State<ConfigurationGeneralTailscaleStatusRoute>
       content: status.health
           .map((warning) => LunaTableContent(body: warning))
           .toList(),
+    );
+  }
+
+  /// Self-heal telemetry (plugin v0.3.4+). The diagnostic surface for the
+  /// "ReceiveIPv4 not running" recovery: we need to see whether a warning
+  /// clears via a cheap rebind (no down window) or a full node RESTART (which
+  /// causes a ~45s tailnet outage). `restarts` + `lastRestartAt` are the key
+  /// signal — screenshot this while the warning shows and again when it clears.
+  Widget _recoveryCard(TailscaleRecovery r) {
+    String withReason(String at, String? reason) =>
+        reason == null || reason.isEmpty ? at : '$at\n$reason';
+    return LunaTableCard(
+      title: 'Self-Heal Telemetry',
+      content: [
+        LunaTableContent(
+            title: 'needs rebind', body: r.needsRebind ? 'yes' : 'no'),
+        LunaTableContent(title: 'heal attempts', body: '${r.healAttempts}'),
+        LunaTableContent(title: 'rebinds', body: '${r.rebinds}'),
+        if (r.lastRebindAt != null)
+          LunaTableContent(
+              title: 'last rebind',
+              body: withReason(r.lastRebindAt!, r.lastRebindReason)),
+        LunaTableContent(title: 'restarts', body: '${r.restarts}'),
+        if (r.lastRestartAt != null)
+          LunaTableContent(
+              title: 'last restart',
+              body: withReason(r.lastRestartAt!, r.lastRestartReason)),
+      ],
     );
   }
 
