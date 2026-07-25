@@ -82,16 +82,27 @@ stale live-E2E test-infra notes. Session logs retain the detail.)
   "1.0" vs the 11.0.0 lineage string — verify ASC accepts a lower version
   string after 11.0.0 TestFlight builds BEFORE promising it.
 
-- **Security audit** (recommended before App Store submission): whole-app,
-  read-only. Tier-1 surfaces — Hive-box encryption/key handling; the
-  `NETWORKING_TLS_VALIDATION` accept-all-certs toggle (`network_io.dart`);
-  share-config/invite payloads; the App-Group `tailarr_ntfy.json` (holds the
-  ntfy token). Tier-2 — deep/universal-link import (Test Connection runs on an
-  UNSAVED payload), external-module bookmarks/WebViews. Tier-3 — dependency
-  CVE scan; residual secret-in-error paths the log redactor doesn't cover.
-  Include the tailarr-server repo (`~/projects/podscale`) for the suite's
-  gateway/whois trust model. (Log-credential redaction already shipped, build
-  26.)
+- **Security audit — DONE 2026-07-25, full report in
+  `docs/security-audit-2026-07-25.md`**. Four-reviewer read-only sweep.
+  **Pre-App-Store batch LANDED** (not yet built): H1 invite consent gate,
+  H2 error-dialog/clipboard redaction (`LogRedactor.scrub` at the preview
+  boundary), M1 `openLink` scheme allowlist, H3 transport floor
+  (`NETWORKING_TLS_VALIDATION` now defaults TRUE; iOS ATS
+  `NSAllowsArbitraryLoads`→`NSAllowsLocalNetworking`), M6 dropped the iOS
+  "Always" location over-ask, M4 Android `allowBackup=false`, corrected the
+  false "encrypted Hive" doc claim.
+  **Hardening fast-follow (OPEN)**: M2 encrypt Hive at rest (`HiveAesCipher`
+  + secure-storage key; migration — the load-bearing fix); M3 config backup
+  carries all secrets incl. the Tailscale auth key (encrypt or strip); M5
+  Test-Connection SSRF guard; L1 ntfy App-Group file exclude-from-backup; L2
+  secret copies use the general/synced pasteboard (no expiry); L3 `LogRedactor`
+  gaps (custom `X-Api-Key`/`Authorization` headers, bare JSON values); L5 stale
+  security deps (dio/go_router/share_plus/retrofit/flutter_local_notifications;
+  Hive 2.x). Android `usesCleartextTraffic` left ON (LAN-HTTP support) —
+  revisit once non-server=Pro makes the free tier tailnet-only. L6 (committed
+  `aps-environment=development`) is FINE — the distribution profile overrides
+  it to production (push verified live). Suite audit of tailarr-server
+  (`~/projects/podscale`) gateway/whois trust model still pending.
 
 - **Suite invite** (dream feature): tailnet enrollment key + module config in
   ONE link. Share-config payload is versioned with room for an
@@ -205,7 +216,10 @@ npm run serve      # Production
 - Go-based Tailscale integration (`lunasea/Go/`) compiled to xcframework for iOS
 
 ### Local Storage
-- **Hive** encrypted NoSQL database
+- **Hive** NoSQL database (NOT encrypted — see the M2 finding in
+  `docs/security-audit-2026-07-25.md`; encrypting at rest is a hardening
+  fast-follow. On iOS/Android the OS file-protection partially covers it at
+  rest; desktop builds do not.)
 - Code-generated models with `@HiveType`/`@HiveField` annotations
 - Boxes: profiles, indexers, logs, alerts, externalModules, lunasea
 

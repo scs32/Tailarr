@@ -150,6 +150,16 @@ class _State extends State<ImportConfigurationRoute>
       return;
     }
 
+    // Consent gate: an invite link is untrusted input, and joining enrolls the
+    // device onto the sender's tailnet and hands that server control of the
+    // app's config/push. Require a deliberate confirm that names the server.
+    final confirmed = await SettingsDialogs().confirmJoinServer(
+      context,
+      host: config.host,
+      serverName: config.serverName,
+    );
+    if (!confirmed) return;
+
     setState(() => _joiningStep = 'Joining network…');
     try {
       // Every server-driven thing this join creates lands on a profile the

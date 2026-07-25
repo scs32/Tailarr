@@ -16,7 +16,7 @@ enum LunaSeaDatabase<T> with LunaTableMixin<T> {
   DRAWER_AUTOMATIC_MANAGE<bool>(true),
   DRAWER_MANUAL_ORDER<List>([]),
   ENABLED_PROFILE<String>(LunaProfile.DEFAULT_PROFILE),
-  NETWORKING_TLS_VALIDATION<bool>(false),
+  NETWORKING_TLS_VALIDATION<bool>(true),
   TAILSCALE_ENABLED<bool>(false),
   TAILSCALE_AUTH_KEY<String>(''),
   THEME_AMOLED<bool>(false),

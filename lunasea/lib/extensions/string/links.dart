@@ -1,6 +1,12 @@
 import 'package:lunasea/system/logger.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
+/// Only these schemes may be launched. A gateway/external-module URL, an
+/// imported payload, or an ntfy field is untrusted input; without this a
+/// bookmark could launch `tailarr:///import#…` (re-injecting config through the
+/// app's own deep-link handler), `tel:`/`sms:`, or a custom-scheme handler.
+const _allowedLinkSchemes = {'http', 'https'};
+
 extension StringAsLinksExtension on String {
   Future<bool> _launchUniversal(String uri) async {
     return await launchUrlString(
@@ -19,6 +25,16 @@ extension StringAsLinksExtension on String {
   }
 
   Future<void> openLink() async {
+    final scheme = Uri.tryParse(this)?.scheme.toLowerCase() ?? '';
+    if (!_allowedLinkSchemes.contains(scheme)) {
+      LunaLogger().warning(
+        'Refused to open a non-http(s) link (scheme: '
+        '${scheme.isEmpty ? '(none)' : scheme})',
+        'StringAsLinksExtension',
+        'openLink',
+      );
+      return;
+    }
     try {
       if (await _launchUniversal(this)) return;
       await _launchDefault(this);

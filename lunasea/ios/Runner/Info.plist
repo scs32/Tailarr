@@ -54,11 +54,9 @@
 		<true/>
 		<key>NSAppTransportSecurity</key>
 		<dict>
-			<key>NSAllowsArbitraryLoads</key>
+			<key>NSAllowsLocalNetworking</key>
 			<true/>
 		</dict>
-		<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-		<string>Tailarr would like to access your location for determining local-remote host switching</string>
 		<key>NSLocationWhenInUseUsageDescription</key>
 		<string>Tailarr would like to access your location for determining local-remote host switching</string>
 		<key>NSPhotoLibraryAddUsageDescription</key>

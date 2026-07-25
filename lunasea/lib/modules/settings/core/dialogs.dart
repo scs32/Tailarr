@@ -46,6 +46,49 @@ class SettingsDialogs {
     return Tuple2(_flag, _index);
   }
 
+  /// Consent gate before an invite enrolls the device onto a tailnet. An
+  /// invite link is untrusted input, and joining lets the named server drive
+  /// the app's config + push and puts the device on that server's private
+  /// network — so name it and require a deliberate confirm.
+  Future<bool> confirmJoinServer(
+    BuildContext context, {
+    required String host,
+    required String serverName,
+  }) async {
+    bool _flag = false;
+    void _setValues(bool flag) {
+      _flag = flag;
+      Navigator.of(context).pop();
+    }
+
+    final authority = Uri.tryParse(host)?.host ?? host;
+    final name = serverName.trim();
+    final label = name.isNotEmpty ? '"$name" ($authority)' : authority;
+
+    await LunaDialog.dialog(
+      context: context,
+      title: 'Join This Server?',
+      buttons: [
+        LunaDialog.button(
+          text: 'Join',
+          textColor: LunaColours.accent,
+          onPressed: () => _setValues(true),
+        ),
+      ],
+      content: [
+        LunaDialog.textContent(
+          text: 'This invite connects your device to the Tailarr Server at '
+              '$label and lets it configure your app — your notifications, '
+              'which services you can see, and push registration. Your device '
+              'also joins that server\'s private network.\n\nOnly continue if '
+              'you trust whoever sent you this invite.',
+        ),
+      ],
+      contentPadding: LunaDialog.textDialogContentPadding(),
+    );
+    return _flag;
+  }
+
   Future<bool> confirmAccountSignOut(BuildContext context) async {
     bool _flag = false;
 

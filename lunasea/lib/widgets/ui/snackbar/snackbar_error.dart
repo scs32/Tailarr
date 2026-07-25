@@ -1,4 +1,5 @@
 import 'package:lunasea/core.dart';
+import 'package:lunasea/system/log_redactor.dart';
 
 Future<void> showLunaErrorSnackBar({
   required String title,
@@ -19,7 +20,11 @@ Future<void> showLunaErrorSnackBar({
           LunaDialogs().textPreview(
             LunaState.context,
             'Error',
-            error.toString(),
+            // Scrub credentials: this dialog is viewable, screenshotted, and
+            // has a Copy-to-pasteboard button — the same leak surface the log
+            // redactor closed. A DioException.toString() embeds the request
+            // URI (…?apikey=…, NZBGet user:pass), so redact before display.
+            LogRedactor.scrub(error.toString()),
           );
         } else if (buttonOnPressed != null) {
           buttonOnPressed();
