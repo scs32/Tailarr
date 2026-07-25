@@ -1,4 +1,5 @@
 import 'package:lunasea/core.dart';
+import 'package:lunasea/system/log_redactor.dart';
 import 'package:lunasea/types/log_type.dart';
 import 'package:stack_trace/stack_trace.dart';
 
@@ -41,7 +42,9 @@ class LunaLog extends HiveObject {
     return LunaLog(
       timestamp: timestamp,
       type: type,
-      message: message,
+      message: LogRedactor.scrub(message),
+      className: className,
+      methodName: methodName,
     );
   }
 
@@ -65,23 +68,27 @@ class LunaLog extends HiveObject {
       type: type,
       className: className ?? _className,
       methodName: methodName ?? _methodName,
-      message: message,
-      error: error?.toString(),
-      stackTrace: trace?.toString(),
+      message: LogRedactor.scrub(message),
+      error: LogRedactor.scrubNullable(error?.toString()),
+      stackTrace: LogRedactor.scrubNullable(trace?.toString()),
     );
   }
 
   Map<String, dynamic> toJson() {
+    // Defense-in-depth: new logs are already scrubbed at write time, but the
+    // export path re-scrubs so any log written before this landed can't leak
+    // a credential into a shared file.
     return {
       "timestamp":
           DateTime.fromMillisecondsSinceEpoch(timestamp).toIso8601String(),
       "type": type.title,
-      "message": message,
+      "message": LogRedactor.scrub(message),
       if (className?.isNotEmpty ?? false) "class_name": className,
       if (methodName?.isNotEmpty ?? false) "method_name": methodName,
-      if (error?.isNotEmpty ?? false) "error": error,
+      if (error?.isNotEmpty ?? false) "error": LogRedactor.scrubNullable(error),
       if (stackTrace?.isNotEmpty ?? false)
-        "stack_trace": stackTrace?.trim().split('\n') ?? [],
+        "stack_trace":
+            LogRedactor.scrub(stackTrace!.trim()).split('\n'),
     };
   }
 }
