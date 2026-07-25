@@ -37,10 +37,14 @@ class _State extends State<ConfigurationTailarrServerConnectionDetailsRoute>
     );
   }
 
-  Widget _bottomActionBar() {
+  // Server-managed and request-access modules have nothing to test — the
+  // config is the server's. Drop Test Connection (managed) or the whole bar
+  // (request-access, no host to test or share).
+  Widget? _bottomActionBar() {
+    if (ServerDrivenConnection.shouldRequestAccess('tailarr')) return null;
     return LunaBottomActionBar(
       actions: [
-        _testConnection(),
+        if (!ServerDrivenConnection.isManaged('tailarr')) _testConnection(),
         _shareConfiguration(),
       ],
     );

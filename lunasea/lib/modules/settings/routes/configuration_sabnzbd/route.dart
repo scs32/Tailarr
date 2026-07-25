@@ -39,8 +39,10 @@ class _State extends State<ConfigurationSABnzbdRoute>
       children: [
         LunaModule.SABNZBD.informationBanner(),
         _enabledToggle(),
-        _connectionDetailsPage(),
-        LunaDivider(),
+        if (!ServerDrivenConnection.shouldRequestAccess('sabnzbd')) ...[
+          _connectionDetailsPage(),
+          LunaDivider(),
+        ],
         _defaultPagesPage(),
         //_defaultPagesPage(),
       ],

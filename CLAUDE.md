@@ -24,14 +24,16 @@ the Users PEOPLE model, ntfy notifications stage 1, the second-share crash
 [sharing was replaced by gateway auto-config], share-config UX polish, and
 stale live-E2E test-infra notes. Session logs retain the detail.)
 
-- **Remove the Test Connection button on Request-Access modules
-  (2026-07-25)**: a module the server owns but hasn't granted this device
-  shows the "Request Access" card (see `ServerDrivenConnection`), but the
-  connection screen still renders a Test Connection action — meaningless when
-  there's no host/credential to test and the only move is to ask the admin.
-  Hide/disable Test Connection whenever `shouldRequestAccess(type)` is true
-  (and arguably on `isManaged`/Server-Managed screens, where testing is the
-  re-sync's job). Audit all 6 module connection routes.
+- **Request-Access connection UX — DONE 2026-07-25** (TestFlight feedback:
+  "gray out connection details when it's request only"): across all 6 native
+  module connection screens, the parent route now HIDES the "Connection
+  Details" row when `shouldRequestAccess(type)` (only the Request Access card
+  shows), and the connection-details page drops Test Connection on
+  `isManaged` (re-sync is the job) and the whole bottom bar on request-access
+  (no host to test/share). Also: the Tailscale Status page now shows a
+  transient "isn't responding — reconnecting, refreshes automatically" message
+  instead of a hard "An Error Has Occurred" when `status()` throws (embedded
+  node briefly down).
 
 - **Build-18 profile-delete lockup (UNRESOLVED, 2026-07-24)**: app locked up
   with a Delete Profile dialog open on server-owned profiles (screenshot

@@ -39,8 +39,10 @@ class _State extends State<ConfigurationRadarrRoute>
       children: [
         LunaModule.RADARR.informationBanner(),
         _enabledToggle(),
-        _connectionDetailsPage(),
-        LunaDivider(),
+        if (!ServerDrivenConnection.shouldRequestAccess('radarr')) ...[
+          _connectionDetailsPage(),
+          LunaDivider(),
+        ],
         _defaultOptionsPage(),
         _defaultPagesPage(),
         _discoverUseRadarrSuggestionsToggle(),

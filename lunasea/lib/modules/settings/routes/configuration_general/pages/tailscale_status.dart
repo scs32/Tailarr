@@ -73,7 +73,17 @@ class _State extends State<ConfigurationGeneralTailscaleStatusRoute>
 
   Widget _body() {
     if (!_loaded) return const LunaLoader();
-    if (_error != null) return LunaMessage.error(onTap: _refresh);
+    if (_error != null) {
+      // The embedded node can briefly stop responding (e.g. while it rebinds
+      // after a network change). This page polls every 5s, so present it as a
+      // transient reconnecting state, not a hard "An Error Has Occurred".
+      return LunaMessage(
+        text: 'Tailscale isn\'t responding right now — it may be reconnecting. '
+            'This screen refreshes automatically.',
+        buttonText: 'Retry Now',
+        onTap: _refresh,
+      );
+    }
     final status = _status;
     if (status == null) {
       return LunaMessage(

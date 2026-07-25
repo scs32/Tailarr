@@ -39,8 +39,10 @@ class _State extends State<ConfigurationSonarrRoute>
       children: [
         LunaModule.SONARR.informationBanner(),
         _enabledToggle(),
-        _connectionDetailsPage(),
-        LunaDivider(),
+        if (!ServerDrivenConnection.shouldRequestAccess('sonarr')) ...[
+          _connectionDetailsPage(),
+          LunaDivider(),
+        ],
         _defaultOptionsPage(),
         _defaultPagesPage(),
         _queueSize(),

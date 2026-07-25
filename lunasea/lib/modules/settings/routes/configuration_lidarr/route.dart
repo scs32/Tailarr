@@ -39,8 +39,10 @@ class _State extends State<ConfigurationLidarrRoute>
       children: [
         LunaModule.LIDARR.informationBanner(),
         _enabledToggle(),
-        _connectionDetailsPage(),
-        LunaDivider(),
+        if (!ServerDrivenConnection.shouldRequestAccess('lidarr')) ...[
+          _connectionDetailsPage(),
+          LunaDivider(),
+        ],
         _defaultPagesPage(),
         //_defaultPagesPage(),
       ],

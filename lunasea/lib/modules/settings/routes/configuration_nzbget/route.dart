@@ -39,8 +39,10 @@ class _State extends State<ConfigurationNZBGetRoute>
       children: [
         LunaModule.NZBGET.informationBanner(),
         _enabledToggle(),
-        _connectionDetailsPage(),
-        LunaDivider(),
+        if (!ServerDrivenConnection.shouldRequestAccess('nzbget')) ...[
+          _connectionDetailsPage(),
+          LunaDivider(),
+        ],
         _defaultPagesPage(),
         //_defaultPagesPage(),
       ],

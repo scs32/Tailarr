@@ -39,8 +39,10 @@ class _State extends State<ConfigurationTautulliRoute>
       children: [
         LunaModule.TAUTULLI.informationBanner(),
         _enabledToggle(),
-        _connectionDetailsPage(),
-        LunaDivider(),
+        if (!ServerDrivenConnection.shouldRequestAccess('tautulli')) ...[
+          _connectionDetailsPage(),
+          LunaDivider(),
+        ],
         _activityRefreshRate(),
         _defaultPagesPage(),
         _defaultTerminationMessage(),
