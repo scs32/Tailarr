@@ -21,6 +21,11 @@ enum LunaBox<T> {
   final String key;
   const LunaBox(this.key);
 
+  /// At-rest encryption cipher, set by [LunaDatabase] before [open]. When set,
+  /// every box is opened encrypted (security audit M2). Null on web / before
+  /// initialization.
+  static HiveCipher? cipher;
+
   Box<T> get _instance => Hive.box<T>(key);
 
   Iterable<dynamic> get keys => _instance.keys;
@@ -62,7 +67,7 @@ enum LunaBox<T> {
   }
 
   Future<Box<T>> _open() async {
-    return Hive.openBox<T>(key);
+    return Hive.openBox<T>(key, encryptionCipher: cipher);
   }
 
   Stream<BoxEvent> watch([dynamic key]) {

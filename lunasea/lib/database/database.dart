@@ -1,4 +1,5 @@
 import 'package:lunasea/database/box.dart';
+import 'package:lunasea/database/encryption.dart';
 import 'package:lunasea/database/models/profile.dart';
 import 'package:lunasea/database/table.dart';
 import 'package:lunasea/database/tables/lunasea.dart';
@@ -19,6 +20,23 @@ class LunaDatabase {
   Future<void> initialize() async {
     await Hive.initFlutter(path);
     LunaTable.register();
+
+    // At-rest encryption (security audit M2). On the FIRST launch after this
+    // shipped, no key exists yet — if the install already has PLAINTEXT boxes
+    // on disk, re-encrypt them before opening with the cipher. A fresh install
+    // has no box files, so the migration is a no-op and the boxes are simply
+    // created encrypted. The key lives in the platform secure enclave.
+    final firstRun = !await LunaEncryption.hasKey();
+    final key = await LunaEncryption.getOrCreateKey();
+    final cipher = LunaEncryption.cipher(key);
+    if (firstRun) {
+      await LunaHiveMigration.encryptExistingBoxes(
+        boxNames: LunaBox.values.map((box) => box.key).toList(),
+        cipher: cipher,
+      );
+    }
+    LunaBox.cipher = cipher;
+
     await open();
   }
 
