@@ -1,6 +1,7 @@
 library sonarr;
 
 import 'package:dio/dio.dart';
+import 'package:lunasea/system/network/tailscale_retry.dart';
 import 'package:lunasea/api/sonarr/controllers.dart';
 
 class SonarrAPI {
@@ -43,6 +44,7 @@ class SonarrAPI {
         maxRedirects: maxRedirects,
       ),
     );
+    attachTailscaleConnectRetry(_dio);
     return SonarrAPI._internal(
       httpClient: _dio,
       calendar: SonarrControllerCalendar(_dio),

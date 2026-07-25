@@ -1,4 +1,5 @@
 import 'package:lunasea/api/nzbget/models/status.dart';
+import 'package:lunasea/system/network/tailscale_retry.dart';
 import 'package:lunasea/api/nzbget/models/version.dart';
 import 'package:lunasea/vendor.dart';
 
@@ -54,6 +55,7 @@ abstract class NZBGetAPI {
     ));
     _attachInterceptor(dio);
     _setResponseTransformer(dio);
+    attachTailscaleConnectRetry(dio);
     return _NZBGetAPI(dio, baseUrl: _baseUrl(host, username, password));
   }
 

@@ -8,6 +8,7 @@ library radarr;
 
 // Imports
 import 'package:dio/dio.dart';
+import 'package:lunasea/system/network/tailscale_retry.dart';
 import 'package:lunasea/api/radarr/commands.dart';
 
 /// The core class to handle all connections to Radarr.
@@ -72,6 +73,7 @@ class RadarrAPI {
         responseType: ResponseType.json,
       ),
     );
+    attachTailscaleConnectRetry(_dio);
     return RadarrAPI._internal(
       httpClient: _dio,
       command: RadarrCommandHandlerCommand(_dio),

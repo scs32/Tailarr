@@ -1,4 +1,5 @@
 import 'package:lunasea/vendor.dart';
+import 'package:lunasea/system/network/tailscale_retry.dart';
 import 'package:lunasea/api/sabnzbd/models/action_result.dart';
 import 'package:lunasea/api/sabnzbd/models/categories.dart';
 import 'package:lunasea/api/sabnzbd/models/history.dart';
@@ -39,6 +40,7 @@ abstract class SABnzbdAPI {
         'output': 'json',
       },
     ));
+    attachTailscaleConnectRetry(dio);
     return _SABnzbdAPI(dio, baseUrl: _baseUrl(host));
   }
 

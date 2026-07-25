@@ -7,6 +7,7 @@
 library tailarr_server;
 
 import 'package:dio/dio.dart';
+import 'package:lunasea/system/network/tailscale_retry.dart';
 import 'package:lunasea/api/tailarr_server/models.dart';
 
 class TailarrServerAPI {
@@ -35,6 +36,7 @@ class TailarrServerAPI {
         validateStatus: (status) => status != null && status < 500,
       ),
     );
+    attachTailscaleConnectRetry(dio);
     return TailarrServerAPI._internal(httpClient: dio);
   }
 

@@ -6,6 +6,7 @@ library tautulli;
 
 // Imports
 import 'package:dio/dio.dart';
+import 'package:lunasea/system/network/tailscale_retry.dart';
 import 'package:lunasea/api/tautulli/commands.dart';
 
 /// The core class to handle all connections to Tautulli.
@@ -58,6 +59,7 @@ class TautulliAPI {
         maxRedirects: maxRedirects,
       ),
     );
+    attachTailscaleConnectRetry(_dio);
     return TautulliAPI._internal(
       httpClient: _dio,
       activity: TautulliCommandHandlerActivity(_dio),
