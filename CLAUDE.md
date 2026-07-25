@@ -414,6 +414,87 @@ The whole stack (Go tsnet proxy, Swift MethodChannel bridge, findProxy/HttpOverr
 
 ---
 
+## Session Log — 2026-07-25 (self-config root cause: gate dialed by bare short name → build 23)
+
+Stephen filed **two TestFlight bugs to be looked at together** (build 22,
+04:23/04:24): (1) Tailscale Status "connected, 4/4 peers online incl.
+sonarr + tailarr-gate, but it's not self configured"; (2) Sonarr showing
+the plain manual editor (Enable toggle off + Connection Details), NOT
+"Server Managed" / "Request Access". Diagnosed as ONE bug and fixed;
+**build 23 is LIVE-pending on TestFlight** (WAITING_FOR_REVIEW, same
+11.0.0 fast path; id `71f17df4-00c0-473e-8f3f-de4de5b76ceb`).
+
+### Root cause — the gate is dialed by a BARE MagicDNS short name
+Everything the app pulls from the server — `/self/services` (self-config)
+AND `/self/notifications` — goes through `http://tailarr-gate/`, a bare
+short name (`NtfyGatewayClient.DEFAULT_HOST`). That resolves UNRELIABLY
+through the embedded proxy; on device it fails outright ("Failed host
+lookup: tailarr-gate" — the same string in the build-21/22 notifications
+feedback). The controller works only because it's reached by its FULL
+name (`tailarr.tail600657.ts.net`), which is exactly why the Status page
+looks perfectly healthy while nothing configures. **Peer-visible ≠
+short-name-resolvable.** The reconcile trigger fires every launch and the
+reconcile logic is correct — it just never got a response.
+
+### Shipped (commit `ea7a2a30`)
+- **Dial the gate by FQDN** — new `lib/system/gateway/gateway_host.dart`:
+  `gatewayClient()` reads the live MagicDNS suffix (`IO.tailscaleStatus()
+  .magicDnsSuffix`) and dials `tailarr-gate.<suffix>.ts.net`, falling back
+  to the bare name only when the node isn't up / on web. All FIVE gateway
+  call sites routed through it (services sync, foreground + refresh
+  selfNotifications, 2× push-token). This is the actual "self config isn't
+  working" fix AND fixes the notifications "Not Connected" the same way.
+- **`hasServerGrantList()`** (`server_driven_connection.dart`) — dropped
+  the `tailarrServerEnabled && tailarrServerHost` precondition an
+  invite-joined profile never satisfies (it reaches the server via the
+  hidden gate, not a user-entered host, so it's legitimately `serverOwned`
+  with the module DISABLED). Now `serverOwned` alone counts →
+  ungranted services correctly show "Request Access", not a manual editor.
+  **This is ALSO the fix for the build-22 "SABnzbd — I should see request"
+  feedback** (same gating leak). Extracted pure `hasServerGrantListFor()`
+  for unit testing.
+- **`GatewayServicesSync.refresh()`** — added `serverOwned` as a re-sync
+  trigger so existing installs SELF-HEAL on next foreground (no re-join).
+- **test/server_driven_connection_test.dart** — 5 cases locking the
+  invite-joined-profile grant-list recognition. analyzer clean; 24/24
+  gateway+grantlist tests green.
+
+### Why it self-heals Stephen's existing install
+`refresh()` runs from the ntfy loop at every launch; his profile passes
+the guard (serverOwned + gatewayManagedModules `['tailarr']`) → dials the
+FQDN gate → succeeds → reconcile adopts the badged `sonarr` (flips to
+"Server Managed") and sets `tailarrServerEnabled`/host along the way.
+Verified at DATA/unit layer only — NOT device-confirmed (needs Stephen's
+production tailnet). **NEXT: Stephen verifies build 23 on device** —
+Sonarr auto-adopts, notifications connect; the Notifications status card
+now shows exactly which host was dialed if it still fails (→ then it's a
+tailscale_embed short-name-vs-FQDN resolution finding, not app).
+
+### Release-ops (build 23)
+- First CI attempt (run 30144414080) FAILED at Archive on the **recurring
+  cert cap** ("account has reached the maximum number of certificates";
+  11 certs = 10 "Created via API" orphans + local `FL7LS84W49`). The
+  NotificationService/Runner "No profiles found" errors were downstream of
+  the cert failure, NOT a separate App-Group problem (that's registered).
+- **Revoked all 10 orphan API certs via ASC API** (`scratchpad/revoke.py`;
+  DELETE /v1/certificates/{id}, kept FL7LS84W49) → `gh run rerun --failed`
+  → clean. `-allowProvisioningUpdates` regenerated cert + profiles on its
+  own; **no dashboard step needed** this time. Cap recurs ~every 11 builds
+  → backlog: persist a CI signing identity to stop it.
+- ASC post-upload driven by `scratchpad/asc_release23.py` (poll VALID
+  skipping the prior build id `300fdfa1`=build22 → betaAppReviewSubmission
+  201 → Public Beta group 204 → whatsNew 200).
+
+### Still open after build 23 (unchanged by this session)
+- magicsock warning survives refresh (embed session);
+  service-module COLD-load "Try Again" race ("try again always works but
+  shouldn't" — notifications race was fixed but the individual service
+  modules still cold-load before the tunnel is up, no auto-retry);
+  profile-delete lockup; `/api/info.name` v0.27 (server) for the drawer
+  "Tailarr (tail600657)" disambig.
+
+---
+
 ## Session Log — 2026-07-24 (later: TestFlight feedback triage + localization rebrand landmine)
 
 Short session. Reviewed TestFlight feedback via the ASC API, triaged it
