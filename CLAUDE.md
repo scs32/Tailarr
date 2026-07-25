@@ -17,6 +17,33 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Backlog
 
+- **Demo mode (in-app, read-only) — DESIGN in `docs/demo-mode-design.md`
+  (2026-07-25)**: the free tier is server-driven only (**non-server =
+  Pro**), which leaves a serverless first-timer / App Review reviewer with
+  no self-serve function → App Store Guideline 4.2 risk. Fix = a bundled,
+  offline **demo mode** (NOT a demo server — hosting canned data is pure
+  overhead). Throwaway `demo` profile (new HiveField 53) with modules
+  pre-configured against a `https://demo.tailarr` sentinel host; a
+  `DemoAdapter` (Dio `HttpClientAdapter`, same fake-adapter pattern as
+  `test/tailscale_retry_test.dart`) serves `assets/demo/*.json` fixtures
+  (Blender open movies — Sintel/Big Buck Bunny — so it's honest); swapped
+  in per-module beside `attachTailscaleConnectRetry(dio)`. Entry: "Try the
+  demo" on the empty-state landing (`Join invite` / `Try demo` /
+  `Unlock Pro`) + persistent "Demo — Exit" banner. Tiny diff, no
+  module-screen changes. Pairs with the non-server=Pro gate (open: first
+  manual connection hard-gated vs. free trial). Full plan + code sketch in
+  the design doc.
+
+- **Remove the Test Connection button on Request-Access modules
+  (2026-07-25)**: a module the server owns but hasn't granted this device
+  shows the "Request Access" card (see `ServerDrivenConnection`), but the
+  connection screen still renders a Test Connection action — which is
+  meaningless/misleading when there's no host/credential to test and the
+  user's only move is to ask the admin. Hide (or disable) Test Connection
+  whenever `shouldRequestAccess(type)` is true (and arguably on
+  `isManaged`/Server-Managed screens too, where testing is the re-sync's
+  job). Audit all 6 module connection routes for the button.
+
 - **Multi-server profiles are NOT isolation-safe yet (2026-07-24)**:
   module connections are per-profile (`LunaProfile`) and properly
   isolated, but ALL of notifications/push/services-sync bookkeeping is
