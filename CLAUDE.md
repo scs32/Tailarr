@@ -168,9 +168,14 @@ product-focus, not revenue-max (Zagreus ships paid IAP as precedent).
 ## Release Ops (standing)
 
 TestFlight release flow (per build): trigger `testflight.yml` → CI builds +
-uploads → run the ASC release script (poll VALID skipping the previous build's
-id → betaAppReviewSubmission → Public Beta group `9d6bdfdb-…` → whatsNew). Same
-11.0.0 version string → beta review auto-APPROVES fast. Then, as the LAST step:
+uploads → run **`scripts/asc_release.py --skip <prev-build-id> --notes-file
+<notes> --revoke-cert`** (polls VALID skipping the previous build's id →
+betaAppReviewSubmission → Public Beta group `9d6bdfdb-…` → whatsNew → cert
+cleanup). Same 11.0.0 version string → beta review auto-APPROVES fast. The
+script **retries transient Apple 5xx** on the mutating steps — the Public Beta
+**group-add hit a spurious 500 on build 29** and without a retry the build
+would silently never reach testers (it exits non-zero if the group-add truly
+fails). It also skips the group-add if already a member. Steps handled:
 
 - **Cert-cap policy (net-flat) — ALWAYS run after a build goes live:**
   `python3 scripts/revoke_oldest_cert.py --revoke`. Each CI build mints one
