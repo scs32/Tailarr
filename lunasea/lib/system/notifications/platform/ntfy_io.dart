@@ -148,10 +148,25 @@ class LunaNtfy {
       // register against them.
       unawaited(NtfyPush.register(force: true));
     } else {
+      // ok=true but the subscription is unusable — the gateway reached us but
+      // handed back an incomplete payload. Name the missing field(s): that is
+      // the difference between "the ntfy pod URL isn't wired up" (url) and
+      // "this person has no topics badged" (topics), and it decides which
+      // server-side fix to make. Without this the card just says "incomplete".
+      final missing = <String>[
+        if (creds.url.isEmpty) 'url',
+        if (creds.topics.isEmpty) 'topics',
+      ];
       _recordFailure(
-        creds.error ?? 'Gateway returned an incomplete handout',
+        creds.error ??
+            (missing.isEmpty
+                ? 'Gateway returned an incomplete handout'
+                : 'Gateway handout missing ${missing.join(' + ')} '
+                    '— check the server\'s ntfy setup'),
         'GET $_GATEWAY_URL → HTTP ${creds.statusCode ?? '-'} '
-            'ok=${creds.ok} topics=${creds.topics}',
+            'ok=${creds.ok} url=${creds.url.isEmpty ? '(empty)' : 'set'} '
+            'token=${creds.token.isEmpty ? '(empty)' : 'set'} '
+            'topics=${creds.topics}',
       );
     }
     return creds;
