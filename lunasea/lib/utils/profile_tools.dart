@@ -79,12 +79,22 @@ class LunaProfileTools {
   static String serverProfileName(String host, {String? preferredName}) {
     final trimmed = preferredName?.trim() ?? '';
     final base = trimmed.isNotEmpty ? trimmed : serverProfileBaseName(host);
+    return _dedupedProfileName(base, host);
+  }
+
+  /// De-duplicate [base] against the existing profiles, escalating on a
+  /// collision: tailnet label, then a number. [exclude] is the profile being
+  /// renamed (so it never collides with its own current name). Shared by
+  /// minting ([serverProfileName]) and server-driven renaming
+  /// ([renameServerOwnedProfile]).
+  static String _dedupedProfileName(String base, String host,
+      {String? exclude}) {
+    final existing = LunaProfile.list.toSet()..remove(exclude);
+    if (!existing.contains(base)) return base;
     final labels = (Uri.tryParse(host)?.host ?? host)
         .split('.')
         .where((l) => l.isNotEmpty)
         .toList();
-    final existing = LunaProfile.list.toSet();
-    if (!existing.contains(base)) return base;
     if (labels.length >= 2) {
       final tailnet = '$base (${labels[1]})';
       if (!existing.contains(tailnet)) return tailnet;
@@ -94,6 +104,17 @@ class LunaProfileTools {
       n++;
     }
     return '$base $n';
+  }
+
+  /// The de-duplicated name a server-owned profile at [host] would take for
+  /// the admin-chosen [desiredName], excluding [current] from the collision
+  /// check. Pure — no box mutation; [renameServerOwnedProfile] applies it.
+  static String serverRenameTarget(
+    String host,
+    String desiredName, {
+    required String current,
+  }) {
+    return _dedupedProfileName(desiredName.trim(), host, exclude: current);
   }
 
   /// Create (or reuse) the server-owned profile for [host] and switch to it.
@@ -117,6 +138,54 @@ class LunaProfileTools {
     _changeTo(name);
     await _removePristineDefaultProfile();
     return name;
+  }
+
+  /// Follow a server-driven rename: point the server-owned profile for
+  /// [profile] at the admin-chosen [desiredName] (delivered live on the
+  /// `/self/services` handout as `server.name`). The name-lock only blocks
+  /// USER renames — the server owns the name, so it may change it. Because a
+  /// profile's name IS its Hive key AND the key namespaces its per-profile
+  /// notification state, this migrates all of it in place:
+  ///   * the profiles-box entry (key = name),
+  ///   * the `NOTIFICATIONS_*@<name>` config + inbox + shared-state slice
+  ///     (via [LunaNtfy.migrateProfileName]).
+  /// No node churn — the tailscale identity lives on the profile, not the
+  /// name, so the embedded node is untouched. Returns the final name, or null
+  /// when nothing changed (not server-owned, empty/identical name, or the
+  /// de-duplicated target equals the current name).
+  Future<String?> renameServerOwnedProfile(
+    LunaProfile profile,
+    String desiredName,
+  ) async {
+    if (!profile.serverOwned) return null;
+    final current = profile.key as String?;
+    if (current == null || !LunaBox.profiles.contains(current)) return null;
+    final base = desiredName.trim();
+    if (base.isEmpty || base == current) return null;
+
+    final target = LunaProfileTools.serverRenameTarget(
+      profile.tailarrServerHost,
+      base,
+      current: current,
+    );
+    if (target == current) return null;
+
+    // Move the box entry to the new key. Preserve the active selection
+    // WITHOUT a real profile switch's node/stream churn — it is the same
+    // profile (same identity), only its key changed.
+    await LunaBox.profiles.update(target, LunaProfile.clone(profile));
+    final wasActive = LunaSeaDatabase.ENABLED_PROFILE.read() == current;
+    if (wasActive) LunaSeaDatabase.ENABLED_PROFILE.update(target);
+    await LunaBox.profiles.delete(current);
+
+    // Per-profile notification state is keyed by name — migrate it so the
+    // rename doesn't orphan the subscription, inbox, or push registration.
+    await LunaNtfy().migrateProfileName(current, target);
+    // Re-mirror the (now newly-named) active slice + restart the stream.
+    if (wasActive) await LunaNtfy().onConfigChanged();
+
+    LunaLogger().debug('Server renamed profile "$current" → "$target"');
+    return target;
   }
 
   /// Remove the empty bootstrap 'default' profile left behind once the user

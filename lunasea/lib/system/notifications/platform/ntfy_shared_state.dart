@@ -93,6 +93,26 @@ class NtfySharedState {
   NtfyProfileState slice(String profile) =>
       profiles.putIfAbsent(profile, () => NtfyProfileState(profile: profile));
 
+  /// Move a profile's slice to a new name (a server-driven profile rename),
+  /// preserving its since-markers so the renamed profile does not re-notify
+  /// its backlog. Pure — the caller loads, calls this, and saves.
+  void renameProfile(String oldName, String newName) {
+    if (oldName == newName || newName.isEmpty) return;
+    final old = profiles.remove(oldName);
+    if (old != null) {
+      profiles[newName] = NtfyProfileState(
+        profile: newName,
+        url: old.url,
+        token: old.token,
+        topics: old.topics,
+        since: old.since,
+        bgSince: old.bgSince,
+        notifiedIds: old.notifiedIds,
+      );
+    }
+    if (activeProfile == oldName) activeProfile = newName;
+  }
+
   static const _channel = MethodChannel('com.stephenspeicher.tailarr/push');
   static String? _appGroupPath;
   static bool _appGroupResolved = false;

@@ -12,6 +12,7 @@ import 'package:lunasea/database/models/profile.dart';
 import 'package:lunasea/database/tables/notifications.dart';
 import 'package:lunasea/system/gateway/gateway_host.dart';
 import 'package:lunasea/system/logger.dart';
+import 'package:lunasea/utils/profile_tools.dart';
 
 /// What one reconcile pass actually changed — feeds the setup snackbar.
 class GatewayServicesResult {
@@ -368,6 +369,14 @@ class GatewayServicesSync {
     }
     NotificationsDatabase.SERVICES_LAST_SYNC
         .update(DateTime.now().millisecondsSinceEpoch);
+    // Follow a server-driven rename: the admin-chosen server name rides the
+    // handout (`server.name`). Applied last because it moves the profile's
+    // Hive key (and migrates its name-keyed notification state). No-op until
+    // the server ships the field, or when the name is already current.
+    if (profile.serverOwned && response.serverName.isNotEmpty) {
+      await LunaProfileTools()
+          .renameServerOwnedProfile(profile, response.serverName);
+    }
     return GatewayServicesOutcome(response: response, result: result);
   }
 

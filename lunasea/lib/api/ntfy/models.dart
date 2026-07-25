@@ -204,6 +204,14 @@ class GatewayServicesResponse {
 
   /// Per-person UX policy — `full` when the server omits `ui`.
   final GatewayUiPolicy ui;
+
+  /// The server's admin-chosen display name (rides `server.name`, server
+  /// v0.49+). Empty when unset or on an older server — the app then keeps
+  /// the host-derived profile name. Present here so a rename on the server
+  /// follows onto an invite-joined profile on the next re-sync, without the
+  /// device re-joining (it reaches the server through the gateway, not a
+  /// user-entered host, so it never calls /api/info).
+  final String serverName;
   final int? statusCode;
 
   const GatewayServicesResponse({
@@ -212,6 +220,7 @@ class GatewayServicesResponse {
     required this.kind,
     required this.services,
     this.ui = GatewayUiPolicy.full,
+    this.serverName = '',
     this.statusCode,
   });
 
@@ -249,6 +258,9 @@ class GatewayServicesResponse {
       ui: json['ui'] is Map<String, dynamic>
           ? GatewayUiPolicy.fromJson(json['ui'] as Map<String, dynamic>)
           : GatewayUiPolicy.full,
+      serverName: json['server'] is Map
+          ? ((json['server'] as Map)['name'] as String? ?? '').trim()
+          : '',
     );
   }
 }

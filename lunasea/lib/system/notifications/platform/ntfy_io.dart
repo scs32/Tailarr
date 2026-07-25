@@ -174,6 +174,55 @@ class LunaNtfy {
 
   /// Call after any subscription/background setting changes: mirrors the
   /// Hive config to the shared-state file and reapplies stream + schedule.
+  /// Move a profile's per-profile notification state when its name (which is
+  /// its Hive key) changes — server-driven profile renames rely on this so a
+  /// rename doesn't orphan the subscription, inbox, or push registration.
+  /// Migrates three name-keyed stores: the `NOTIFICATIONS_*@<profile>` config
+  /// keys, the inbox entries (box key + `profile` tag), and the shared-state
+  /// slice (preserving its since-markers). No-op when the names match.
+  Future<void> migrateProfileName(String oldName, String newName) async {
+    if (oldName == newName || newName.isEmpty) return;
+
+    // 1. Config keys: NOTIFICATIONS_<FIELD>@<profile> (see Notifications
+    // Database.key). Copy each present field to the new suffix, drop the old.
+    const prefix = 'NOTIFICATIONS_'; // LunaTable.notifications.key.toUpperCase()
+    for (final field in NotificationsDatabase.values) {
+      final oldKey = '$prefix${field.name}@$oldName';
+      if (!LunaBox.lunasea.contains(oldKey)) continue;
+      await LunaBox.lunasea
+          .update('$prefix${field.name}@$newName', LunaBox.lunasea.read(oldKey));
+      await LunaBox.lunasea.delete(oldKey);
+    }
+
+    // 2. Inbox: entries carry an immutable `profile` tag and a
+    // profile-namespaced box key — re-create each under the new name.
+    for (final key in LunaBox.notifications.keys.toList()) {
+      final n = LunaBox.notifications.read(key);
+      if (n == null || n.profile != oldName) continue;
+      await LunaBox.notifications.update(
+        LunaNotification.boxKey(newName, n.id),
+        LunaNotification(
+          id: n.id,
+          time: n.time,
+          topic: n.topic,
+          title: n.title,
+          body: n.body,
+          priority: n.priority,
+          tags: n.tags,
+          read: n.read,
+          profile: newName,
+        ),
+      );
+      await LunaBox.notifications.delete(key);
+    }
+
+    // 3. Shared-state slice: rename in place, preserving since-markers so the
+    // renamed profile doesn't re-notify its backlog.
+    final state = await NtfySharedState.load();
+    state.renameProfile(oldName, newName);
+    await state.save();
+  }
+
   Future<void> onConfigChanged() async {
     await NtfySync.mirrorConfig();
     NtfyStreamManager.instance.restart();
