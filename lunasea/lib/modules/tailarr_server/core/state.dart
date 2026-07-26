@@ -40,11 +40,14 @@ class TailarrServerState extends LunaModuleState {
     _enabled = _profile.tailarrServerEnabled;
     _host = _profile.tailarrServerHost;
     _headers = _profile.tailarrServerHeaders;
+    final headers = Map<String, dynamic>.from(_headers);
+    // Quick Connect admin bearer (server v0.77.0+ Option A): sent on ALL /api/*
+    // calls — reads included, since a later release makes reads require it too.
+    // Empty until "Connect this device" self-configures; a 401 then triggers it.
+    final token = _profile.serverAdminToken.trim();
+    if (token.isNotEmpty) headers['Authorization'] = 'Bearer $token';
     _api = _enabled && _host.isNotEmpty
-        ? TailarrServerAPI(
-            host: _host,
-            headers: Map<String, dynamic>.from(_headers),
-          )
+        ? TailarrServerAPI(host: _host, headers: headers)
         : null;
   }
 

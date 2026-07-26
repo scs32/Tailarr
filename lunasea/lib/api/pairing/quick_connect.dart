@@ -46,4 +46,58 @@ class QuickConnect {
     if (serve == null || pair == null) return null;
     return PairingClient(serveBaseUrl: serve, pairBaseUrl: pair);
   }
+
+  /// Self-config ("Connect this device"): mint an admin token for THIS device
+  /// and store it on the profile as [LunaProfile.serverAdminToken]. The two
+  /// legs run against the same identity-proven device — start → approve → poll
+  /// status for the once-token (§5 A: the token lives on status, not approve).
+  /// [client] is injectable for tests. Never throws — returns a typed result.
+  static Future<QuickConnectResult> selfConfigure(
+    LunaProfile profile, {
+    required String deviceLabel,
+    PairingClient? client,
+    int pollAttempts = 15,
+    Duration pollDelay = const Duration(seconds: 1),
+  }) async {
+    final c = client ?? clientFor(profile);
+    if (c == null) return const QuickConnectResult(QuickConnectStatus.noBadge);
+    try {
+      final started = await c.pairStart(device: deviceLabel);
+      if (!started.isValid) {
+        return const QuickConnectResult(QuickConnectStatus.failed, 'start');
+      }
+      final approve = await c.pairApprove(started.code);
+      if (!approve.ok) {
+        return QuickConnectResult(QuickConnectStatus.refused, approve.error);
+      }
+      for (var i = 0; i < pollAttempts; i++) {
+        final status = await c.pairStatus(started.pollId);
+        final token = status.token;
+        if (token != null && token.isNotEmpty) {
+          profile.serverAdminToken = token;
+          if (profile.isInBox) profile.save();
+          return const QuickConnectResult(QuickConnectStatus.ok);
+        }
+        if (status.isSettled && !status.isApproved) {
+          return QuickConnectResult(QuickConnectStatus.failed, status.status);
+        }
+        await Future.delayed(pollDelay);
+      }
+      return const QuickConnectResult(QuickConnectStatus.failed, 'no token');
+    } catch (_) {
+      return const QuickConnectResult(QuickConnectStatus.transportError);
+    }
+  }
+}
+
+enum QuickConnectStatus { ok, noBadge, refused, transportError, failed }
+
+/// Typed outcome of [QuickConnect.selfConfigure].
+class QuickConnectResult {
+  final QuickConnectStatus status;
+  final String? error;
+
+  const QuickConnectResult(this.status, [this.error]);
+
+  bool get ok => status == QuickConnectStatus.ok;
 }

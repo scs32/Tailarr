@@ -1,6 +1,59 @@
+import 'dart:async';
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunasea/api/pairing/pairing.dart';
 import 'package:lunasea/api/pairing/quick_connect.dart';
 import 'package:lunasea/database/models/profile.dart';
+
+/// Returns scripted bodies in call order (for the serve leg's start→status).
+class _SeqAdapter implements HttpClientAdapter {
+  _SeqAdapter(this.bodies);
+  final List<String> bodies;
+  int i = 0;
+  @override
+  Future<ResponseBody> fetch(RequestOptions o, Stream<Uint8List>? s,
+      Future<void>? c) async {
+    if (s != null) await s.toList();
+    final body = bodies[i.clamp(0, bodies.length - 1)];
+    i++;
+    return ResponseBody.fromString(body, 200,
+        headers: {
+          Headers.contentTypeHeader: [Headers.jsonContentType]
+        });
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+class _OneAdapter implements HttpClientAdapter {
+  _OneAdapter(this.body, {this.status = 200});
+  final String body;
+  final int status;
+  @override
+  Future<ResponseBody> fetch(RequestOptions o, Stream<Uint8List>? s,
+      Future<void>? c) async {
+    if (s != null) await s.toList();
+    return ResponseBody.fromString(body, status,
+        headers: {
+          Headers.contentTypeHeader: [Headers.jsonContentType]
+        });
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+PairingClient _client(HttpClientAdapter serve, HttpClientAdapter pair) {
+  final c = PairingClient(
+    serveBaseUrl: 'https://ts.tail600657.ts.net',
+    pairBaseUrl: 'http://ts.tail600657.ts.net:8089',
+  );
+  c.debugSetAdapters(serve: serve, pair: pair);
+  return c;
+}
 
 void main() {
   LunaProfile profile({String host = ''}) =>
@@ -31,6 +84,46 @@ void main() {
     test('pairBase strips scheme/path and pins :8089', () {
       final p = profile(host: 'https://ts.example.ts.net/');
       expect(QuickConnect.pairBase(p), 'http://ts.example.ts.net:8089');
+    });
+  });
+
+  group('QuickConnect.selfConfigure', () {
+    test('no server grant → noBadge, no token stored', () async {
+      final p = profile();
+      final r = await QuickConnect.selfConfigure(p, deviceLabel: 'iPhone');
+      expect(r.status, QuickConnectStatus.noBadge);
+      expect(p.serverAdminToken, isEmpty);
+    });
+
+    test('start → approve → status(token): stores the minted bearer', () async {
+      final p = profile(host: 'https://ts.tail600657.ts.net');
+      final serve = _SeqAdapter([
+        '{"code":"ABCD-1234","poll_id":"p-1"}', // start
+        '{"status":"approved","token":"tailarr-tok-self"}', // status
+      ]);
+      final pair = _OneAdapter('{"ok":true,"person":"5a74ff15"}');
+      final r = await QuickConnect.selfConfigure(
+        p,
+        deviceLabel: 'iPhone',
+        client: _client(serve, pair),
+      );
+      expect(r.ok, isTrue);
+      expect(p.serverAdminToken, 'tailarr-tok-self');
+    });
+
+    test('approve refused → refused, no token stored', () async {
+      final p = profile(host: 'https://ts.tail600657.ts.net');
+      final serve = _SeqAdapter(['{"code":"ABCD-1234","poll_id":"p-1"}']);
+      final pair = _OneAdapter(
+          '{"ok":false,"error":"no server badge"}', status: 403);
+      final r = await QuickConnect.selfConfigure(
+        p,
+        deviceLabel: 'iPhone',
+        client: _client(serve, pair),
+      );
+      expect(r.status, QuickConnectStatus.refused);
+      expect(r.error, 'no server badge');
+      expect(p.serverAdminToken, isEmpty);
     });
   });
 }
