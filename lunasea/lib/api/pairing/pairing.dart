@@ -60,7 +60,8 @@ class PairingClient {
   /// Requester leg (serve/HTTPS): begin a pairing and get the human code +
   /// poll id. On the admin's own device this is step 1 of self-config.
   Future<PairStartResponse> pairStart({required String device}) async {
-    final response = await _serve.post('pair/start', data: {'device': device});
+    final response =
+        await _serve.post('api/pair/start', data: {'device': device});
     return PairStartResponse.fromJson(
       (response.data as Map).cast<String, dynamic>(),
     );
@@ -71,7 +72,7 @@ class PairingClient {
   /// self-config app receives its token (§5 A).
   Future<PairStatus> pairStatus(String pollId) async {
     final response =
-        await _serve.get('pair/status', queryParameters: {'id': pollId});
+        await _serve.get('api/pair/status', queryParameters: {'id': pollId});
     return PairStatus.fromJson((response.data as Map).cast<String, dynamic>());
   }
 

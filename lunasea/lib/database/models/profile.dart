@@ -211,6 +211,14 @@ class LunaProfile extends HiveObject {
   @HiveField(46, defaultValue: <String, String>{})
   Map<String, String> tailarrServerHeaders;
 
+  /// Admin bearer token for this server's controller `/api/*` calls, minted via
+  /// Quick Connect self-config (server v0.78.0+). Empty until the device
+  /// "Connect this device" self-configures. Sent as `Authorization: Bearer`;
+  /// dropped on a stale 401 and re-minted. Per-server, profile-lifetime.
+  @JsonKey()
+  @HiveField(53, defaultValue: '')
+  String serverAdminToken;
+
   @JsonKey()
   @HiveField(40, defaultValue: false)
   bool overseerrEnabled;
@@ -269,6 +277,7 @@ class LunaProfile extends HiveObject {
     required this.tailarrServerEnabled,
     required this.tailarrServerHost,
     required this.tailarrServerHeaders,
+    required this.serverAdminToken,
     //Gateway self-config
     required this.gatewayManagedModules,
     required this.serverOwned,
@@ -327,6 +336,7 @@ class LunaProfile extends HiveObject {
     bool? tailarrServerEnabled,
     String? tailarrServerHost,
     Map<String, String>? tailarrServerHeaders,
+    String? serverAdminToken,
     //Gateway self-config
     List<String>? gatewayManagedModules,
     bool? serverOwned,
@@ -384,6 +394,7 @@ class LunaProfile extends HiveObject {
       tailarrServerEnabled: tailarrServerEnabled ?? false,
       tailarrServerHost: tailarrServerHost ?? '',
       tailarrServerHeaders: tailarrServerHeaders ?? {},
+      serverAdminToken: serverAdminToken ?? '',
       // Gateway self-config
       gatewayManagedModules: gatewayManagedModules ?? [],
       serverOwned: serverOwned ?? false,

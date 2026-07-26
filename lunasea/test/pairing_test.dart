@@ -55,7 +55,7 @@ class _CaptureAdapter implements HttpClientAdapter {
 PairingClient _client(_CaptureAdapter serve, _CaptureAdapter pair) {
   final c = PairingClient(
     serveBaseUrl: 'https://ts.tail600657.ts.net',
-    pairBaseUrl: 'http://ts.tail600657.ts.net:81',
+    pairBaseUrl: 'http://ts.tail600657.ts.net:8089',
   );
   c.debugSetAdapters(serve: serve, pair: pair);
   return c;
@@ -69,7 +69,7 @@ void main() {
       final res = await _client(serve, pair).pairStart(device: 'Chrome on Mac');
 
       expect(serve.lastMethod, 'POST');
-      expect(serve.lastPath, 'pair/start');
+      expect(serve.lastPath, 'api/pair/start');
       expect(serve.lastBody, {'device': 'Chrome on Mac'});
       expect(pair.calls, 0, reason: 'start must not touch the pairing leg');
       expect(res.code, 'ABCD-1234');
@@ -85,7 +85,7 @@ void main() {
       final res = await _client(serve, pair).pairStatus('p-1');
 
       expect(serve.lastMethod, 'GET');
-      expect(serve.lastPath, 'pair/status');
+      expect(serve.lastPath, 'api/pair/status');
       expect(serve.lastQuery, {'id': 'p-1'});
       expect(res.isApproved, isTrue);
       expect(res.isSettled, isTrue);
@@ -177,7 +177,7 @@ class _SequenceAdapter implements HttpClientAdapter {
 PairingClient _clientSeq(_SequenceAdapter serve, _CaptureAdapter pair) {
   final c = PairingClient(
     serveBaseUrl: 'https://ts.tail600657.ts.net',
-    pairBaseUrl: 'http://ts.tail600657.ts.net:81',
+    pairBaseUrl: 'http://ts.tail600657.ts.net:8089',
   );
   c.debugSetAdapters(serve: serve, pair: pair);
   return c;
