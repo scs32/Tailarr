@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lunasea/api/pairing/quick_connect.dart';
 import 'package:lunasea/core.dart';
 import 'package:lunasea/extensions/string/string.dart';
 import 'package:lunasea/modules/tailarr_server.dart';
@@ -17,11 +18,46 @@ class _State extends State<TailarrServerRoute>
     with LunaScrollControllerMixin, LunaLoadCallbackMixin {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _refreshKey = GlobalKey<RefreshIndicatorState>();
+  bool _connecting = false;
 
   @override
   Future<void> loadCallback() async {
     context.read<TailarrServerState>().resetPods();
     await context.read<TailarrServerState>().pods;
+  }
+
+  /// Shown when the controller rejects for lack of a bearer (v0.82.0+ mandatory
+  /// auth): offer one-tap Quick Connect self-config, then reload.
+  Widget _connectGate() {
+    final canConnect = QuickConnect.canApprove(LunaProfile.current);
+    return LunaMessage(
+      text: canConnect
+          ? 'Connect this device to manage your server.'
+          : "This device can't manage the server (needs server access).",
+      buttonText: canConnect
+          ? (_connecting ? 'Connecting…' : 'Connect This Device')
+          : null,
+      onTap: canConnect && !_connecting ? _connect : null,
+    );
+  }
+
+  Future<void> _connect() async {
+    setState(() => _connecting = true);
+    final result = await QuickConnect.selfConfigure(
+      LunaProfile.current,
+      deviceLabel: 'Tailarr app',
+    );
+    if (!mounted) return;
+    setState(() => _connecting = false);
+    if (result.ok) {
+      context.read<TailarrServerState>().resetProfile();
+      await loadCallback();
+    } else {
+      showLunaErrorSnackBar(
+        title: 'Could Not Connect',
+        message: result.error ?? 'The device could not authorize itself.',
+      );
+    }
   }
 
   @override
@@ -120,6 +156,7 @@ class _State extends State<TailarrServerRoute>
           future: pods,
           builder: (context, AsyncSnapshot<List<TailarrServerPod>> snapshot) {
             if (snapshot.hasError) {
+              if (isServerAuthRequired(snapshot.error)) return _connectGate();
               if (snapshot.connectionState != ConnectionState.waiting)
                 LunaLogger().error(
                   'Unable to fetch Tailarr Server pods',

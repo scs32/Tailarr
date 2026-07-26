@@ -1,14 +1,29 @@
 /// Dart client for the Tailarr Server JSON API — the Podman/tailnet homelab
 /// controller (github.com/scs32/tailarr-server).
 ///
-/// The server has no authentication: it is reachable only over the tailnet,
-/// so the host should be an `https://*.ts.net` URL routed through the app's
-/// embedded Tailscale node.
+/// Reached over the tailnet (`https://*.ts.net`, routed through the app's
+/// embedded node). Server v0.77.0+ requires an admin bearer on `/api/*` (reads
+/// included as of v0.82.0); the token is minted via Quick Connect self-config
+/// and set as `Authorization: Bearer`. A `401`/`403` means the device isn't
+/// connected (or the token was revoked) — surfaced as [ServerAuthRequiredException]
+/// so screens can offer "Connect this device".
 library tailarr_server;
 
 import 'package:dio/dio.dart';
 import 'package:lunasea/system/network/tailscale_retry.dart';
 import 'package:lunasea/api/tailarr_server/models.dart';
+
+/// Thrown (via a Dio interceptor) when the controller rejects a call for lack
+/// of a valid admin bearer — the cue to run Quick Connect self-config.
+class ServerAuthRequiredException implements Exception {
+  const ServerAuthRequiredException();
+}
+
+/// Whether [error] (typically a FutureBuilder/snapshot error) is a controller
+/// auth rejection — i.e. show the "Connect this device" gate, not a raw error.
+bool isServerAuthRequired(Object? error) =>
+    error is ServerAuthRequiredException ||
+    (error is DioException && error.error is ServerAuthRequiredException);
 
 class TailarrServerAPI {
   /// Lifecycle actions can block while run.sh/stop.sh execute (the server
@@ -37,6 +52,26 @@ class TailarrServerAPI {
       ),
     );
     attachTailscaleConnectRetry(dio);
+    // Surface a controller auth rejection as a typed error so screens can offer
+    // "Connect this device" instead of rendering empty data / a raw failure.
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onResponse: (response, handler) {
+          final code = response.statusCode;
+          if (code == 401 || code == 403) {
+            return handler.reject(
+              DioException(
+                requestOptions: response.requestOptions,
+                response: response,
+                type: DioExceptionType.badResponse,
+                error: const ServerAuthRequiredException(),
+              ),
+            );
+          }
+          handler.next(response);
+        },
+      ),
+    );
     return TailarrServerAPI._internal(httpClient: dio);
   }
 
