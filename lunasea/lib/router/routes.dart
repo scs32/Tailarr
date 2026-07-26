@@ -5,6 +5,7 @@ import 'package:lunasea/router/router.dart';
 import 'package:lunasea/router/routes/bios.dart';
 import 'package:lunasea/router/routes/dashboard.dart';
 import 'package:lunasea/router/routes/external_modules.dart';
+import 'package:lunasea/router/routes/jellyfin.dart';
 import 'package:lunasea/router/routes/lidarr.dart';
 import 'package:lunasea/router/routes/notifications.dart';
 import 'package:lunasea/router/routes/nzbget.dart';
@@ -22,6 +23,7 @@ enum LunaRoutes {
   bios('bios', root: BIOSRoutes.HOME),
   dashboard('dashboard', root: DashboardRoutes.HOME),
   externalModules('external_modules', root: ExternalModulesRoutes.HOME),
+  jellyfin('jellyfin', root: JellyfinRoutes.HOME),
   lidarr('lidarr', root: LidarrRoutes.HOME),
   notifications('notifications', root: NotificationsRoutes.HOME),
   nzbget('nzbget', root: NZBGetRoutes.HOME),

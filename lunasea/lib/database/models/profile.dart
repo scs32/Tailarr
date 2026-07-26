@@ -133,6 +133,21 @@ class LunaProfile extends HiveObject {
   @HiveField(35, defaultValue: <String, String>{})
   Map<String, String> tautulliHeaders;
 
+  /// The caller's person has a Jellyfin badge and a provisioned, per-person
+  /// Jellyfin account (via the tailarr-gate /self/jellyfin endpoints). Set by
+  /// [GatewayJellyfinSync] probing the gateway; when false the Jellyfin module
+  /// is hidden. Never a manual toggle — Jellyfin is entirely server-driven.
+  @JsonKey()
+  @HiveField(36, defaultValue: false)
+  bool jellyfinEnabled;
+
+  /// Last known Jellyfin base URL for this person (https MagicDNS). Persisted
+  /// so a stopped pod (`url:""` in the handout) keeps showing the prior value
+  /// instead of blanking out.
+  @JsonKey()
+  @HiveField(37, defaultValue: '')
+  String jellyfinUrl;
+
   @JsonKey()
   @HiveField(44, defaultValue: false)
   bool tailarrServerEnabled;
@@ -247,6 +262,9 @@ class LunaProfile extends HiveObject {
     required this.tailscaleEnabled,
     required this.tailscaleAuthKey,
     required this.tailscaleIdentity,
+    //Jellyfin
+    required this.jellyfinEnabled,
+    required this.jellyfinUrl,
     //Tailarr Server
     required this.tailarrServerEnabled,
     required this.tailarrServerHost,
@@ -302,6 +320,9 @@ class LunaProfile extends HiveObject {
     bool? tailscaleEnabled,
     String? tailscaleAuthKey,
     String? tailscaleIdentity,
+    //Jellyfin
+    bool? jellyfinEnabled,
+    String? jellyfinUrl,
     //Tailarr Server
     bool? tailarrServerEnabled,
     String? tailarrServerHost,
@@ -356,6 +377,9 @@ class LunaProfile extends HiveObject {
       tailscaleEnabled: tailscaleEnabled ?? false,
       tailscaleAuthKey: tailscaleAuthKey ?? '',
       tailscaleIdentity: tailscaleIdentity ?? '',
+      // Jellyfin
+      jellyfinEnabled: jellyfinEnabled ?? false,
+      jellyfinUrl: jellyfinUrl ?? '',
       // Tailarr Server
       tailarrServerEnabled: tailarrServerEnabled ?? false,
       tailarrServerHost: tailarrServerHost ?? '',

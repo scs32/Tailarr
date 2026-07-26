@@ -16,6 +16,7 @@ import 'package:lunasea/database/models/profile.dart';
 import 'package:lunasea/database/tables/lunasea.dart';
 import 'package:lunasea/database/tables/notifications.dart';
 import 'package:lunasea/system/gateway/gateway_host.dart';
+import 'package:lunasea/system/gateway/gateway_jellyfin.dart';
 import 'package:lunasea/system/gateway/gateway_services.dart';
 import 'package:lunasea/system/logger.dart';
 import 'package:lunasea/system/notifications/platform/ntfy_shared_state.dart';
@@ -650,6 +651,7 @@ class NtfyStreamManager with WidgetsBindingObserver {
       // services reconcile and push-token refresh ride the same wake-up
       // (both self-throttled).
       await GatewayServicesSync.refresh();
+      await GatewayJellyfinSync.refresh();
       await NtfySync.refreshFromGateway();
       unawaited(NtfyPush.register());
       if (!_foreground || generation != _generation) return;

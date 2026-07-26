@@ -110,6 +110,8 @@ class _State extends State<SettingsHeaderRoute> with LunaScrollControllerMixin {
         return LunaProfile.current.sabnzbdHeaders;
       case LunaModule.NOTIFICATIONS:
         throw Exception('Notifications does not have a headers page');
+      case LunaModule.JELLYFIN:
+        throw Exception('Jellyfin does not have a headers page');
       case LunaModule.NZBGET:
         return LunaProfile.current.nzbgetHeaders;
       case LunaModule.SEARCH:
@@ -143,6 +145,8 @@ class _State extends State<SettingsHeaderRoute> with LunaScrollControllerMixin {
         return;
       case LunaModule.NOTIFICATIONS:
         return;
+      case LunaModule.JELLYFIN:
+        throw Exception('Jellyfin does not have a global state');
       case LunaModule.NZBGET:
         return;
       case LunaModule.SEARCH:

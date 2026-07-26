@@ -24,6 +24,47 @@ the Users PEOPLE model, ntfy notifications stage 1, the second-share crash
 [sharing was replaced by gateway auto-config], share-config UX polish, and
 stale live-E2E test-infra notes. Session logs retain the detail.)
 
+- **Jellyfin per-person module — DONE (app + server LIVE), live-E2E pending**:
+  server release 2 shipped as **tailarr-server v0.68.0** (GHCR amd64+arm64) — the
+  five `/self/jellyfin/*` routes are live and honor the frozen contract exactly.
+  `/self/services` now DROPS jellyfin AND stops handing out the server-wide admin
+  key (the L5 fix) as of v0.68.0 — not staggered, so NO reconciler skip is needed
+  (there's no jellyfin entry to become a duplicate bookmark). Follow-ups landed
+  this session: `last_active` is a UNIX timestamp (seconds) → app parses it
+  (`JellyfinDevice.lastActiveEpoch`/`lastActiveAt`, number or numeric string) and
+  renders relative "2h ago" labels; Quick Connect UI is gated on
+  `quick_connect_enabled` (shows "Quick Connect isn't available on this server"
+  when false — the server auto-enables it but the enable path isn't fully
+  live-verified, so a box may report false until confirmed). Server confirmed
+  refusal strings ("unknown request"/404 → hide, "no Jellyfin access" → hide,
+  "…not assigned to a user" → unassigned) and that a STOPPED pod returns
+  `ok:true` with a stored fallback (never a refusal → module stays visible, keeps
+  last-known url). **DECISION: declined `recently_connected`/`devices[].current`**
+  — the app isn't itself a Jellyfin session (playback is a separate official
+  client Quick Connect authorizes), so there's no caller session to mark; the
+  device list + sign-out works without it. Reopen only if a device-guard need
+  appears. **NEXT: live E2E on a real box** (server ≥ v0.68.0 with Jellyfin/Home
+  Theater deployed + a person granted the Jellyfin badge → open module → Quick
+  Connect a code from the official client → logs in passwordless as that person).
+  Gate converges the new routes onto the controller image automatically on
+  controller start post-upgrade; until then routes 404 → the hide path covers it.
+  `test/jellyfin_test.dart` now 15 tests (unix-ts + numeric-string cases added);
+  analyze clean. Not yet device-verified. **Architecture** (for resume): stateless
+  module like Notifications (no state class; `LunaModule.JELLYFIN.state`→null),
+  hidden until `GatewayJellyfinSync` (probes GET /self/jellyfin on the ntfy
+  reconnect/foreground path in `ntfy_io.dart`) sets `LunaProfile.jellyfinEnabled`
+  (HiveField 36; last-known `jellyfinUrl`=37). Transport = the shared
+  `NtfyGatewayClient` (jellyfin methods added there, dialed via `gatewayClient()`
+  FQDN resolver). Files: `lib/api/jellyfin/`, `lib/system/gateway/gateway_jellyfin.dart`,
+  `lib/modules/jellyfin/` (route + `core/dialogs.dart`), `lib/router/routes/jellyfin.dart`;
+  touched `modules.dart` (enum @HiveField 14 + all switches), `profile.dart`,
+  `router/routes.dart`, `api/ntfy/ntfy.dart`, `settings/.../configuration/route.dart`
+  (skip null settingsRoute), `settings/core/pages/headers.dart`, `icon.dart`
+  (JELLYFIN=SimpleIcons.jellyfin). Screen: Quick Connect authorize, device list +
+  sign-out, set/change/clear password, read-only url + libraries. Design doc:
+  `~/projects/podscale/docs/jellyfin-identity-design.md`. NOT committed yet
+  (working tree only).
+
 - **Request-Access connection UX — DONE 2026-07-25** (TestFlight feedback:
   "gray out connection details when it's request only"): across all 6 native
   module connection screens, the parent route now HIDES the "Connection
@@ -345,6 +386,68 @@ The whole stack (Go tsnet proxy, Swift MethodChannel bridge, findProxy/HttpOverr
 - **"break time"** - Update this CLAUDE.md file with any new context learned during the session, then provide a summary of what was accomplished/discussed.
 
 ---
+
+## Session Log — 2026-07-25 (native Jellyfin per-person module — built app-side + server release 2 went live mid-session)
+
+Focused session: built the native **Jellyfin member module** from the frozen
+`/self/jellyfin/*` contract, coordinated a two-way handoff with the server
+session, and the server shipped release 2 (**tailarr-server v0.68.0**) live
+during the session. Everything below is on master working tree — **NOT committed
+and NOT yet built to TestFlight**.
+
+### What the module is
+Member-only, entirely server-driven: each Jellyfin-badged person gets
+passwordless, identity-brokered control of THEIR OWN Jellyfin account via the
+`tailarr-gate.<tailnet>` gateway (whois'd by tailnet source IP — no admin key,
+no host, no credential ever entered). The app is only the Quick Connect
+authorizer; playback stays in the official Jellyfin client. Full detail +
+file/architecture list is in the Backlog's Jellyfin entry (kept current).
+
+### How it's wired (the durable facts)
+- **Stateless module**, modeled on Notifications (`state`→null). Visibility is a
+  persisted flag `LunaProfile.jellyfinEnabled` (HiveField 36; `jellyfinUrl`=37),
+  maintained by `GatewayJellyfinSync.refresh()` which probes GET /self/jellyfin
+  on the same ntfy reconnect/foreground path as `GatewayServicesSync.refresh()`
+  (`ntfy_io.dart`). It NEVER flips the flag off on a transport error (a briefly
+  down node must not hide a working module).
+- Gateway calls are methods added to the shared `NtfyGatewayClient` (dialed via
+  the existing `gatewayClient()` FQDN resolver), so no new transport layer.
+- New: `lib/api/jellyfin/`, `lib/system/gateway/gateway_jellyfin.dart`,
+  `lib/modules/jellyfin/**`, `lib/router/routes/jellyfin.dart`,
+  `test/jellyfin_test.dart`. Edited the module registry (`modules.dart` enum
+  @HiveField 14 + every switch), `profile.dart`, `router/routes.dart`,
+  `api/ntfy/ntfy.dart`, the Configuration list (skip modules with null
+  settingsRoute), `settings/core/pages/headers.dart` (exhaustive-switch), and
+  `icon.dart` (JELLYFIN = SimpleIcons.jellyfin). Ran build_runner (regenerated
+  profile.g.dart + modules.g.dart).
+
+### Server coordination (all resolved)
+Drafted a server-session prompt; server shipped v0.68.0 answering all of it:
+five routes live to the exact contract; `/self/services` now DROPS jellyfin AND
+the server-wide admin key (the L5 over-privilege fix) — not staggered, so the
+app needs NO reconciler skip. Confirmed refusal strings and stopped-pod
+`ok:true` behavior. **`last_active` came back as a UNIX timestamp** → app updated
+to parse it (`JellyfinDevice.lastActiveEpoch`/`lastActiveAt`, tolerant of number
+or numeric string) and render relative "2h ago". **Declined
+`recently_connected`/`devices[].current`** — the app isn't itself a Jellyfin
+session, so there's no caller session to mark. Quick Connect UI is gated on
+`quick_connect_enabled` (server auto-enables it but the enable path isn't fully
+live-verified, so a box may report false — the UI degrades cleanly).
+
+### State / verification
+`flutter analyze lib` clean (0 errors); full suite green (88 + 15 jellyfin =
+now includes unix-ts/numeric-string device cases). Verified at DATA/unit +
+analyzer layer only — the fake-Dio-adapter test locks all five endpoints'
+methods/paths/bodies and the model availability logic. **NOT device/live
+verified.**
+
+### NEXT
+- **Commit + build to TestFlight** (nothing committed yet this session).
+- **Live E2E on a real box**: server ≥ v0.68.0 with Jellyfin (Home Theater
+  stack) deployed + a person granted the Jellyfin badge → open the module →
+  Quick Connect a code from the official Jellyfin client → should log in
+  passwordless as that person. Watch whether `quick_connect_enabled` reports
+  true on that box (server's item-B caveat).
 
 ## Session Log — 2026-07-25 (marathon: builds 24→29, push fixed, audits, M2, magicsock outage fix)
 

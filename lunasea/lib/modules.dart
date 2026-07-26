@@ -23,6 +23,7 @@ part 'modules.g.dart';
 
 const MODULE_DASHBOARD_KEY = 'dashboard';
 const MODULE_EXTERNAL_MODULES_KEY = 'external_modules';
+const MODULE_JELLYFIN_KEY = 'jellyfin';
 const MODULE_LIDARR_KEY = 'lidarr';
 const MODULE_NOTIFICATIONS_KEY = 'notifications';
 const MODULE_NZBGET_KEY = 'nzbget';
@@ -42,6 +43,8 @@ enum LunaModule {
   DASHBOARD(MODULE_DASHBOARD_KEY),
   @HiveField(11)
   EXTERNAL_MODULES(MODULE_EXTERNAL_MODULES_KEY),
+  @HiveField(14)
+  JELLYFIN(MODULE_JELLYFIN_KEY),
   @HiveField(1)
   LIDARR(MODULE_LIDARR_KEY),
   @HiveField(13)
@@ -74,6 +77,8 @@ enum LunaModule {
     switch (key) {
       case MODULE_DASHBOARD_KEY:
         return LunaModule.DASHBOARD;
+      case MODULE_JELLYFIN_KEY:
+        return LunaModule.JELLYFIN;
       case MODULE_LIDARR_KEY:
         return LunaModule.LIDARR;
       case MODULE_NOTIFICATIONS_KEY:
@@ -131,6 +136,11 @@ extension LunaModuleEnablementExtension on LunaModule {
         return true;
       case LunaModule.SETTINGS:
         return true;
+      case LunaModule.JELLYFIN:
+        // Entirely server-driven: visible only when the caller's person has a
+        // Jellyfin badge (a provisioned per-person account), as maintained by
+        // GatewayJellyfinSync. Never a manual toggle.
+        return LunaProfile.current.jellyfinEnabled;
       case LunaModule.LIDARR:
         return LunaProfile.current.lidarrEnabled;
       case LunaModule.NOTIFICATIONS:
@@ -167,6 +177,8 @@ extension LunaModuleMetadataExtension on LunaModule {
     switch (this) {
       case LunaModule.DASHBOARD:
         return 'lunasea.Dashboard'.tr();
+      case LunaModule.JELLYFIN:
+        return 'Jellyfin';
       case LunaModule.LIDARR:
         return 'Lidarr';
       case LunaModule.NOTIFICATIONS:
@@ -200,6 +212,8 @@ extension LunaModuleMetadataExtension on LunaModule {
     switch (this) {
       case LunaModule.DASHBOARD:
         return Icons.home_rounded;
+      case LunaModule.JELLYFIN:
+        return LunaIcons.JELLYFIN;
       case LunaModule.LIDARR:
         return LunaIcons.LIDARR;
       case LunaModule.NOTIFICATIONS:
@@ -233,6 +247,8 @@ extension LunaModuleMetadataExtension on LunaModule {
     switch (this) {
       case LunaModule.DASHBOARD:
         return LunaColours.accent;
+      case LunaModule.JELLYFIN:
+        return const Color(0xFF00A4DC);
       case LunaModule.LIDARR:
         return const Color(0xFF159552);
       case LunaModule.NOTIFICATIONS:
@@ -266,6 +282,8 @@ extension LunaModuleMetadataExtension on LunaModule {
     switch (this) {
       case LunaModule.DASHBOARD:
         return null;
+      case LunaModule.JELLYFIN:
+        return 'https://jellyfin.org';
       case LunaModule.LIDARR:
         return 'https://lidarr.audio';
       case LunaModule.NOTIFICATIONS:
@@ -299,6 +317,8 @@ extension LunaModuleMetadataExtension on LunaModule {
     switch (this) {
       case LunaModule.DASHBOARD:
         return null;
+      case LunaModule.JELLYFIN:
+        return 'https://github.com/jellyfin/jellyfin';
       case LunaModule.LIDARR:
         return 'https://github.com/Lidarr/Lidarr';
       case LunaModule.NOTIFICATIONS:
@@ -332,6 +352,8 @@ extension LunaModuleMetadataExtension on LunaModule {
     switch (this) {
       case LunaModule.DASHBOARD:
         return 'lunasea.Dashboard'.tr();
+      case LunaModule.JELLYFIN:
+        return 'Your Media Account';
       case LunaModule.LIDARR:
         return 'Manage Music';
       case LunaModule.NOTIFICATIONS:
@@ -365,6 +387,8 @@ extension LunaModuleMetadataExtension on LunaModule {
     switch (this) {
       case LunaModule.DASHBOARD:
         return null;
+      case LunaModule.JELLYFIN:
+        return 'Jellyfin is the free software media system that puts you in control of managing and streaming your media. Your Tailarr Server gives you your own Jellyfin account — sign in to the official Jellyfin app with a Quick Connect code (no password needed), manage your active devices, and set a password if you want one.';
       case LunaModule.LIDARR:
         return 'Lidarr is a music collection manager for Usenet and BitTorrent users. It can monitor multiple RSS feeds for new tracks from your favorite artists and will grab, sort and rename them. It can also be configured to automatically upgrade the quality of files already downloaded when a better quality format becomes available.';
       case LunaModule.NOTIFICATIONS:
@@ -400,6 +424,8 @@ extension LunaModuleRoutingExtension on LunaModule {
     switch (this) {
       case LunaModule.DASHBOARD:
         return LunaRoutes.dashboard.root.path;
+      case LunaModule.JELLYFIN:
+        return LunaRoutes.jellyfin.root.path;
       case LunaModule.LIDARR:
         return LunaRoutes.lidarr.root.path;
       case LunaModule.NOTIFICATIONS:
@@ -433,6 +459,9 @@ extension LunaModuleRoutingExtension on LunaModule {
     switch (this) {
       case LunaModule.DASHBOARD:
         return SettingsRoutes.CONFIGURATION_DASHBOARD;
+      case LunaModule.JELLYFIN:
+        // Member-only, entirely server-driven: nothing to configure.
+        return null;
       case LunaModule.LIDARR:
         return SettingsRoutes.CONFIGURATION_LIDARR;
       case LunaModule.NOTIFICATIONS:
@@ -545,6 +574,10 @@ extension LunaModuleExtension on LunaModule {
       case LunaModule.SONARR:
         return context.read<SonarrState>();
       case LunaModule.NOTIFICATIONS:
+        return null;
+      case LunaModule.JELLYFIN:
+        // Stateless, like NOTIFICATIONS — the screen fetches per-person data
+        // straight from the gateway; there is no user-assembled config to hold.
         return null;
       case LunaModule.NZBGET:
         return context.read<NZBGetState>();

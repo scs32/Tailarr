@@ -9,6 +9,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:lunasea/api/jellyfin/models.dart';
 import 'package:lunasea/api/ntfy/models.dart';
 
 /// Client for the tailarr-gate self-service endpoint (server v0.21.0+).
@@ -111,6 +112,90 @@ class NtfyGatewayClient {
       data,
       statusCode: response.statusCode,
     );
+  }
+
+  /// Returns the CALLER'S own Jellyfin account snapshot (server release 2+).
+  /// Every field is scoped to the whois'd person's Jellyfin user — the admin
+  /// token never leaves the controller. Older servers answer "unknown request"
+  /// / 404 and people without a Jellyfin badge get a "no access" refusal; both
+  /// surface via [JellyfinSelf.isUnavailable]/[JellyfinSelf.hasNoAccess], not
+  /// exceptions. Throws only on transport errors.
+  Future<JellyfinSelf> selfJellyfin() async {
+    final response = await httpClient.get('self/jellyfin');
+    final data = response.data;
+    if (data is! Map<String, dynamic>) {
+      // Pre-release-2 gateways may answer with a non-JSON 404 page.
+      if (response.statusCode == 404) {
+        return JellyfinSelf(
+          ok: false,
+          error: 'unknown request',
+          url: '',
+          username: '',
+          hasPassword: false,
+          quickConnectEnabled: false,
+          libraries: const [],
+          statusCode: response.statusCode,
+        );
+      }
+      throw FormatException(
+        'Unexpected gateway response '
+        '(HTTP ${response.statusCode}): ${response.data}'.trim(),
+      );
+    }
+    return JellyfinSelf.fromJson(data, statusCode: response.statusCode);
+  }
+
+  /// Authorizes a Quick Connect [code] AS the caller's Jellyfin user — the
+  /// passwordless-login headline. The person's official Jellyfin client then
+  /// logs in with no password ever typed.
+  Future<JellyfinActionResult> selfJellyfinConnect(String code) async {
+    return _jellyfinAction('self/jellyfin/connect', {'code': code});
+  }
+
+  /// Lists the caller's own active Jellyfin sessions/devices.
+  Future<JellyfinDevices> selfJellyfinDevices() async {
+    final response = await httpClient.get('self/jellyfin/devices');
+    final data = response.data;
+    if (data is! Map<String, dynamic>) {
+      throw FormatException(
+        'Unexpected gateway response '
+        '(HTTP ${response.statusCode}): ${response.data}'.trim(),
+      );
+    }
+    return JellyfinDevices.fromJson(data, statusCode: response.statusCode);
+  }
+
+  /// Revokes one of the caller's own device sessions.
+  Future<JellyfinActionResult> selfJellyfinSignout(String deviceId) async {
+    return _jellyfinAction('self/jellyfin/signout', {'device_id': deviceId});
+  }
+
+  /// Sets the caller's Jellyfin password — an empty string clears it (back to
+  /// passwordless / Quick-Connect-only).
+  Future<JellyfinActionResult> selfJellyfinPassword(String password) async {
+    return _jellyfinAction('self/jellyfin/password', {'password': password});
+  }
+
+  Future<JellyfinActionResult> _jellyfinAction(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    final response = await httpClient.post(path, data: body);
+    final data = response.data;
+    if (data is! Map<String, dynamic>) {
+      if (response.statusCode == 404) {
+        return JellyfinActionResult(
+          ok: false,
+          error: 'unknown request',
+          statusCode: response.statusCode,
+        );
+      }
+      throw FormatException(
+        'Unexpected gateway response '
+        '(HTTP ${response.statusCode}): ${response.data}'.trim(),
+      );
+    }
+    return JellyfinActionResult.fromJson(data, statusCode: response.statusCode);
   }
 }
 

@@ -98,6 +98,9 @@ class _State extends State<ConfigurationRoute> with LunaScrollControllerMixin {
 
   List<Widget> _moduleList() {
     return ([LunaModule.DASHBOARD, ...LunaModule.active])
+        // Member-only, server-driven modules (e.g. Jellyfin) have no settings
+        // page — they never appear in Configuration.
+        .where((module) => module.settingsRoute != null)
         .map(_tileFromModuleMap)
         .toList();
   }

@@ -57,6 +57,7 @@ class LunaIcons {
   static const IconData DISCORD = SimpleIcons.discord;
   static const IconData GITHUB = SimpleIcons.github;
   static const IconData IMDB = SimpleIcons.imdb;
+  static const IconData JELLYFIN = SimpleIcons.jellyfin;
   static const IconData LASTFM = SimpleIcons.lastdotfm;
   static const IconData LETTERBOXD = SimpleIcons.letterboxd;
   static const IconData PLEX = SimpleIcons.plex;
