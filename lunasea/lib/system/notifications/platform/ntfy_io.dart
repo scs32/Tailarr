@@ -517,10 +517,18 @@ class NtfySync {
   ) async {
     int fresh = 0;
     int maxTime = slice.since;
+    bool sawConfigControl = false;
 
     for (final message in messages) {
       if (message.id.isEmpty) continue;
       if (message.time > maxTime) maxTime = message.time;
+      // Silent config-changed signal (v0.74.0+): never an inbox item — it
+      // forces an immediate self-config re-sync instead. The marker still
+      // advances above so it isn't re-fetched forever.
+      if (message.isConfigControl) {
+        sawConfigControl = true;
+        continue;
+      }
       // The user deleted this one — a poll re-fetches it (ntfy `since` is
       // inclusive), so honor the dismissal instead of resurrecting it.
       if (slice.dismissedIds.contains(message.id)) continue;
@@ -551,7 +559,22 @@ class NtfySync {
       if (maxTime > slice.bgSince) slice.bgSince = maxTime;
       await state.save();
     }
+    if (sawConfigControl) _scheduleConfigResync();
     return fresh;
+  }
+
+  /// A server config-changed signal forces an immediate self-config re-sync
+  /// (bypassing the 15-min throttle), debounced so a burst of admin badge
+  /// flips coalesces into one re-fetch. This is the fast path; the throttled
+  /// pull on foreground/reconnect stays as the backstop for missed pushes.
+  static Timer? _configResyncTimer;
+  static void _scheduleConfigResync() {
+    _configResyncTimer?.cancel();
+    _configResyncTimer = Timer(const Duration(seconds: 2), () async {
+      LunaLogger().debug('gateway config-changed signal → forced re-sync');
+      await GatewayServicesSync.refresh(force: true);
+      await GatewayJellyfinSync.refresh(force: true);
+    });
   }
 
   static void _compact([int count = INBOX_LIMIT]) {
@@ -581,7 +604,12 @@ class NtfySync {
         final messages =
             await NtfyClient(subscription).poll(since: since.toString());
         final newForSlice = messages
-            .where((m) => m.id.isNotEmpty && !slice.notifiedIds.contains(m.id))
+            .where((m) =>
+                m.id.isNotEmpty &&
+                !slice.notifiedIds.contains(m.id) &&
+                // Silent config-changed signal must never surface as a local
+                // notification; the main isolate handles it on next catch-up.
+                !m.isConfigControl)
             .toList();
 
         slice.bgSince = since;

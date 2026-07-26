@@ -74,6 +74,27 @@ void main() {
     });
   });
 
+  group('NtfyMessage.isConfigControl', () {
+    NtfyMessage msg({required String topic, List<String> tags = const []}) =>
+        NtfyMessage(id: 'i', time: 1, event: 'message', topic: topic, tags: tags);
+
+    test('a tlr-ctrl-<uid> topic is a control signal', () {
+      expect(msg(topic: 'tlr-ctrl-5a74ff15').isConfigControl, isTrue);
+    });
+
+    test('the tlr-config tag is a control signal (routing safety net)', () {
+      expect(
+        msg(topic: 'anything', tags: ['tlr-config']).isConfigControl,
+        isTrue,
+      );
+    });
+
+    test('ordinary media/ops messages are NOT control signals', () {
+      expect(msg(topic: 'tlr-media-sonarr').isConfigControl, isFalse);
+      expect(msg(topic: 'tlr-ops', tags: ['warning']).isConfigControl, isFalse);
+    });
+  });
+
   group('ntfyTopicLabel', () {
     test('maps known topics', () {
       expect(ntfyTopicLabel('tlr-ops'), 'Server');

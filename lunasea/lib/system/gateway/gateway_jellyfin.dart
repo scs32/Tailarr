@@ -42,7 +42,8 @@ class GatewayJellyfinSync {
   /// server-attached profiles (invite-joined or with a Tailarr Server
   /// configured), throttled, and silent on failure — the stored state keeps
   /// working. Returns the resolved availability.
-  static Future<void> refresh() async {
+  /// [force] bypasses the throttle for a server-pushed config-changed signal.
+  static Future<void> refresh({bool force = false}) async {
     final profile = LunaProfile.current;
     final hasServer = profile.serverOwned ||
         (profile.tailarrServerEnabled && profile.tailarrServerHost.isNotEmpty);
@@ -50,13 +51,14 @@ class GatewayJellyfinSync {
     // revocation is picked up even if the server module was later disabled.
     if (!hasServer && !profile.jellyfinEnabled) return;
 
-    if (gatewaySyncThrottled(
-      lastReached: _lastReached,
-      lastFailure: _lastFailure,
-      now: DateTime.now(),
-      reached: _REFRESH_INTERVAL,
-      cooled: _FAILURE_COOLDOWN,
-    )) {
+    if (!force &&
+        gatewaySyncThrottled(
+          lastReached: _lastReached,
+          lastFailure: _lastFailure,
+          now: DateTime.now(),
+          reached: _REFRESH_INTERVAL,
+          cooled: _FAILURE_COOLDOWN,
+        )) {
       return;
     }
 

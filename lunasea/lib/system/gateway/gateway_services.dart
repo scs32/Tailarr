@@ -402,7 +402,9 @@ class GatewayServicesSync {
   /// automatically — no user action) OR this device already carries
   /// gateway provenance. Throttled, silent on every failure — the stored
   /// config keeps working.
-  static Future<void> refresh() async {
+  /// [force] bypasses the throttle for a server-pushed config-changed signal —
+  /// the change is real and known, so re-fetch immediately.
+  static Future<void> refresh({bool force = false}) async {
     final profile = LunaProfile.current;
     // serverOwned covers invite-joined profiles whose Tailarr Server module
     // is (correctly) disabled — they still re-sync so a granted service
@@ -413,13 +415,14 @@ class GatewayServicesSync {
         LunaBox.externalModules.data
             .any((module) => module.gatewayName.isNotEmpty);
     if (!hasServer && !hasManagedModules) return;
-    if (gatewaySyncThrottled(
-      lastReached: _lastReached,
-      lastFailure: _lastFailure,
-      now: DateTime.now(),
-      reached: _REFRESH_INTERVAL,
-      cooled: _FAILURE_COOLDOWN,
-    )) {
+    if (!force &&
+        gatewaySyncThrottled(
+          lastReached: _lastReached,
+          lastFailure: _lastFailure,
+          now: DateTime.now(),
+          reached: _REFRESH_INTERVAL,
+          cooled: _FAILURE_COOLDOWN,
+        )) {
       return;
     }
     try {
@@ -433,7 +436,8 @@ class GatewayServicesSync {
 
   /// A manual edit to a module's connection details takes it out of gateway
   /// management so re-syncs never clobber hand-entered values.
-  static void markManual(String type) => markManualOn(LunaProfile.current, type);
+  static void markManual(String type) =>
+      markManualOn(LunaProfile.current, type);
 
   static void markManualOn(LunaProfile profile, String type) {
     if (!profile.gatewayManagedModules.contains(type)) return;

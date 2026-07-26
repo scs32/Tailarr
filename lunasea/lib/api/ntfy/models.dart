@@ -349,6 +349,15 @@ class NtfyMessage {
 
   bool get isMessage => event == 'message';
 
+  /// A silent server→client "config-changed" control signal (v0.74.0+), NOT a
+  /// user-facing notification: it rides the per-person `tlr-ctrl-<uid>` topic
+  /// (tagged `tlr-config`, body `{"kind":"config","changed":[...]}`). The app
+  /// keeps these OUT of the inbox and uses them to force an immediate
+  /// self-config re-sync. Topic prefix is the primary signal; the tag is a
+  /// secondary net in case routing changes.
+  bool get isConfigControl =>
+      topic.startsWith('tlr-ctrl-') || tags.contains('tlr-config');
+
   factory NtfyMessage.fromJson(Map<String, dynamic> json) {
     final attachment = json['attachment'] as Map<String, dynamic>?;
     return NtfyMessage(
