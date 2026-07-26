@@ -62,8 +62,10 @@ class PairingClient {
   Future<PairStartResponse> pairStart({required String device}) async {
     final response =
         await _serve.post('api/pair/start', data: {'device': device});
+    final data = response.data;
     return PairStartResponse.fromJson(
-      (response.data as Map).cast<String, dynamic>(),
+      data is Map ? data.cast<String, dynamic>() : const {},
+      statusCode: response.statusCode,
     );
   }
 

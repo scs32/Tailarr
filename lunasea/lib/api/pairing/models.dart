@@ -10,14 +10,26 @@ library pairing_models;
 class PairStartResponse {
   final String code;
   final String pollId;
+  final int? statusCode;
+  final String? error;
 
-  const PairStartResponse({required this.code, required this.pollId});
+  const PairStartResponse({
+    required this.code,
+    required this.pollId,
+    this.statusCode,
+    this.error,
+  });
 
-  factory PairStartResponse.fromJson(Map<String, dynamic> json) {
+  factory PairStartResponse.fromJson(
+    Map<String, dynamic> json, {
+    int? statusCode,
+  }) {
     return PairStartResponse(
       code: (json['code'] ?? '').toString(),
       // Frozen field name is `poll_id` (design §5 B).
       pollId: (json['poll_id'] ?? '').toString(),
+      statusCode: statusCode,
+      error: (json['error'] as String?)?.trim(),
     );
   }
 

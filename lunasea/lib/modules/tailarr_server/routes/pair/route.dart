@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lunasea/core.dart';
 import 'package:lunasea/api/pairing/quick_connect.dart';
+import 'package:lunasea/modules/tailarr_server/core/state.dart';
 
 /// Approve a sign-in (Quick Connect approver leg). A server-badge admin types
 /// the 8-char code shown in a browser and approves it over the identity-proven
@@ -25,6 +26,10 @@ class _State extends State<TailarrServerPairRoute>
   bool _busy = false;
   String? _success;
   String? _error;
+
+  bool _connecting = false;
+  String? _connectMsg;
+  bool _connectOk = false;
 
   @override
   void dispose() {
@@ -57,6 +62,8 @@ class _State extends State<TailarrServerPairRoute>
     return LunaListView(
       controller: scrollController,
       children: [
+        ..._connectThisDeviceSection(),
+        LunaDivider(),
         const LunaBlock(
           title: 'Approve a browser sign-in',
           body: [
@@ -117,6 +124,84 @@ class _State extends State<TailarrServerPairRoute>
         ),
       ],
     );
+  }
+
+  List<Widget> _connectThisDeviceSection() {
+    final connected = LunaProfile.current.serverAdminToken.trim().isNotEmpty;
+    return [
+      LunaBlock(
+        title: connected ? 'This device is connected' : 'Connect this device',
+        body: [
+          TextSpan(
+            text: connected
+                ? 'This device can manage your server. Sign out to revoke its '
+                    'access on this device.'
+                : 'Let this device manage your server (pods, users, updates). '
+                    'No code needed — it authorizes itself over your tailnet.',
+          ),
+        ],
+        trailing: connected
+            ? const Icon(Icons.dns_rounded, color: LunaColours.accent)
+            : null,
+      ),
+      if (_connectMsg != null)
+        LunaBlock(
+          title: _connectOk ? 'Connected' : "Couldn't connect",
+          body: [TextSpan(text: _connectMsg!)],
+          trailing: Icon(
+            _connectOk ? Icons.check_circle_rounded : Icons.error_rounded,
+            color: _connectOk ? LunaColours.accent : LunaColours.red,
+          ),
+        ),
+      Padding(
+        padding: const EdgeInsets.all(12),
+        child: LunaButton.text(
+          text: _connecting
+              ? 'Connecting…'
+              : connected
+                  ? 'Sign This Device Out'
+                  : 'Connect This Device',
+          icon: connected ? Icons.logout_rounded : Icons.link_rounded,
+          onTap: _connecting
+              ? null
+              : connected
+                  ? _disconnect
+                  : _connectThisDevice,
+        ),
+      ),
+    ];
+  }
+
+  Future<void> _connectThisDevice() async {
+    setState(() {
+      _connecting = true;
+      _connectMsg = null;
+    });
+    final result = await QuickConnect.selfConfigure(
+      LunaProfile.current,
+      deviceLabel: 'Tailarr app',
+    );
+    if (!mounted) return;
+    // Rebuild the Server API with the new bearer.
+    context.read<TailarrServerState>().resetProfile();
+    setState(() {
+      _connecting = false;
+      _connectOk = result.ok;
+      _connectMsg = result.ok
+          ? 'This device can now manage your server.'
+          : _friendly(result.error);
+    });
+  }
+
+  Future<void> _disconnect() async {
+    final profile = LunaProfile.current;
+    profile.serverAdminToken = '';
+    if (profile.isInBox) profile.save();
+    context.read<TailarrServerState>().resetProfile();
+    setState(() {
+      _connectOk = false;
+      _connectMsg = 'Signed this device out of server management.';
+    });
   }
 
   Future<void> _approve() async {
