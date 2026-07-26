@@ -53,6 +53,37 @@ class LunaDialogs {
     return Tuple2(_flag, _textController.text);
   }
 
+  /// Confirm leaving a server-owned profile (Basic-mode escape hatch).
+  /// Returns true if the user chose to leave.
+  Future<bool> confirmLeaveServer(
+    BuildContext context,
+    String serverName,
+  ) async {
+    bool flag = false;
+    await LunaDialog.dialog(
+      context: context,
+      title: 'Leave Server',
+      buttons: [
+        LunaDialog.button(
+          text: 'Leave',
+          textColor: LunaColours.red,
+          onPressed: () {
+            flag = true;
+            Navigator.of(context, rootNavigator: true).pop();
+          },
+        ),
+      ],
+      content: [
+        LunaDialog.textContent(
+          text: "You'll disconnect from $serverName and its services. "
+              'You can rejoin later with a new invite.',
+        ),
+      ],
+      contentPadding: LunaDialog.textDialogContentPadding(),
+    );
+    return flag;
+  }
+
   /// Show a text preview dialog.
   ///
   /// Can pass in boolean [alignLeft] to left align the text in the dialog (useful for bulleted lists)

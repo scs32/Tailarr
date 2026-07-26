@@ -300,6 +300,51 @@ class LunaProfileTools {
     return false;
   }
 
+  /// Leave the active server-owned profile entirely (the Basic-mode escape
+  /// hatch, but usable by anyone). Switches to another profile — creating a
+  /// pristine `default` if none exists — so the server profile is no longer
+  /// active, then removes it and forgets its tailnet node. Reversible: a new
+  /// invite re-creates a server-owned profile. Returns the profile switched to,
+  /// or null if there was nothing to leave.
+  Future<String?> leaveServer({bool showSnackbar = true}) async {
+    final current = LunaSeaDatabase.ENABLED_PROFILE.read();
+    final leaving = LunaBox.profiles.read(current);
+    if (leaving == null || !leaving.serverOwned) return null;
+
+    try {
+      // Pick a destination that is NOT the profile we're leaving; prefer a
+      // non-server profile, else create the pristine bootstrap default.
+      final others = LunaProfile.list.where((p) => p != current).toList();
+      String destination;
+      if (others.isNotEmpty) {
+        destination = others.firstWhere(
+          (p) => !(LunaBox.profiles.read(p)?.serverOwned ?? false),
+          orElse: () => others.first,
+        );
+      } else {
+        destination = LunaProfile.DEFAULT_PROFILE;
+        if (!LunaBox.profiles.contains(destination)) await _create(destination);
+      }
+
+      // Switch away first (server profile is active and can't be removed while
+      // active). _changeTo debounces the node reconfigure + re-mirrors ntfy.
+      _changeTo(destination);
+      // Now inactive → remove it; _remove forgets the orphaned tailnet node.
+      await _remove(current);
+
+      if (showSnackbar) {
+        showLunaSuccessSnackBar(
+          title: 'Left Server',
+          message: current,
+        );
+      }
+      return destination;
+    } catch (error, trace) {
+      LunaLogger().error('Failed to leave server', error, trace);
+      return null;
+    }
+  }
+
   Future<bool> rename(
     String oldProfile,
     String newProfile, {

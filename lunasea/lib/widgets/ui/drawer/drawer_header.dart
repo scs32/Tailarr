@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:lunasea/core.dart';
+import 'package:lunasea/router/router.dart';
+import 'package:lunasea/router/routes.dart';
+import 'package:lunasea/utils/profile_tools.dart';
 
 class LunaDrawerHeader extends StatelessWidget {
   final String page;
@@ -14,8 +17,10 @@ class LunaDrawerHeader extends StatelessWidget {
     return LunaSeaDatabase.ENABLED_PROFILE.listenableBuilder(
       builder: (context, _) {
         // Basic (server-tagged) profiles get a stripped shell: no Settings
-        // gear, no profile switching.
+        // gear, no profile switching — but they MUST keep an escape hatch, so
+        // a server-owned Basic profile shows "Leave Server" in its place.
         final basic = LunaProfile.current.uiHidesSettings;
+        final serverOwned = LunaProfile.current.serverOwned;
         return Container(
         child: LunaAppBar.dropdown(
           backgroundColor: Colors.transparent,
@@ -33,6 +38,11 @@ class LunaDrawerHeader extends StatelessWidget {
                     ? Navigator.of(context).pop
                     : LunaModule.SETTINGS.launch,
               )
+            else if (serverOwned)
+              LunaIconButton(
+                icon: Icons.logout_rounded,
+                onPressed: () => _leaveServer(context),
+              ),
           ],
         ),
         decoration: BoxDecoration(
@@ -49,5 +59,16 @@ class LunaDrawerHeader extends StatelessWidget {
       );
       },
     );
+  }
+
+  Future<void> _leaveServer(BuildContext context) async {
+    final serverName = LunaSeaDatabase.ENABLED_PROFILE.read();
+    final confirmed =
+        await LunaDialogs().confirmLeaveServer(context, serverName);
+    if (!confirmed) return;
+    await LunaProfileTools().leaveServer();
+    // Land on home (the destination profile / first-run); router uses the
+    // global navigator so no stale-context concern after the await.
+    LunaRouter.router.go(LunaRoutes.initialLocation);
   }
 }
