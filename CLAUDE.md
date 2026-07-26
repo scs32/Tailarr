@@ -24,7 +24,9 @@ the Users PEOPLE model, ntfy notifications stage 1, the second-share crash
 [sharing was replaced by gateway auto-config], share-config UX polish, and
 stale live-E2E test-infra notes. Session logs retain the detail.)
 
-- **Jellyfin per-person module — DONE (app + server LIVE), live-E2E pending**:
+- **Jellyfin per-person module — COMMITTED + SHIPPED (build 30 LIVE), live-E2E
+  pending**: committed as `35445905` and shipped to TestFlight as **build 30**
+  (VALID, beta review APPROVED, in Public Beta group — 2026-07-25 night).
   server release 2 shipped as **tailarr-server v0.68.0** (GHCR amd64+arm64) — the
   five `/self/jellyfin/*` routes are live and honor the frozen contract exactly.
   `/self/services` now DROPS jellyfin AND stops handing out the server-wide admin
@@ -62,8 +64,11 @@ stale live-E2E test-infra notes. Session logs retain the detail.)
   (skip null settingsRoute), `settings/core/pages/headers.dart`, `icon.dart`
   (JELLYFIN=SimpleIcons.jellyfin). Screen: Quick Connect authorize, device list +
   sign-out, set/change/clear password, read-only url + libraries. Design doc:
-  `~/projects/podscale/docs/jellyfin-identity-design.md`. NOT committed yet
-  (working tree only).
+  `~/projects/podscale/docs/jellyfin-identity-design.md`. Committed `35445905`,
+  build 30 live. Still device/live-unverified — the module hides itself unless
+  the server grants Jellyfin access, so low-risk for other testers. **NEXT is
+  the live E2E above** (real box, server ≥ v0.68.0 + Jellyfin deployed + a
+  badged person).
 
 - **Request-Access connection UX — DONE 2026-07-25** (TestFlight feedback:
   "gray out connection details when it's request only"): across all 6 native
@@ -384,6 +389,57 @@ The whole stack (Go tsnet proxy, Swift MethodChannel bridge, findProxy/HttpOverr
 ## Session Commands
 
 - **"break time"** - Update this CLAUDE.md file with any new context learned during the session, then provide a summary of what was accomplished/discussed.
+
+---
+
+## Session Log — 2026-07-25 (night: Jellyfin module committed + shipped to TestFlight build 30)
+
+Short, focused session — took the previously-built-but-uncommitted Jellyfin
+per-person module from working tree to a live TestFlight build.
+
+### What shipped
+- **Committed** the Jellyfin module as `35445905` (feat(jellyfin): native
+  per-person Jellyfin module). Staged ONLY the jellyfin files + their wiring +
+  CLAUDE.md. Deliberately LEFT OUT two unrelated dirty files: a stale
+  `ios/Podfile.lock` bumping tailscale_embed 0.3.3→0.3.4 (a local `pod install`
+  artifact — pubspec.yaml/lock correctly pin **v0.3.5** and CI regenerates
+  Podfile.lock anyway), and `GEMINI.md` (a stale auto-generated "LunaSea"-branded
+  Gemini context file, nothing to do with this work). Both remain untracked/dirty
+  in the tree.
+- Pre-flight: `flutter analyze lib` = 0 errors (only pre-existing cosmetic
+  info/warnings; 6 info-level lints on jellyfin files, consistent with the
+  codebase); `flutter test test/jellyfin_test.dart` = 15/15 green. `.g.dart`
+  files are **gitignored** (CI regenerates via `npm run generate`) — nothing
+  generated to commit.
+- **Build 30 is LIVE on TestFlight**: CI run `30181507907` (commit 35445905)
+  built + uploaded clean; build id `c08e8dd6-d269-483e-8c6d-a0396cd60091`,
+  version 11.0.0. Verified VALID + beta review **APPROVED** + added to Public
+  Beta group. What-to-Test notes describe the Jellyfin module. Old build 29
+  (`392a630c…`) was the `--skip` target.
+
+### Release-ops note (asc_release.py gap found)
+The release script's **first run FAILED** on the Public Beta group-add — but
+NOT on an HTTP 5xx (which it retries). It died on a raw **`ConnectionResetError`**
+(socket reset mid-request), which `api()`/`api_retry` don't catch — the retry
+logic only handles `HTTPError` status codes, not transport-layer exceptions.
+Beta review had already submitted (201) at that point, so a simple **re-run**
+finished cleanly: group-add 204, notes 200, cert-cap revoke of oldest orphan
+(`824L68MZ74`; kept newest `8Q29W4PT4H` + local `FL7LS84W49`). The re-run's
+`betaAppReviewSubmission` returned a harmless **422 INVALID_QC_STATE** (already
+submitted). **TODO (offered, not done):** wrap `urlopen` in `api()` to also
+retry `ConnectionResetError`/`URLError` so the group-add is robust to socket
+drops and doesn't need a manual re-run. (The GET `/v1/builds/{id}/betaGroups`
+403 is the known key-permission quirk — writes work, reads forbidden.)
+
+### NEXT
+- **Live E2E** is the only remaining Jellyfin validation (build 30 is
+  device/live-UNVERIFIED — analyzer+unit only). Real box: server ≥ v0.68.0 with
+  Jellyfin/Home Theater deployed + a person granted the Jellyfin badge → open
+  module → Quick Connect a code from the official Jellyfin client → should log
+  in passwordless as that person. Watch whether `quick_connect_enabled` reports
+  true on that box. Module hides itself without a grant, so build 30 is
+  low-risk for other testers meanwhile.
+- Optionally harden `asc_release.py` against connection resets (above).
 
 ---
 
