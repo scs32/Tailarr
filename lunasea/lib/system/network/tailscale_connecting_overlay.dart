@@ -57,3 +57,82 @@ class _State extends State<TailscaleConnectingOverlay> {
     );
   }
 }
+
+/// Tailarr-worded "connection stuck" notice (TailscaleGuard v0.3.6+
+/// [stuckNoticeBuilder]). Non-blocking — input stays free — shown when the
+/// connect hits the guard's hard timeout, i.e. the embedded node's serialized
+/// op queue may be wedged. Names the honest recovery: reopen the app.
+class TailscaleStuckNotice extends StatelessWidget {
+  final VoidCallback onRetry;
+  final VoidCallback onDismiss;
+
+  const TailscaleStuckNotice({
+    Key? key,
+    required this.onRetry,
+    required this.onDismiss,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Material(
+            elevation: 8,
+            borderRadius: BorderRadius.circular(12),
+            color: const Color(0xFF3A2E1A), // amber-tinted dark card
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded,
+                          color: Color(0xFFFFC24B), size: 20),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          "Tailscale isn't responding",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Anything that needs it may not work. If Tailarr becomes '
+                    'unresponsive, reopen the app to recover.',
+                    style: TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: onDismiss,
+                        child: const Text('Dismiss',
+                            style: TextStyle(color: Colors.white70)),
+                      ),
+                      TextButton(
+                        onPressed: onRetry,
+                        child: const Text('Retry',
+                            style: TextStyle(color: Color(0xFFFFC24B))),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

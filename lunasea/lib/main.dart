@@ -85,6 +85,14 @@ class LunaBIOS extends StatelessWidget {
                         .error('Failed to connect Tailscale', error, stack),
                     // Deferred so fast connects don't flash a spinner frame.
                     overlayBuilder: (_) => const TailscaleConnectingOverlay(),
+                    // v0.3.6: when a connect wedges past the hard timeout the
+                    // serialized queue may be poisoned; tell the user the honest
+                    // recovery (reopen Tailarr) instead of a UI that re-hangs.
+                    stuckNoticeBuilder: (context, onRetry, onDismiss) =>
+                        TailscaleStuckNotice(
+                      onRetry: onRetry,
+                      onDismiss: onDismiss,
+                    ),
                   ),
                 ),
                 darkTheme: theme.activeTheme(),
