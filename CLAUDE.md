@@ -147,6 +147,20 @@ stale live-E2E test-infra notes. Session logs retain the detail.)
   onConfigChanged churn" is NOT the blocker — onConfigChanged (ntfy restart)
   doesn't drive the guard overlay; the guard reacts only to its own ensure().
 
+- **Basic mode (server-tagged UX simplification) — SPEC 2026-07-26
+  (`docs/basic-mode-design.md`), Model A chosen**: groundwork exists
+  (`LunaProfile.uiBasic` HiveField 52 from `ui.basic`) but today only hides the
+  drawer gear/switcher — Settings is still deep-link reachable and there's NO
+  way to leave a server (Basic users are TRAPPED). Model A = "simplified shell":
+  keep the drawer + full module use, but (1) genuinely gate the Settings ROUTE
+  via a router redirect guard (not just the button), (2) hide profile/Pro/config
+  surfaces, (3) add a REQUIRED **Leave Server** escape (new
+  `LunaProfileTools.leaveServer()`: switch to a fresh profile → remove the
+  server-owned one → forget node → land on first-run). Ships on `ui.basic`
+  alone; `ui.{landing,show_drawer}` reserved for a future Model B (kiosk)
+  opt-in. Full plan + files in the design doc. NEXT: implement (Settings guard +
+  leaveServer + drawer affordance).
+
 - **No in-app way to revoke a device for a user (2026-07-24)**: the
   person-detail Devices list is READ-ONLY — an admin can't remove/revoke a
   specific device without the Tailscale admin console. Add a per-device revoke
