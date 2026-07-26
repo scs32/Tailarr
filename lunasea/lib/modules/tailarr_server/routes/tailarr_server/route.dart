@@ -43,6 +43,10 @@ class _State extends State<TailarrServerRoute>
       scrollControllers: [scrollController],
       actions: [
         LunaIconButton(
+          icon: Icons.verified_user_rounded,
+          onPressed: TailarrServerRoutes.PAIR.go,
+        ),
+        LunaIconButton(
           icon: Icons.people_alt_rounded,
           onPressed: TailarrServerRoutes.USERS.go,
         ),
