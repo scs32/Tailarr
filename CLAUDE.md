@@ -24,6 +24,47 @@ the Users PEOPLE model, ntfy notifications stage 1, the second-share crash
 [sharing was replaced by gateway auto-config], share-config UX polish, and
 stale live-E2E test-infra notes. Session logs retain the detail.)
 
+- **Self-config throttle bug — FIXED 2026-07-26 (`dbe75be9`), not yet built**:
+  Services + Jellyfin self-config armed their 15-min throttle on a FAILED dial
+  (node not up yet at launch → "Failed host lookup: tailarr-gate"), locking out
+  re-sync for 15 min and stranding granted modules at "Request Access" / hidden
+  even though the gate hands out the grant (server-side propagation measured
+  ~1-2s). Notifications never had this — it retries across the connect window.
+  Fix: arm the long throttle only when the gate ANSWERS; a transport failure
+  arms only a 30s cooldown. Pure `gatewaySyncThrottled()` helper in
+  `gateway_host.dart`; both syncs route through it + `resetThrottle()`. 6 unit
+  tests (`test/gateway_throttle_test.dart`) + device-E2E confirmed (fresh sync
+  adopts Sonarr, throttle arms on success). Diagnosed via live badge-flip on
+  tail600657: person "Stephen" IS badged sonarr → gate grants it → any
+  "Request Access" for Sonarr is this client bug, not the server. NEXT: ship on
+  the next TestFlight build.
+
+- **Jellyfin badge grants access but never PROVISIONS the account — SERVER bug
+  (podscale), 2026-07-26**: a person WITH the `jellyfin` badge still gets
+  `/self/jellyfin → "no Jellyfin access"` (confirmed live for "Stephen" +
+  "Claude Matrix Run"). Root cause in `podscale/web/app.py`: the badge and a
+  provisioned Jellyfin account are separate — `_jf_person_ctx` requires a stored
+  `jf_user_id`, and provisioning (`_jf_person_sync`) SILENTLY skips when
+  `_jf_managed(pod)` has no base (no managed Jellyfin pod running / admin creds
+  not captured — `if not base: continue`). So the app CORRECTLY hides Jellyfin;
+  the fix is server-side (deploy/manage the Jellyfin pod → `_jf_people_pass()`
+  converges; make the silent skip visible; retro-provision on pod-start). Full
+  handoff: `scratchpad/podscale-jellyfin-provisioning-handoff.md`. Blocks the
+  Jellyfin live-E2E. NOTE: reissuing a person key INVALIDATES the prior key —
+  request enroll keys ONE AT A TIME.
+
+- **Server-pushed "config-changed" signal (event-driven self-config) — DESIGN
+  2026-07-26 (`scratchpad/config-changed-push-design.md`)**: we have a working
+  server→client push pipeline (ntfy topics + APNs push-waker); use it to make
+  self-config LIVE instead of throttled-pull. Dedicated per-person control topic
+  `tlr-ctrl-<uid>` (gateway-subscribed, never shown in inbox) carrying
+  `{"kind":"config","changed":[...]}`; server publishes on badge/rename/ui/
+  **Jellyfin-provisioning-complete**; client recognizes it → forced refresh
+  (`resetThrottle()`+`refresh()`, ~2s debounce), riding live-stream + APNs wake.
+  Push = fast primary, the throttle fix above = pull BACKSTOP (ntfy is
+  best-effort) → purely additive, can't regress. Two-repo coordinated. Server
+  half is in the notification-contract handoff.
+
 - **Jellyfin per-person module — COMMITTED + SHIPPED (build 30 LIVE), live-E2E
   pending**: committed as `35445905` and shipped to TestFlight as **build 30**
   (VALID, beta review APPROVED, in Public Beta group — 2026-07-25 night).
