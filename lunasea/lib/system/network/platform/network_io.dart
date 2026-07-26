@@ -44,12 +44,33 @@ class IO implements LunaNetwork {
 
   static bool get isTailscaleSupported => _embed.isSupported;
 
+  static Timer? _profileSyncDebounce;
+
   /// Re-evaluate the provider config after a profile switch: `ensure()`
   /// restarts the node when the new profile's identity differs, and the
   /// node stops when the new profile has Tailscale off.
+  ///
+  /// DEBOUNCED: each switch otherwise fire-and-forgets a full node restart
+  /// into the plugin's serialized op lane, so a burst of rapid switches (or a
+  /// switch-then-delete) queues N restarts back-to-back. That churn can wedge
+  /// the node long enough that the connecting overlay never clears — the
+  /// profile-delete lockup. Only the FINAL profile's config matters, so
+  /// coalesce a burst into one reconfigure.
   static Future<void> syncTailscaleToProfile() async {
+    _profileSyncDebounce?.cancel();
+    _profileSyncDebounce = Timer(const Duration(milliseconds: 600), () {
+      unawaited(_applyTailscaleForCurrentProfile());
+    });
+  }
+
+  static Future<void> _applyTailscaleForCurrentProfile() async {
     try {
-      if (LunaProfile.current.tailscaleEnabled) {
+      final profile = LunaProfile.current;
+      LunaLogger().debug(
+        'tailscale profile sync → enabled=${profile.tailscaleEnabled} '
+        'identity=${profile.tailscaleIdentity}',
+      );
+      if (profile.tailscaleEnabled) {
         await _embed.ensure();
       } else if (await _embed.isRunning()) {
         await _embed.stop();

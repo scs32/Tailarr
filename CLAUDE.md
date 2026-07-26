@@ -127,14 +127,25 @@ stale live-E2E test-infra notes. Session logs retain the detail.)
   instead of a hard "An Error Has Occurred" when `status()` throws (embedded
   node briefly down).
 
-- **Build-18 profile-delete lockup (UNRESOLVED, 2026-07-24)**: app locked up
-  with a Delete Profile dialog open on server-owned profiles (screenshot
-  `~/projects/build18-lockup-profiles-delete.jpg`). Not root-caused; suspects:
-  (a) profile-switch churn restarting the embedded node per profile across
-  tailnets (TailscaleGuard overlay blocks input); (b) the per-profile
-  `onConfigChanged()` in `_changeTo` under multi-profile load. NEXT: a repro
-  (which action locked it) or an `.ips` hang log; consider debouncing node
-  restarts across rapid profile switches.
+- **Profile-delete lockup — ROOT-CAUSED 2026-07-26; app-side mitigation landed,
+  real fix is plugin-side**: app hard-locks (all input dead) with the frozen
+  screen (a Delete-Profile dialog) underneath — screenshot
+  `~/projects/build18-lockup-profiles-delete.jpg`. Mechanism: `TailscaleGuard`
+  (in tailscale_embed `lib/src/guard.dart`) renders a full-screen `AbsorbPointer`
+  while `_connecting`, set around its own `embed.ensure()` (launch + resume) with
+  NO timeout — a hung `ensure()` (node wedged in Starting) pins the overlay
+  FOREVER, and `if (_connecting) return;` blocks retries too. Trigger: rapid
+  profile-switch / switch-then-delete churn fire-and-forgets a full node restart
+  per switch into the plugin's serialized op lane, wedging the node.
+  **App-side mitigation (this repo, not yet committed→build):** `IO.
+  syncTailscaleToProfile()` is now DEBOUNCED 600ms so a burst collapses into ONE
+  reconfigure (cuts the churn) + logs each sync. Does NOT fix the permanent
+  overlay. **Real fix = plugin session:** bound the guard's `ensure()` with a
+  timeout + drop `_connecting` on timeout + add a "Continue/Retry" escape to the
+  overlay (the `AbsorbPointer` is plugin-owned, app can't un-block it). Handoff:
+  `scratchpad/embed-guard-lockup-handoff.md`. Note: the old suspect "(b)
+  onConfigChanged churn" is NOT the blocker — onConfigChanged (ntfy restart)
+  doesn't drive the guard overlay; the guard reacts only to its own ensure().
 
 - **No in-app way to revoke a device for a user (2026-07-24)**: the
   person-detail Devices list is READ-ONLY — an admin can't remove/revoke a
