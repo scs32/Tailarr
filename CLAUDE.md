@@ -53,17 +53,22 @@ stale live-E2E test-infra notes. Session logs retain the detail.)
   Jellyfin live-E2E. NOTE: reissuing a person key INVALIDATES the prior key —
   request enroll keys ONE AT A TIME.
 
-- **Server-pushed "config-changed" signal (event-driven self-config) — DESIGN
-  2026-07-26 (`scratchpad/config-changed-push-design.md`)**: we have a working
-  server→client push pipeline (ntfy topics + APNs push-waker); use it to make
-  self-config LIVE instead of throttled-pull. Dedicated per-person control topic
-  `tlr-ctrl-<uid>` (gateway-subscribed, never shown in inbox) carrying
-  `{"kind":"config","changed":[...]}`; server publishes on badge/rename/ui/
-  **Jellyfin-provisioning-complete**; client recognizes it → forced refresh
-  (`resetThrottle()`+`refresh()`, ~2s debounce), riding live-stream + APNs wake.
-  Push = fast primary, the throttle fix above = pull BACKSTOP (ntfy is
-  best-effort) → purely additive, can't regress. Two-repo coordinated. Server
-  half is in the notification-contract handoff.
+- **Server-pushed "config-changed" signal — CLIENT DONE 2026-07-26
+  (`d8f21982`), server LIVE (tailarr-server v0.74.0), not yet built to
+  TestFlight**: event-driven self-config. Server publishes a silent per-person
+  `{"kind":"config","changed":[...]}` on `tlr-ctrl-<uid>` (tagged `tlr-config`)
+  on any handout mutation (badge/rename/ui/**Jellyfin-provisioning-complete**);
+  the topic rides `/self/notifications` so the device is already subscribed.
+  Client: `NtfyMessage.isConfigControl` recognizes it, `_store()` keeps it out
+  of the inbox + schedules a debounced (2s) forced re-sync, `backgroundFetch()`
+  filters it from local notifications, `refresh(force:true)` bypasses the
+  throttle. Push = fast primary; the throttle fix = pull BACKSTOP for ntfy's
+  best-effort drops → purely additive. A badge-less person now gets a valid
+  control-only handout (topics=[tlr-ctrl-<uid>]) so they're nudged on their
+  first grant. **Verified LIVE E2E** on tail600657: a badge flip delivered
+  `{"kind":"config","changed":["jellyfin","services"]}` on the ctrl topic. 3
+  unit tests + all 52 green. Design: `scratchpad/config-changed-push-design.md`.
+  NEXT: ship on the next TestFlight build.
 
 - **Jellyfin per-person module — COMMITTED + SHIPPED (build 30 LIVE), live-E2E
   pending**: committed as `35445905` and shipped to TestFlight as **build 30**
