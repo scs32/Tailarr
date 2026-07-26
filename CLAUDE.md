@@ -147,19 +147,22 @@ stale live-E2E test-infra notes. Session logs retain the detail.)
   onConfigChanged churn" is NOT the blocker — onConfigChanged (ntfy restart)
   doesn't drive the guard overlay; the guard reacts only to its own ensure().
 
-- **Basic mode (server-tagged UX simplification) — SPEC 2026-07-26
-  (`docs/basic-mode-design.md`), Model A chosen**: groundwork exists
-  (`LunaProfile.uiBasic` HiveField 52 from `ui.basic`) but today only hides the
-  drawer gear/switcher — Settings is still deep-link reachable and there's NO
-  way to leave a server (Basic users are TRAPPED). Model A = "simplified shell":
-  keep the drawer + full module use, but (1) genuinely gate the Settings ROUTE
-  via a router redirect guard (not just the button), (2) hide profile/Pro/config
-  surfaces, (3) add a REQUIRED **Leave Server** escape (new
-  `LunaProfileTools.leaveServer()`: switch to a fresh profile → remove the
-  server-owned one → forget node → land on first-run). Ships on `ui.basic`
-  alone; `ui.{landing,show_drawer}` reserved for a future Model B (kiosk)
-  opt-in. Full plan + files in the design doc. NEXT: implement (Settings guard +
-  leaveServer + drawer affordance).
+- **Basic mode (Model A simplified shell) — IMPLEMENTED 2026-07-26
+  (`67affc2b`), not device-verified, not yet built**: design in
+  `docs/basic-mode-design.md`. Turned the `uiBasic` stub (only hid the drawer
+  gear/switcher) into a safe shell: (1) Settings genuinely LOCKED via a
+  top-level GoRouter redirect (`basicBlocksSettingsRoute` → `/settings*` goes
+  home when `uiHidesSettings`; catches deep links, not just the button); (2)
+  **Leave Server** escape (`LunaProfileTools.leaveServer()` — switch to a fresh
+  profile → remove server-owned → forget node), surfaced as a logout action in
+  the drawer header behind a confirm dialog; (3) drawer + full module use kept.
+  Ships on the existing `ui.basic` flag (no server change); `ui.{landing,
+  show_drawer}` reserved for a future Model B (kiosk) per-person opt-in. 4 unit
+  tests lock the Settings-guard invariant; inert until the server tags someone
+  Basic. NEXT: device-verify with a Basic-tagged person (lands in a usable
+  shell, Settings unreachable by any path, Leave Server returns to first-run);
+  the first-run landing (Pro backlog) is where Leave Server ideally lands —
+  interim = destination profile's Dashboard.
 
 - **No in-app way to revoke a device for a user (2026-07-24)**: the
   person-detail Devices list is READ-ONLY — an admin can't remove/revoke a
