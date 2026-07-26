@@ -2,6 +2,25 @@ import 'package:lunasea/api/ntfy/ntfy.dart';
 import 'package:lunasea/system/network/platform/network_io.dart'
     if (dart.library.html) 'package:lunasea/system/network/platform/network_html.dart';
 
+/// Pure throttle decision shared by the services + Jellyfin opportunistic
+/// re-sync paths. A fetch that REACHED the gate holds for [reached]; a dial
+/// that THREW (the embedded node isn't up yet) only holds for [cooled], so a
+/// cold-launch race retries on the next foreground/reconnect instead of being
+/// locked out for the full interval. Arming the long throttle on a failed
+/// attempt was the "it doesn't seem to be autoconfiguring" bug — the first
+/// launch attempt (node not up) blocked re-sync for 15 minutes.
+bool gatewaySyncThrottled({
+  DateTime? lastReached,
+  DateTime? lastFailure,
+  required DateTime now,
+  Duration reached = const Duration(minutes: 15),
+  Duration cooled = const Duration(seconds: 30),
+}) {
+  if (lastReached != null && now.difference(lastReached) < reached) return true;
+  if (lastFailure != null && now.difference(lastFailure) < cooled) return true;
+  return false;
+}
+
 /// Builds a [NtfyGatewayClient] pointed at the hidden `tailarr-gate` node.
 ///
 /// The gate is reached by its BARE MagicDNS short name (`tailarr-gate`),

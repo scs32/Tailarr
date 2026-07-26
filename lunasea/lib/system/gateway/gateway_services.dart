@@ -5,6 +5,7 @@
 /// everything else becomes an External Module bookmark.
 library gateway_services;
 
+import 'package:flutter/foundation.dart';
 import 'package:lunasea/api/ntfy/models.dart';
 import 'package:lunasea/database/box.dart';
 import 'package:lunasea/database/models/external_module.dart';
@@ -329,17 +330,33 @@ class GatewayServicesReconciler {
 class GatewayServicesSync {
   GatewayServicesSync._();
 
-  /// In-process failure throttle for the opportunistic path — a dead
-  /// gateway must not add a dial timeout to every foreground.
-  static DateTime? _lastAttempt;
+  /// Last time the gate actually ANSWERED (any HTTP response) — arms the long
+  /// throttle so a healthy config isn't re-fetched every foreground.
+  static DateTime? _lastReached;
+
+  /// Last time the dial THREW (transport/routing — the embedded node isn't up
+  /// yet). Only a short cooldown, so a cold-launch-race failure retries across
+  /// the connect window instead of being locked out for [_REFRESH_INTERVAL].
+  /// Arming the long throttle on a failed attempt was the "not autoconfiguring"
+  /// bug: the first launch attempt (node not up) blocked re-sync for 15 min.
+  static DateTime? _lastFailure;
   static const _REFRESH_INTERVAL = Duration(minutes: 15);
+  static const _FAILURE_COOLDOWN = Duration(seconds: 30);
+
+  @visibleForTesting
+  static void resetThrottle() {
+    _lastReached = null;
+    _lastFailure = null;
+  }
 
   /// Explicit sync (Automatic Setup). Applies the payload when the server
   /// supports it; refusals and version skew come back unapplied on the
   /// outcome. Throws on transport errors.
   static Future<GatewayServicesOutcome> sync() async {
-    _lastAttempt = DateTime.now();
     final response = await (await gatewayClient()).selfServices();
+    // Reached the gate (it answered, ok or refusal) — arm the long throttle.
+    // A refusal is a server-version issue that won't fix by retrying in 30s.
+    _lastReached = DateTime.now();
     LunaLogger().debug(
       'gateway services → HTTP ${response.statusCode} ok=${response.ok} '
       'kind=${response.kind} error=${response.error} '
@@ -396,14 +413,21 @@ class GatewayServicesSync {
         LunaBox.externalModules.data
             .any((module) => module.gatewayName.isNotEmpty);
     if (!hasServer && !hasManagedModules) return;
-    final last = _lastAttempt;
-    if (last != null && DateTime.now().difference(last) < _REFRESH_INTERVAL) {
+    if (gatewaySyncThrottled(
+      lastReached: _lastReached,
+      lastFailure: _lastFailure,
+      now: DateTime.now(),
+      reached: _REFRESH_INTERVAL,
+      cooled: _FAILURE_COOLDOWN,
+    )) {
       return;
     }
     try {
       await sync();
     } catch (_) {
-      // Gateway unreachable — keep the stored config.
+      // Node not up yet — short cooldown, not the long throttle, so a
+      // cold-launch race recovers on the next trigger.
+      _lastFailure = DateTime.now();
     }
   }
 

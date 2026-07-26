@@ -12,6 +12,7 @@
 /// embedded node must not hide a working module.
 library gateway_jellyfin;
 
+import 'package:flutter/foundation.dart';
 import 'package:lunasea/database/models/profile.dart';
 import 'package:lunasea/system/gateway/gateway_host.dart';
 import 'package:lunasea/system/logger.dart';
@@ -19,10 +20,22 @@ import 'package:lunasea/system/logger.dart';
 class GatewayJellyfinSync {
   GatewayJellyfinSync._();
 
-  /// In-process failure throttle for the opportunistic path — a dead gateway
-  /// must not add a dial timeout to every foreground.
-  static DateTime? _lastAttempt;
+  /// Last time the gate ANSWERED (any HTTP response) — arms the long throttle.
+  static DateTime? _lastReached;
+
+  /// Last time the dial THREW (node not up yet). Only a short cooldown, so a
+  /// cold-launch race retries across the connect window. Arming the long
+  /// throttle BEFORE the network call (the old behaviour) meant a single
+  /// transient failure hid a granted module for up to 15 min.
+  static DateTime? _lastFailure;
   static const _REFRESH_INTERVAL = Duration(minutes: 15);
+  static const _FAILURE_COOLDOWN = Duration(seconds: 30);
+
+  @visibleForTesting
+  static void resetThrottle() {
+    _lastReached = null;
+    _lastFailure = null;
+  }
 
   /// Probe the gateway and reconcile [LunaProfile.jellyfinEnabled]/
   /// [LunaProfile.jellyfinUrl] on the current profile. Runs only on
@@ -37,14 +50,20 @@ class GatewayJellyfinSync {
     // revocation is picked up even if the server module was later disabled.
     if (!hasServer && !profile.jellyfinEnabled) return;
 
-    final last = _lastAttempt;
-    if (last != null && DateTime.now().difference(last) < _REFRESH_INTERVAL) {
+    if (gatewaySyncThrottled(
+      lastReached: _lastReached,
+      lastFailure: _lastFailure,
+      now: DateTime.now(),
+      reached: _REFRESH_INTERVAL,
+      cooled: _FAILURE_COOLDOWN,
+    )) {
       return;
     }
-    _lastAttempt = DateTime.now();
 
     try {
       final self = await (await gatewayClient()).selfJellyfin();
+      // Reached the gate — arm the long throttle only now, not before the call.
+      _lastReached = DateTime.now();
       LunaLogger().debug(
         'gateway jellyfin → HTTP ${self.statusCode} ok=${self.ok} '
         'error=${self.error} url=${self.url.isEmpty ? '(stopped)' : 'set'} '
@@ -63,7 +82,9 @@ class GatewayJellyfinSync {
         if (current.isInBox) current.save();
       }
     } catch (_) {
-      // Gateway unreachable — keep the stored state.
+      // Node not up yet — short cooldown, not the long throttle, so a
+      // cold-launch race recovers on the next trigger.
+      _lastFailure = DateTime.now();
     }
   }
 }
