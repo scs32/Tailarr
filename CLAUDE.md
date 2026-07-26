@@ -210,10 +210,6 @@ stale live-E2E test-infra notes. Session logs retain the detail.)
   M2 key reissue doesn't revoke the old key; M3 NFS `host_path` export injection;
   L1-L6 hardening.
 
-- **Suite invite** (dream feature): tailnet enrollment key + module config in
-  ONE link. Share-config payload is versioned with room for an
-  `enroll: {control_url?, key}` field. Pairs with sovereign mode.
-
 - **Sovereign mode** (design only): embedded headscale in tailarr-server —
   full writeup in that repo's `docs/sovereign-mode-design.md` (2026-07-19).
 
