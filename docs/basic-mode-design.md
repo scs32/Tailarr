@@ -124,3 +124,7 @@ already live.
 ## Out of scope (future)
 - Model B (kiosk / drawerless / land-in-module) as a per-person server opt-in
   via `ui.landing` + `ui.show_drawer`. Model A is the default; B is additive.
+- **Live basic↔regular switching** — making a server-driven `ui.basic` flip
+  reshape the shell immediately (not on next navigation/foreground). The data
+  path is already automatic; only the re-render lags. Design:
+  `basic-mode-live-switching-design.md`.

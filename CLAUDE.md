@@ -163,6 +163,17 @@ stale live-E2E test-infra notes. Session logs retain the detail.)
   shell, Settings unreachable by any path, Leave Server returns to first-run);
   the first-run landing (Pro backlog) is where Leave Server ideally lands —
   interim = destination profile's Dashboard.
+  - **Live basic↔regular switching (follow-up) — DESIGN
+    `docs/basic-mode-live-switching-design.md`**: the server-driven flip already
+    updates `profile.uiBasic` automatically via the config-changed push (data
+    path DONE, both directions), but the shell doesn't RE-RENDER live — the
+    drawer header watches `ENABLED_PROFILE` (switch/rename), not the profile's
+    own save, and the Settings guard only fires per-navigation. Fix = drive the
+    reaction from the config-changed handler (detect the flip → bump a targeted
+    `uiRevision` notifier + eject from Settings if now-Basic), NOT a broad
+    profiles-box listenable (churn). Polish, not a correctness hole (mobile
+    foreground re-sync masks most lag). SEQUENCE: after device-verifying Basic;
+    build only if the lag is noticeable.
 
 - **No in-app way to revoke a device for a user (2026-07-24)**: the
   person-detail Devices list is READ-ONLY — an admin can't remove/revoke a
