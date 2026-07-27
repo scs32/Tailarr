@@ -84,6 +84,37 @@ class LunaDialogs {
     return flag;
   }
 
+  /// Confirm signing this device out of server management (clears the admin
+  /// bearer). Distinct from Leave Server — the profile and its services stay;
+  /// only this device's ability to manage the server (pods/users/updates) is
+  /// revoked, and it can reconnect. Returns true if the user chose to sign out.
+  Future<bool> confirmSignOutOfServer(BuildContext context) async {
+    bool flag = false;
+    await LunaDialog.dialog(
+      context: context,
+      title: 'Sign This Device Out',
+      buttons: [
+        LunaDialog.button(
+          text: 'Sign Out',
+          textColor: LunaColours.red,
+          onPressed: () {
+            flag = true;
+            Navigator.of(context, rootNavigator: true).pop();
+          },
+        ),
+      ],
+      content: [
+        LunaDialog.textContent(
+          text: 'This device will stop managing your server (pods, users, '
+              'updates). Your services stay configured. You can reconnect '
+              'anytime from the Tailarr Server module.',
+        ),
+      ],
+      contentPadding: LunaDialog.textDialogContentPadding(),
+    );
+    return flag;
+  }
+
   /// Show a text preview dialog.
   ///
   /// Can pass in boolean [alignLeft] to left align the text in the dialog (useful for bulleted lists)

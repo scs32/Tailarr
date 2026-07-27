@@ -134,8 +134,8 @@ class _State extends State<TailarrServerPairRoute>
         body: [
           TextSpan(
             text: connected
-                ? 'This device can manage your server. Sign out to revoke its '
-                    'access on this device.'
+                ? 'This device can manage your server. To sign it out, go to '
+                    'Settings → System.'
                 : 'Let this device manage your server (pods, users, updates). '
                     'No code needed — it authorizes itself over your tailnet.',
           ),
@@ -153,22 +153,17 @@ class _State extends State<TailarrServerPairRoute>
             color: _connectOk ? LunaColours.accent : LunaColours.red,
           ),
         ),
-      Padding(
-        padding: const EdgeInsets.all(12),
-        child: LunaButton.text(
-          text: _connecting
-              ? 'Connecting…'
-              : connected
-                  ? 'Sign This Device Out'
-                  : 'Connect This Device',
-          icon: connected ? Icons.logout_rounded : Icons.link_rounded,
-          onTap: _connecting
-              ? null
-              : connected
-                  ? _disconnect
-                  : _connectThisDevice,
+      // Sign-out was moved to Settings → System (it sat one tap from Connect
+      // here and was easy to trigger by accident). Only offer Connect here.
+      if (!connected)
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: LunaButton.text(
+            text: _connecting ? 'Connecting…' : 'Connect This Device',
+            icon: Icons.link_rounded,
+            onTap: _connecting ? null : _connectThisDevice,
+          ),
         ),
-      ),
     ];
   }
 
@@ -190,17 +185,6 @@ class _State extends State<TailarrServerPairRoute>
       _connectMsg = result.ok
           ? 'This device can now manage your server.'
           : _friendly(result.error);
-    });
-  }
-
-  Future<void> _disconnect() async {
-    final profile = LunaProfile.current;
-    profile.serverAdminToken = '';
-    if (profile.isInBox) profile.save();
-    context.read<TailarrServerState>().resetProfile();
-    setState(() {
-      _connectOk = false;
-      _connectMsg = 'Signed this device out of server management.';
     });
   }
 

@@ -7,6 +7,7 @@ import 'package:lunasea/modules/settings/routes/system/widgets/backup_tile.dart'
 import 'package:lunasea/modules/settings/routes/system/widgets/restore_tile.dart';
 import 'package:lunasea/extensions/string/string.dart';
 import 'package:lunasea/router/routes/settings.dart';
+import 'package:lunasea/modules/tailarr_server/core/state.dart';
 import 'package:lunasea/system/cache/image/image_cache.dart';
 import 'package:lunasea/system/environment.dart';
 import 'package:lunasea/system/flavor.dart';
@@ -49,10 +50,44 @@ class _State extends State<SystemRoute> with LunaScrollControllerMixin {
         _logs(),
         _clearImageCache(),
         _clearConfiguration(),
+        ..._signOutOfServer(),
         LunaDivider(),
         _version(),
       ],
     );
+  }
+
+  /// Sign this device out of server management. Lives here (Settings → System)
+  /// rather than the Tailarr Server module's Approve Sign-In screen, where it
+  /// sat one tap from "Connect This Device" and was easy to hit by accident.
+  /// Only shown when this profile's device is actually connected.
+  List<Widget> _signOutOfServer() {
+    if (LunaProfile.current.serverAdminToken.trim().isEmpty) return const [];
+    return [
+      LunaBlock(
+        title: 'Sign This Device Out',
+        body: const [
+          TextSpan(
+            text: 'Stop managing your Tailarr Server from this device',
+          ),
+        ],
+        trailing: const LunaIconButton(icon: Icons.logout_rounded),
+        onTap: () async {
+          final confirmed =
+              await LunaDialogs().confirmSignOutOfServer(context);
+          if (!confirmed) return;
+          final profile = LunaProfile.current;
+          profile.serverAdminToken = '';
+          if (profile.isInBox) profile.save();
+          if (mounted) context.read<TailarrServerState>().resetProfile();
+          setState(() {});
+          showLunaSuccessSnackBar(
+            title: 'Signed Out',
+            message: 'This device no longer manages your server',
+          );
+        },
+      ),
+    ];
   }
 
   Widget _version() {
