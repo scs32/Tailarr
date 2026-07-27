@@ -18,197 +18,66 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Backlog
 
 Bugs, features, and cleanups. Monetization/tier work lives in **Pro Backlog**
-below. (Pruned 2026-07-25 — removed items now shipped or superseded:
-per-profile notification isolation, legacy server-profile migration detection,
-the Users PEOPLE model, ntfy notifications stage 1, the second-share crash
-[sharing was replaced by gateway auto-config], share-config UX polish, and
-stale live-E2E test-infra notes. Session logs retain the detail.)
+below.
 
-- **"View Web GUI" hidden for badge-less auto-config members — DONE
-  2026-07-27, not yet committed→built**: TestFlight feedback (2026-07-27,
-  build 33) "remove the web ui options if a user doesn't have a server badge as
-  part of auto config" (screenshot = NZBGet Settings sheet showing View Web
-  GUI). A server-driven member reaches the service only through the app and
-  holds no web-login creds, so the service's own admin page is a dead end. New
-  pure predicates in `ServerDrivenConnection`: `hasServerBadge()` (holds the
-  `tailarr` badge = admin-capable) + `hidesRawServiceAdmin()` (server-driven
-  `hasServerGrantList()` AND no server badge). The three modules that expose the
-  action (NZBGet/SABnzbd/Lidarr `core/dialogs.dart` `globalSettings`) drop the
-  `web_gui` option when true; admins (server badge) and standalone/manual (Pro)
-  profiles keep it. 4 unit tests in `test/server_driven_connection_test.dart`
-  (9/9 file, 119/119 suite green, analyze clean). Data/unit-verified only, NOT
-  device-rendered. NEXT: ship on the next TestFlight build.
+Pruned once shipped + verified (session logs retain full detail):
+- 2026-07-25: per-profile notification isolation, legacy server-profile
+  migration detection, the Users PEOPLE model, ntfy notifications stage 1, the
+  second-share crash (superseded by gateway auto-config), share-config UX polish.
+- 2026-07-27: **Jellyfin per-person module** (shipped build 30, **live-E2E GREEN
+  2026-07-27** once the server provisioning bug was fixed — passwordless Quick
+  Connect login as the badged person on a real box; feature complete); the
+  **Jellyfin provisioning SERVER bug** (podscale fix landed); **self-config
+  throttle bug** (`dbe75be9`, build 31); **server-pushed config-changed signal**
+  (`d8f21982`, build 31; NSE push-banner fix `275af0ae`, build 34);
+  **"View Web GUI" hidden for badge-less members** (`3f6fbb25`, build 34);
+  **"Sign This Device Out" moved to Settings → System** (`1a73917a`, build 34);
+  **Request-Access connection UX** (build 29); **service-module cold-load retry**
+  (connection + proxy-502, build 25/26 — watch for NEW error shapes slipping past
+  `isTailscaleConnectFailure`).
 
-- **Self-config throttle bug — FIXED 2026-07-26 (`dbe75be9`), not yet built**:
-  Services + Jellyfin self-config armed their 15-min throttle on a FAILED dial
-  (node not up yet at launch → "Failed host lookup: tailarr-gate"), locking out
-  re-sync for 15 min and stranding granted modules at "Request Access" / hidden
-  even though the gate hands out the grant (server-side propagation measured
-  ~1-2s). Notifications never had this — it retries across the connect window.
-  Fix: arm the long throttle only when the gate ANSWERS; a transport failure
-  arms only a 30s cooldown. Pure `gatewaySyncThrottled()` helper in
-  `gateway_host.dart`; both syncs route through it + `resetThrottle()`. 6 unit
-  tests (`test/gateway_throttle_test.dart`) + device-E2E confirmed (fresh sync
-  adopts Sonarr, throttle arms on success). Diagnosed via live badge-flip on
-  tail600657: person "Stephen" IS badged sonarr → gate grants it → any
-  "Request Access" for Sonarr is this client bug, not the server. NEXT: ship on
-  the next TestFlight build.
+- **Profile-delete lockup — app mitigation SHIPPED (build 32), real fix is
+  plugin-side (OPEN, embed session)**: app hard-locks (all input dead) with a
+  frozen Delete-Profile dialog underneath (screenshot
+  `~/projects/build18-lockup-profiles-delete.jpg`). Mechanism: `TailscaleGuard`
+  (tailscale_embed `lib/src/guard.dart`) renders a full-screen `AbsorbPointer`
+  while `_connecting`, set around its own `embed.ensure()` with NO timeout — a
+  hung `ensure()` (node wedged in Starting) pins the overlay FOREVER, and
+  `if (_connecting) return;` blocks retries. Trigger: rapid profile-switch churn
+  fire-and-forgets a node restart per switch into the plugin's serialized op
+  lane. **App mitigation (shipped build 32):** `IO.syncTailscaleToProfile()`
+  DEBOUNCED 600ms so a burst collapses into ONE reconfigure — cuts the churn,
+  does NOT fix the permanent overlay. **Real fix = plugin session:** bound the
+  guard's `ensure()` with a timeout + drop `_connecting` on timeout + add a
+  Continue/Retry escape (the `AbsorbPointer` is plugin-owned). Embed v0.3.6
+  shipped a `connectTimeout` + `stuckNoticeBuilder` (wired as
+  `TailscaleStuckNotice`); confirm on device that it actually breaks the lockup.
+  Handoff: `scratchpad/embed-guard-lockup-handoff.md`.
 
-- **Jellyfin badge grants access but never PROVISIONS the account — RESOLVED
-  2026-07-27 (server-side fix landed; live-E2E now GREEN)**: the podscale
-  provisioning gap below is fixed — a badged person now provisions and
-  `/self/jellyfin` returns their account. Kept for history. Original writeup —
-  SERVER bug (podscale), 2026-07-26: a person WITH the `jellyfin` badge still got
-  `/self/jellyfin → "no Jellyfin access"` (confirmed live for "Stephen" +
-  "Claude Matrix Run"). Root cause in `podscale/web/app.py`: the badge and a
-  provisioned Jellyfin account are separate — `_jf_person_ctx` requires a stored
-  `jf_user_id`, and provisioning (`_jf_person_sync`) SILENTLY skips when
-  `_jf_managed(pod)` has no base (no managed Jellyfin pod running / admin creds
-  not captured — `if not base: continue`). So the app CORRECTLY hides Jellyfin;
-  the fix is server-side (deploy/manage the Jellyfin pod → `_jf_people_pass()`
-  converges; make the silent skip visible; retro-provision on pod-start). Full
-  handoff: `scratchpad/podscale-jellyfin-provisioning-handoff.md`. Blocks the
-  Jellyfin live-E2E. NOTE: reissuing a person key INVALIDATES the prior key —
-  request enroll keys ONE AT A TIME.
-
-- **Server-pushed "config-changed" signal — CLIENT DONE 2026-07-26
-  (`d8f21982`), server LIVE (tailarr-server v0.74.0), not yet built to
-  TestFlight**: event-driven self-config. Server publishes a silent per-person
-  `{"kind":"config","changed":[...]}` on `tlr-ctrl-<uid>` (tagged `tlr-config`)
-  on any handout mutation (badge/rename/ui/**Jellyfin-provisioning-complete**);
-  the topic rides `/self/notifications` so the device is already subscribed.
-  Client: `NtfyMessage.isConfigControl` recognizes it, `_store()` keeps it out
-  of the inbox + schedules a debounced (2s) forced re-sync, `backgroundFetch()`
-  filters it from local notifications, `refresh(force:true)` bypasses the
-  throttle. Push = fast primary; the throttle fix = pull BACKSTOP for ntfy's
-  best-effort drops → purely additive. A badge-less person now gets a valid
-  control-only handout (topics=[tlr-ctrl-<uid>]) so they're nudged on their
-  first grant. **Verified LIVE E2E** on tail600657: a badge flip delivered
-  `{"kind":"config","changed":["jellyfin","services"]}` on the ctrl topic. 3
-  unit tests + all 52 green. Design: `scratchpad/config-changed-push-design.md`.
-  NEXT: ship on the next TestFlight build.
-
-- **Jellyfin per-person module — DONE: COMMITTED + SHIPPED + LIVE-E2E GREEN
-  (2026-07-27)**: the live end-to-end now works on a real box — a Jellyfin-badged
-  person opens the module, Quick Connects a code from the official client, and
-  logs in passwordless as that person. This was the last outstanding validation;
-  it was blocked only by the server provisioning bug (now RESOLVED, see the item
-  above). The whole feature is shipped and verified. History below.
-  Committed as `35445905` and shipped to TestFlight as **build 30**
-  (VALID, beta review APPROVED, in Public Beta group — 2026-07-25 night).
-  server release 2 shipped as **tailarr-server v0.68.0** (GHCR amd64+arm64) — the
-  five `/self/jellyfin/*` routes are live and honor the frozen contract exactly.
-  `/self/services` now DROPS jellyfin AND stops handing out the server-wide admin
-  key (the L5 fix) as of v0.68.0 — not staggered, so NO reconciler skip is needed
-  (there's no jellyfin entry to become a duplicate bookmark). Follow-ups landed
-  this session: `last_active` is a UNIX timestamp (seconds) → app parses it
-  (`JellyfinDevice.lastActiveEpoch`/`lastActiveAt`, number or numeric string) and
-  renders relative "2h ago" labels; Quick Connect UI is gated on
-  `quick_connect_enabled` (shows "Quick Connect isn't available on this server"
-  when false — the server auto-enables it but the enable path isn't fully
-  live-verified, so a box may report false until confirmed). Server confirmed
-  refusal strings ("unknown request"/404 → hide, "no Jellyfin access" → hide,
-  "…not assigned to a user" → unassigned) and that a STOPPED pod returns
-  `ok:true` with a stored fallback (never a refusal → module stays visible, keeps
-  last-known url). **DECISION: declined `recently_connected`/`devices[].current`**
-  — the app isn't itself a Jellyfin session (playback is a separate official
-  client Quick Connect authorizes), so there's no caller session to mark; the
-  device list + sign-out works without it. Reopen only if a device-guard need
-  appears. **NEXT: live E2E on a real box** (server ≥ v0.68.0 with Jellyfin/Home
-  Theater deployed + a person granted the Jellyfin badge → open module → Quick
-  Connect a code from the official client → logs in passwordless as that person).
-  Gate converges the new routes onto the controller image automatically on
-  controller start post-upgrade; until then routes 404 → the hide path covers it.
-  `test/jellyfin_test.dart` now 15 tests (unix-ts + numeric-string cases added);
-  analyze clean. Not yet device-verified. **Architecture** (for resume): stateless
-  module like Notifications (no state class; `LunaModule.JELLYFIN.state`→null),
-  hidden until `GatewayJellyfinSync` (probes GET /self/jellyfin on the ntfy
-  reconnect/foreground path in `ntfy_io.dart`) sets `LunaProfile.jellyfinEnabled`
-  (HiveField 36; last-known `jellyfinUrl`=37). Transport = the shared
-  `NtfyGatewayClient` (jellyfin methods added there, dialed via `gatewayClient()`
-  FQDN resolver). Files: `lib/api/jellyfin/`, `lib/system/gateway/gateway_jellyfin.dart`,
-  `lib/modules/jellyfin/` (route + `core/dialogs.dart`), `lib/router/routes/jellyfin.dart`;
-  touched `modules.dart` (enum @HiveField 14 + all switches), `profile.dart`,
-  `router/routes.dart`, `api/ntfy/ntfy.dart`, `settings/.../configuration/route.dart`
-  (skip null settingsRoute), `settings/core/pages/headers.dart`, `icon.dart`
-  (JELLYFIN=SimpleIcons.jellyfin). Screen: Quick Connect authorize, device list +
-  sign-out, set/change/clear password, read-only url + libraries. Design doc:
-  `~/projects/podscale/docs/jellyfin-identity-design.md`. Committed `35445905`,
-  build 30 live. **Live E2E GREEN 2026-07-27** (real box, Jellyfin deployed + a
-  badged person → passwordless Quick Connect login as that person) once the
-  server provisioning bug was fixed. Feature complete.
-
-- **Request-Access connection UX — DONE 2026-07-25** (TestFlight feedback:
-  "gray out connection details when it's request only"): across all 6 native
-  module connection screens, the parent route now HIDES the "Connection
-  Details" row when `shouldRequestAccess(type)` (only the Request Access card
-  shows), and the connection-details page drops Test Connection on
-  `isManaged` (re-sync is the job) and the whole bottom bar on request-access
-  (no host to test/share). Also: the Tailscale Status page now shows a
-  transient "isn't responding — reconnecting, refreshes automatically" message
-  instead of a hard "An Error Has Occurred" when `status()` throws (embedded
-  node briefly down).
-
-- **Profile-delete lockup — ROOT-CAUSED 2026-07-26; app-side mitigation landed,
-  real fix is plugin-side**: app hard-locks (all input dead) with the frozen
-  screen (a Delete-Profile dialog) underneath — screenshot
-  `~/projects/build18-lockup-profiles-delete.jpg`. Mechanism: `TailscaleGuard`
-  (in tailscale_embed `lib/src/guard.dart`) renders a full-screen `AbsorbPointer`
-  while `_connecting`, set around its own `embed.ensure()` (launch + resume) with
-  NO timeout — a hung `ensure()` (node wedged in Starting) pins the overlay
-  FOREVER, and `if (_connecting) return;` blocks retries too. Trigger: rapid
-  profile-switch / switch-then-delete churn fire-and-forgets a full node restart
-  per switch into the plugin's serialized op lane, wedging the node.
-  **App-side mitigation (this repo, not yet committed→build):** `IO.
-  syncTailscaleToProfile()` is now DEBOUNCED 600ms so a burst collapses into ONE
-  reconfigure (cuts the churn) + logs each sync. Does NOT fix the permanent
-  overlay. **Real fix = plugin session:** bound the guard's `ensure()` with a
-  timeout + drop `_connecting` on timeout + add a "Continue/Retry" escape to the
-  overlay (the `AbsorbPointer` is plugin-owned, app can't un-block it). Handoff:
-  `scratchpad/embed-guard-lockup-handoff.md`. Note: the old suspect "(b)
-  onConfigChanged churn" is NOT the blocker — onConfigChanged (ntfy restart)
-  doesn't drive the guard overlay; the guard reacts only to its own ensure().
-
-- **Basic mode (Model A simplified shell) — IMPLEMENTED 2026-07-26
-  (`67affc2b`), not device-verified, not yet built**: design in
-  `docs/basic-mode-design.md`. Turned the `uiBasic` stub (only hid the drawer
-  gear/switcher) into a safe shell: (1) Settings genuinely LOCKED via a
-  top-level GoRouter redirect (`basicBlocksSettingsRoute` → `/settings*` goes
-  home when `uiHidesSettings`; catches deep links, not just the button); (2)
-  **Leave Server** escape (`LunaProfileTools.leaveServer()` — switch to a fresh
-  profile → remove server-owned → forget node), surfaced as a logout action in
-  the drawer header behind a confirm dialog; (3) drawer + full module use kept.
-  Ships on the existing `ui.basic` flag (no server change); `ui.{landing,
-  show_drawer}` reserved for a future Model B (kiosk) per-person opt-in. 4 unit
-  tests lock the Settings-guard invariant; inert until the server tags someone
-  Basic. NEXT: device-verify with a Basic-tagged person (lands in a usable
-  shell, Settings unreachable by any path, Leave Server returns to first-run);
-  the first-run landing (Pro backlog) is where Leave Server ideally lands —
-  interim = destination profile's Dashboard.
-  - **Live basic↔regular switching (follow-up) — DESIGN
-    `docs/basic-mode-live-switching-design.md`**: the server-driven flip already
-    updates `profile.uiBasic` automatically via the config-changed push (data
-    path DONE, both directions), but the shell doesn't RE-RENDER live — the
-    drawer header watches `ENABLED_PROFILE` (switch/rename), not the profile's
-    own save, and the Settings guard only fires per-navigation. Fix = drive the
-    reaction from the config-changed handler (detect the flip → bump a targeted
+- **Basic mode (Model A) — IMPLEMENTED + SHIPPED (build 32, `67affc2b`), NOT
+  device-verified**: design `docs/basic-mode-design.md`. Safe shell: (1) Settings
+  LOCKED via a top-level GoRouter redirect (`basicBlocksSettingsRoute` → catches
+  deep links, not just the button); (2) **Leave Server** escape
+  (`LunaProfileTools.leaveServer()`) in the drawer header behind a confirm; (3)
+  drawer + full module use kept. Ships on the `ui.basic` flag (no server change);
+  inert until the server tags someone Basic. 4 unit tests lock the Settings-guard
+  invariant. **NEXT: device-verify with a Basic-tagged person** (lands in a usable
+  shell, Settings unreachable by any path, Leave Server returns to first-run).
+  - **Live basic↔regular switching (follow-up) — DESIGN only
+    `docs/basic-mode-live-switching-design.md`**: the flip updates `profile.uiBasic`
+    via the config-changed push (data path DONE both directions), but the shell
+    doesn't RE-RENDER live — the drawer header watches `ENABLED_PROFILE`, not the
+    profile's own save, and the Settings guard fires only per-navigation. Fix =
+    drive from the config-changed handler (detect flip → bump a targeted
     `uiRevision` notifier + eject from Settings if now-Basic), NOT a broad
-    profiles-box listenable (churn). Polish, not a correctness hole (mobile
-    foreground re-sync masks most lag). SEQUENCE: after device-verifying Basic;
-    build only if the lag is noticeable.
+    profiles-box listenable. Polish, not a correctness hole. SEQUENCE: after
+    device-verifying Basic; build only if the lag is noticeable.
 
-- **No in-app way to revoke a device for a user (2026-07-24)**: the
-  person-detail Devices list is READ-ONLY — an admin can't remove/revoke a
-  specific device without the Tailscale admin console. Add a per-device revoke
-  action (Users → person → Devices → device → remove) wired to a new
-  tailarr-server route that deauthorizes/removes the node + drops its person
-  binding.
-
-- **Service-module cold-load retry — DONE for connection + proxy-502 errors
-  (build 25/26), watch for gaps**: `attachTailscaleConnectRetry` now retries
-  connection-class failures AND the embedded-proxy "Proxy failed to establish
-  tunnel (502)" during the connect window. If a NEW cold-load error shape slips
-  past `isTailscaleConnectFailure` on device, add its signature there.
+- **No in-app way to revoke a device for a user (2026-07-24)**: the person-detail
+  Devices list is READ-ONLY — an admin can't remove/revoke a specific device
+  without the Tailscale admin console. Add a per-device revoke action (Users →
+  person → Devices → device → remove) wired to a new tailarr-server route that
+  deauthorizes/removes the node + drops its person binding.
 
 - **Tailarr Server module v2 remainder**: controller self-upgrade screen,
   catalog/install wizard, pod busy auto-refresh, diagnose viewer, Kuma
@@ -237,39 +106,25 @@ stale live-E2E test-infra notes. Session logs retain the detail.)
   "1.0" vs the 11.0.0 lineage string — verify ASC accepts a lower version
   string after 11.0.0 TestFlight builds BEFORE promising it.
 
-- **Security audit — DONE 2026-07-25, full report in
-  `docs/security-audit-2026-07-25.md`**. Four-reviewer read-only sweep.
-  **Pre-App-Store batch LANDED** (not yet built): H1 invite consent gate,
-  H2 error-dialog/clipboard redaction (`LogRedactor.scrub` at the preview
-  boundary), M1 `openLink` scheme allowlist, H3 transport floor
-  (`NETWORKING_TLS_VALIDATION` now defaults TRUE; iOS ATS
-  `NSAllowsArbitraryLoads`→`NSAllowsLocalNetworking`), M6 dropped the iOS
-  "Always" location over-ask, M4 Android `allowBackup=false`, corrected the
-  false "encrypted Hive" doc claim.
-  **Quick-wins batch LANDED 2026-07-25** (not yet built): M3 backup now strips
-  `tailscaleAuthKey` from every profile; L3 `LogRedactor` closed (auth-header +
-  JSON-value rules + tests); L7 dropped the legacy Android storage perms +
-  deduped POST_NOTIFICATIONS.
-  **Hardening fast-follow (OPEN)**: M2 encrypt Hive at rest (`HiveAesCipher`
-  + secure-storage key; migration — the load-bearing fix; would also let L1's
-  ntfy token be Keychain-backed, so L1 rides M2 rather than a native
-  exclude-from-backup flag); M3-full (encrypt the whole backup, not just strip
-  the key); M5 Test-Connection SSRF guard; L2 secret copies use the
-  general/synced pasteboard (no expiry — needs a native `UIPasteboard` channel);
-  L5 stale security deps (dio/go_router/share_plus/retrofit/
-  flutter_local_notifications; Hive 2.x). Android `usesCleartextTraffic` left ON (LAN-HTTP support) —
-  revisit once non-server=Pro makes the free tier tailnet-only. L6 (committed
-  `aps-environment=development`) is FINE — the distribution profile overrides
-  it to production (push verified live).
-  **Server-side audit DONE 2026-07-25 → `docs/security-audit-server-2026-07-25.md`**
-  (four reviewers over `~/projects/podscale`). Server is defensively solid (no
-  `shell=True`, excellent secret-at-rest, correct whois model). Fixes are a
-  SERVER-SESSION job: H1 API bearer OFF by default (unauth `op_exec`/`op_install`
-  — only the tailnet ACL gates it); H2 catalog-install name skips `NAME_RE` →
-  path traversal + ACL grant injection (`dst:["*"]` escapes the fences); M1 gate
-  compromise harvests all users' creds (controller trusts caller-supplied `ip`);
-  M2 key reissue doesn't revoke the old key; M3 NFS `host_path` export injection;
-  L1-L6 hardening.
+- **Security audit — client batches SHIPPED (builds 27/28), hardening
+  fast-follow OPEN**. Full report `docs/security-audit-2026-07-25.md`. Landed +
+  shipped: H1 invite consent gate, H2 error/clipboard redaction, M1 `openLink`
+  allowlist, H3 transport floor (TLS-validate default TRUE + iOS ATS→
+  NSAllowsLocalNetworking), M4 allowBackup=false, M6 location trim, M3 backup
+  strips the Tailscale key, L3 LogRedactor, L7 Android perm cleanup, and **M2
+  Hive-encryption-at-rest** (`HiveAesCipher` + Keychain key + migration, build
+  28, device-verified). **OPEN fast-follow**: M3-full (encrypt the whole backup,
+  not just strip the key); M5 Test-Connection SSRF guard; L2 secret copies →
+  general/synced pasteboard with expiry (needs a native `UIPasteboard` channel);
+  L1 Keychain-back the ntfy token (rides M2's secure-storage); L5 stale security
+  deps (dio/go_router/share_plus/retrofit/flutter_local_notifications; Hive 2.x).
+  Android `usesCleartextTraffic` left ON (LAN-HTTP) — revisit once non-server=Pro
+  makes the free tier tailnet-only. L6 (`aps-environment=development`) is FINE
+  (distribution profile overrides to production; push verified live).
+  **Server-side audit → SERVER-SESSION job** (`docs/security-audit-server-2026-07-25.md`):
+  H1 API bearer OFF by default; H2 catalog-install `NAME_RE` gap → path traversal
+  + ACL grant injection; M1 gate cred-harvest (caller-supplied `ip`); M2 key
+  reissue doesn't revoke old key; M3 NFS `host_path` injection; L1-L6.
 
 - **Sovereign mode** (design only): embedded headscale in tailarr-server —
   full writeup in that repo's `docs/sovereign-mode-design.md` (2026-07-19).
