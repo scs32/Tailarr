@@ -473,6 +473,121 @@ The whole stack (Go tsnet proxy, Swift MethodChannel bridge, findProxy/HttpOverr
 
 ---
 
+## Session Log — 2026-07-26 (MARATHON: Quick Connect app half built + shipped, builds 31→33, throttle fix, Basic mode, embed v0.3.6, config-changed push, cross-repo issue-thread coordination)
+
+Enormous continuous session. Everything pushed to master; **TestFlight builds 31,
+32, 33 all LIVE**. A second Claude session runs the **tailarr-server** repo
+(`~/projects/podscale`); the two now coordinate over **GitHub issue
+`scs32/tailarr#1`** ("Server↔App handoff") via `gh issue view/comment` — NOT by
+relaying through Stephen. Protocol agreed on the thread: label `[APP]`/`[SERVER]`,
+end with "waiting on: X", heads-up before contract changes, poll the thread each
+active turn.
+
+### Builds shipped (all 11.0.0 fast path, LIVE)
+- **Build 31**: self-config throttle fix (`dbe75be9`) + config-changed push
+  handler (`d8f21982`).
+- **Build 32**: profile-delete debounce mitigation (`6e371039`) + Basic mode
+  Model A (`67affc2b`) + specs (inert scaffolding).
+- **Build 33** (`d61b016c`): the **full Quick Connect app half** + **embed
+  v0.3.6** rev. NOTE: CI failed twice on a real **Apple ASC outage**
+  (`exportArchive: Error Downloading App Information`; a bare `/v1/apps` query
+  returned HTTP 500 for ~55 min) — the build was always fine; re-ran CI once
+  Apple recovered. Cert count bloated to 9 from the outage reruns → ran
+  `revoke_oldest_cert.py --revoke` 3× total back to 6.
+
+### THE BIG ONE — Quick Connect (QC) app half: BUILT + LIVE-GREEN (build 33)
+Identity-proven admin sign-in (Jellyfin-QC style). App is an **approver**, not an
+admin console. Server contract frozen across podscale v0.78.0→v0.87.0. Commits
+`757106b3`→`d61b016c`. **Validated live end-to-end on v0.87.0** (self-mint E2E).
+- **Frozen contract**: `POST /api/pair/start {device}` → `{code, poll_id}`
+  (serveBase = `https://<controller-dns>`, admin-EXEMPT); `GET
+  /api/pair/status?id=<poll_id>` → `{status, token?}` (token once, on first
+  "approved" read); `POST /pair/approve {code}` → `{ok, person, error?}` (NO
+  token; on **pairBase = `http://<controller-dns>:8089`**, the raw netns pairing
+  port). Code `^[A-Z0-9]{4}-[0-9]{4}$`, ~3-min TTL, single-use. Badge signal =
+  presence of `{type:"tailarr", name:"server"}` in `/self/services`.
+- **Files**: `lib/api/pairing/` (models.dart, pairing.dart client, quick_connect.dart
+  resolver+selfConfigure+ServerAuthRequired), `serverAdminToken` profile field
+  (HiveField 53), `lib/modules/tailarr_server/routes/pair/route.dart` (approve-a-
+  browser + "Connect this device"), `TailarrServerRoutes.PAIR`, the Server API's
+  `Authorization: Bearer` on ALL `/api/*` (reads incl. — v0.82.0 mandatory-auth)
+  + a 401/403 interceptor→`ServerAuthRequiredException`, home-screen 401 gate.
+  Tests: `test/pairing_test.dart` (6), `test/quick_connect_test.dart` (7).
+- **THE BUG HUNT** (multi-release, all server-side, caught via the issue thread +
+  a peer-list diagnostic): (1) approve gated on the reconcile-lagged node tag not
+  `people.json` badges → v0.80; (2) whois of the wrong sidecar + IPv4-mapped
+  `::ffff:` → v0.81; (3) `/api/pair/start` not in the mandatory-auth exempt list
+  (chicken-and-egg: need a token to start pairing) → v0.86; (4) **THE REAL ONE**:
+  on a **custom controller hostname** (`TAILARR_HOSTNAME=ts`) the controller
+  never got `tag:tailarr-ctrl` → **not a tsnet peer of the app node** → approve
+  egressed from the **host Mac's Tailscale** (100.104.98.91) instead of the app's
+  tsnet node → "not assigned to a user". Would've shipped **broken-on-cellular for
+  every server-badge device on custom-hostname installs**. Fixed server-side
+  (v0.87.0 find-controller-by-IP + dual-stack `:8089`). **Key diagnostic**: the
+  E2E logs the node's tsnet PEER LIST — `ts.<suffix>` was absent while gateway +
+  services were present.
+- **Mac-Tailscale masking insight**: only **controller-direct** calls were masked
+  (they rode the host Mac since the controller wasn't a peer). Gateway-brokered
+  (notifications, config-changed, jellyfin, `/self/services`) + direct-to-service
+  (sonarr) were GENUINE tsnet — those E2Es are real. QC never falsely passed.
+- **KEY SELF-SUFFICIENCY**: `integration_test/quick_connect_e2e_test.dart` now
+  self-mints its next key (`reissuePersonKey(approve.person)` → logs `NEXT-KEY`;
+  host tee captures it → `scratchpad/.tskey_self`). So future QC re-verification
+  needs NO keys from Stephen — as long as approve stays healthy. (Enroll wipes on
+  every `flutter test` reinstall, so each run needs a fresh key; the self-mint
+  supplies it.) Sim UDID `C8FA7CB6-08A8-4597-B135-4AB2E393C5DC`. Reissuing a key
+  INVALIDATES the prior — mint/use one at a time; if Stephen sends several, only
+  the LAST is valid.
+
+### Basic mode Model A — IMPLEMENTED (build 32, `67affc2b`), still device-unverified
+Real Settings lockdown (`basicBlocksSettingsRoute` GoRouter redirect, not just
+the hidden gear) + **Leave Server** escape (`LunaProfileTools.leaveServer()`) +
+drawer affordance. Design: `docs/basic-mode-design.md`; live-switching follow-up
+design `docs/basic-mode-live-switching-design.md` (react from the config-changed
+handler via a targeted notifier, NOT a noisy profiles-box listenable). NEXT:
+device-verify with a `ui.basic:true` person.
+
+### Profile-delete lockup — ROOT-CAUSED + app-side mitigation (build 32)
+`TailscaleGuard` shows a full-screen AbsorbPointer while `_connecting`, set around
+its own `ensure()` (launch+resume) with NO timeout → a hung `ensure()` pins the
+overlay forever + kills every recovery path (Leave Server, profile switch queue
+behind it). App mitigation: `syncTailscaleToProfile()` DEBOUNCED 600ms to cut the
+churn. Real fix = plugin (embed v0.3.6 shipped a connectTimeout + "connection
+stuck — reopen" `stuckNoticeBuilder`, wired in Tailarr's `TailscaleStuckNotice`).
+Embed feedback (Codex review) triaged: #1 wedged-ensure poisons the serialized
+queue (native cancellation, telemetry-gated), #2 rollback port drift (promoted —
+Tailarr's multi-identity main path). All in the embed session.
+
+### OPEN BUG — config-changed control message shows as a PUSH BANNER (held, not built)
+Stephen saw a banner with the raw `{"kind":"config","changed":[...]}`. Dart paths
+(inbox `_store`, background fetch) already filter `tlr-ctrl-*`, but the native
+**NSE** (`ios/NotificationService/NotificationService.swift`) promotes any fetched
+ntfy message to a banner. **App fix COMMITTED `275af0ae` (UNPUSHED, HELD for the
+next build)**: NSE filters `tlr-ctrl-*` from promotion. **Complete/fast fix is
+server-side** (fixes build-33 users with no app update): the relay/push-waker
+should send config-control pushes as **silent** (`content-available:1`, no
+`alert`) so the NSE isn't invoked. **Server prompt drafted this session — Stephen
+is relaying it.** User chose to HOLD the app build; the NSE fix rides the next
+natural build. (The `change`/`changed` "drift" was a report typo — wire is
+`changed`, correct, no issue.)
+
+### Scratchpad artifacts (this session)
+`podscale-jellyfin-provisioning-handoff.md`, `config-changed-push-design.md`,
+`server-notification-contract-prompt.md`, `embed-guard-lockup-handoff.md`,
+`selfconfig_test_matrix.md`, `.tskey_self` (self-minted QC key). Local-only E2E
+harnesses in `integration_test/gateway_*.dart` + `quick_connect_e2e_test.dart`
+(need a live box + key; no secrets committed).
+
+### NEXT (nothing blocking)
+- Wait for the server session's **relay silent-push** (config banner) on issue #1;
+  confirm gone on device.
+- `275af0ae` (NSE fix) rides the next build.
+- Device-verify Basic mode (`ui.basic` person); Basic live-switching follow-up.
+- App Store submission prep (the big strategic item). Security review "went well"
+  per Stephen.
+
+---
+
 ## Session Log — 2026-07-25 (night: Jellyfin module committed + shipped to TestFlight build 30)
 
 Short, focused session — took the previously-built-but-uncommitted Jellyfin
