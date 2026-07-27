@@ -8,6 +8,8 @@ library radarr;
 
 // Imports
 import 'package:dio/dio.dart';
+import 'package:lunasea/system/demo/demo.dart';
+import 'package:lunasea/system/demo/demo_adapter.dart';
 import 'package:lunasea/system/network/tailscale_retry.dart';
 import 'package:lunasea/api/radarr/commands.dart';
 
@@ -73,6 +75,7 @@ class RadarrAPI {
         responseType: ResponseType.json,
       ),
     );
+    if (DemoMode.active) _dio.httpClientAdapter = DemoAdapter();
     attachTailscaleConnectRetry(_dio);
     return RadarrAPI._internal(
       httpClient: _dio,

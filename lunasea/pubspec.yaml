@@ -82,6 +82,11 @@ flutter:
     # System Assets
     - assets/images/
     - assets/localization/
+    # Demo mode fixtures (bundled, offline)
+    - assets/demo/radarr/
+    - assets/demo/sonarr/
+    - assets/demo/arr/
+    - assets/demo/tautulli/
   fonts:
     - family: LunaBrandIcons
       fonts:

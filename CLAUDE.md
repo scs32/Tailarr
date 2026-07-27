@@ -148,18 +148,28 @@ product-focus, not revenue-max (Zagreus ships paid IAP as precedent).
   4.2). Needs a first-run empty-state landing: **Join invite** (primary) /
   **Try demo** / **Unlock Pro**.
 
-- **Demo mode (in-app, read-only) — DESIGN in `docs/demo-mode-design.md`
-  (2026-07-25)**: the reviewability + curiosity mechanism that makes fully
-  gating manual config safe for App Review (a serverless first-run otherwise =
-  4.2 risk). Bundled, offline fixtures — NOT a demo server (hosting canned data
-  is pure overhead). Throwaway `demo` profile (new HiveField 53) with modules
-  pre-configured against a `https://demo.tailarr` sentinel; a `DemoAdapter`
-  (Dio `HttpClientAdapter`, same fake-adapter pattern as
-  `test/tailscale_retry_test.dart`) serves `assets/demo/*.json` (Blender open
-  movies — Sintel/Big Buck Bunny — so it's honest), swapped in per-module
-  beside `attachTailscaleConnectRetry(dio)`. Entry: "Try the demo" on the
-  landing + persistent "Demo — Exit" banner. Tiny diff, no module-screen
-  changes. Full plan + code sketch in the design doc.
+- **Demo mode + first-run landing — BUILT 2026-07-27, sim-verified E2E** (design
+  `docs/demo-mode-design.md`): the reviewability + curiosity mechanism that makes
+  fully gating manual config safe for App Review (a serverless first-run
+  otherwise = 4.2 risk). **First-run landing** (`FirstRunLandingRoute`,
+  `/landing`, gated by `LunaProfileTools.isFirstRun()` in the router redirect):
+  when NO profile is configured, the app opens to **Join Tailarr Server** (paste
+  an invite link → the `/import` deep-link flow) / **Start Demo Mode**. Demo =
+  a throwaway name-locked `demo` profile (HiveField **54**; hidden from switcher/
+  rename like `serverOwned`) with Sonarr/Radarr/Tautulli gateway-managed against
+  the `https://demo.tailarr` sentinel; `DemoAdapter` (Dio `HttpClientAdapter`,
+  `lib/system/demo/`) serves `assets/demo/*.json` (Blender open movies — Big Buck
+  Bunny/Sintel/Tears of Steel/etc.) — offline, no crashes (fixtures carry the
+  force-unwrapped fields: movie `monitored`/`hasFile`/`sortTitle`, series `id`,
+  Tautulli envelope). Hooked one line per *arr/Tautulli API factory beside
+  `attachTailscaleConnectRetry`. Persistent **"Demo Mode — Exit"** banner
+  (`DemoModeBanner` in `main.dart`, under `TailscaleGuard`) → `leaveDemo()` → back
+  to the landing. Existing (configured) testers never see the landing —
+  `isFirstRun` is false for them. Verified: fresh-install → landing renders;
+  demo → Radarr grid fully populated. Tests: `test/demo_mode_test.dart` (routing
+  + profile), `integration_test/demo_mode_test.dart` (visual). NOT device-tested.
+  FOLLOW-UPS: bundle real poster art (currently placeholder); the "Join" branch
+  has no in-app QR scanner (paste-link only); pairs with the non-server=Pro gate.
 
 - **First manual connection: hard-gated vs. free trial (OPEN decision)**:
   hard-gated is cleaner for "non-server is Pro"; a trial softens conversion but

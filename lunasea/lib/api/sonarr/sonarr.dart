@@ -1,6 +1,8 @@
 library sonarr;
 
 import 'package:dio/dio.dart';
+import 'package:lunasea/system/demo/demo.dart';
+import 'package:lunasea/system/demo/demo_adapter.dart';
 import 'package:lunasea/system/network/tailscale_retry.dart';
 import 'package:lunasea/api/sonarr/controllers.dart';
 
@@ -44,6 +46,7 @@ class SonarrAPI {
         maxRedirects: maxRedirects,
       ),
     );
+    if (DemoMode.active) _dio.httpClientAdapter = DemoAdapter();
     attachTailscaleConnectRetry(_dio);
     return SonarrAPI._internal(
       httpClient: _dio,

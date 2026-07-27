@@ -9,6 +9,7 @@ import 'package:lunasea/system/network/platform/network_stub.dart'
     if (dart.library.io) 'package:lunasea/system/network/platform/network_io.dart'
     if (dart.library.html) 'package:lunasea/system/network/platform/network_html.dart';
 import 'package:lunasea/router/router.dart';
+import 'package:lunasea/system/demo/demo.dart';
 import 'package:lunasea/system/logger.dart';
 import 'package:lunasea/system/notifications/notifications.dart';
 import 'package:lunasea/types/exception.dart';
@@ -212,6 +213,7 @@ class LunaProfileTools {
   /// the ACTIVE profile, not this one.)
   static bool _isPristine(LunaProfile p) {
     return !p.serverOwned &&
+        !p.demo &&
         p.tailarrServerHost.isEmpty &&
         !p.tailscaleEnabled &&
         p.tailscaleAuthKey.isEmpty &&
@@ -224,6 +226,22 @@ class LunaProfileTools {
         !p.tautulliEnabled &&
         !p.overseerrEnabled &&
         !p.tailarrServerEnabled;
+  }
+
+  /// This profile has real configuration (server, demo, Tailscale, or an
+  /// enabled module) — the inverse of the pristine first-run state.
+  static bool isConfigured(LunaProfile p) => !_isPristine(p);
+
+  /// First run: NO profile anywhere is configured (no server joined, no demo,
+  /// no manual/gateway module). Drives the first-run landing screen. When a
+  /// user leaves a server or exits demo and only a pristine `default` remains,
+  /// this returns true again → they land back on the first screen.
+  static bool isFirstRun() {
+    for (final name in LunaProfile.list) {
+      final p = LunaBox.profiles.read(name);
+      if (p != null && isConfigured(p)) return false;
+    }
+    return true;
   }
 
   bool changeTo(
@@ -341,6 +359,44 @@ class LunaProfileTools {
       return destination;
     } catch (error, trace) {
       LunaLogger().error('Failed to leave server', error, trace);
+      return null;
+    }
+  }
+
+  /// Enter the bundled read-only demo (see [DemoMode]). Creates/refreshes the
+  /// name-locked `Demo` profile with the showcase modules server-managed
+  /// against the demo sentinel host, then switches to it.
+  Future<void> enterDemo() async {
+    await LunaBox.profiles.update(DemoMode.profileName, DemoMode.build());
+    changeTo(DemoMode.profileName, showSnackbar: false);
+  }
+
+  /// Exit demo: switch to a real/pristine profile (creating a `default` if none
+  /// exists), then delete the `Demo` profile — so an untouched install returns
+  /// to the first-run landing. Returns the profile switched to, or null if not
+  /// currently in demo.
+  Future<String?> leaveDemo() async {
+    final current = LunaSeaDatabase.ENABLED_PROFILE.read();
+    final leaving = LunaBox.profiles.read(current);
+    if (leaving == null || !leaving.demo) return null;
+
+    try {
+      final others = LunaProfile.list.where((p) => p != current).toList();
+      String destination;
+      if (others.isNotEmpty) {
+        destination = others.firstWhere(
+          (p) => !(LunaBox.profiles.read(p)?.demo ?? false),
+          orElse: () => others.first,
+        );
+      } else {
+        destination = LunaProfile.DEFAULT_PROFILE;
+        if (!LunaBox.profiles.contains(destination)) await _create(destination);
+      }
+      _changeTo(destination);
+      await _remove(current);
+      return destination;
+    } catch (error, trace) {
+      LunaLogger().error('Failed to leave demo', error, trace);
       return null;
     }
   }

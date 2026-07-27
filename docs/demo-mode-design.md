@@ -1,6 +1,14 @@
 # Demo Mode — Design (2026-07-25)
 
-**Status:** design only, not built.
+**Status:** BUILT 2026-07-27 (sim-verified end-to-end). First-run landing
+(Join / Start Demo Mode) + bundled read-only demo (Sonarr/Radarr/Tautulli
+against `demo.tailarr`, served by `DemoAdapter` from `assets/demo/`) + a
+persistent "Demo Mode — Exit" banner. Shipped modules: Radarr + Sonarr + Tautulli
+(Blender open movies). The implementation follows this design closely; the only
+deviations: the `demo` field is HiveField **54** (53 was taken by
+`serverAdminToken`), and posters ship empty (placeholder art) rather than bundled
+images — a possible follow-up. The "Join" branch pastes an invite link into the
+existing `/import` deep-link flow (no in-app QR scanner exists yet).
 
 **Why:** the product direction is **non-server = Pro** — the free tier is
 server-driven only (join a Tailarr Server via invite), and *any* manual /

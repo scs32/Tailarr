@@ -6,6 +6,8 @@ library tautulli;
 
 // Imports
 import 'package:dio/dio.dart';
+import 'package:lunasea/system/demo/demo.dart';
+import 'package:lunasea/system/demo/demo_adapter.dart';
 import 'package:lunasea/system/network/tailscale_retry.dart';
 import 'package:lunasea/api/tautulli/commands.dart';
 
@@ -59,6 +61,7 @@ class TautulliAPI {
         maxRedirects: maxRedirects,
       ),
     );
+    if (DemoMode.active) _dio.httpClientAdapter = DemoAdapter();
     attachTailscaleConnectRetry(_dio);
     return TautulliAPI._internal(
       httpClient: _dio,

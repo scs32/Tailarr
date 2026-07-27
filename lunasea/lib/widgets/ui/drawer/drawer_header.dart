@@ -21,15 +21,23 @@ class LunaDrawerHeader extends StatelessWidget {
         // a server-owned Basic profile shows "Leave Server" in its place.
         final basic = LunaProfile.current.uiHidesSettings;
         final serverOwned = LunaProfile.current.serverOwned;
+        // The throwaway demo profile is hidden from the switcher (like a
+        // server-owned one) — Exit is the way out, via the Demo banner.
+        final demo = LunaProfile.current.demo;
         return Container(
         child: LunaAppBar.dropdown(
           backgroundColor: Colors.transparent,
           hideLeading: true,
           useDrawer: false,
-          title: LunaBox.profiles.keys.length == 1 || basic
+          title: LunaBox.profiles.keys.length == 1 || basic || demo
               ? 'Tailarr'
               : LunaSeaDatabase.ENABLED_PROFILE.read(),
-          profiles: basic ? [] : LunaBox.profiles.keys.cast<String>().toList(),
+          profiles: basic || demo
+              ? []
+              : LunaBox.profiles.keys
+                  .cast<String>()
+                  .where((k) => !(LunaBox.profiles.read(k)?.demo ?? false))
+                  .toList(),
           actions: [
             if (!basic)
               LunaIconButton(

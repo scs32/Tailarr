@@ -88,9 +88,10 @@ class _State extends State<ProfilesRoute> with LunaScrollControllerMixin {
       onTap: () async {
         final dialogs = SettingsDialogs();
         final context = LunaState.context;
-        // Server-owned profiles have server-driven, locked names.
+        // Server-owned and demo profiles have locked, non-renamable names.
         final profiles = LunaProfile.list.where((name) {
-          return !(LunaBox.profiles.read(name)?.serverOwned ?? false);
+          final p = LunaBox.profiles.read(name);
+          return !((p?.serverOwned ?? false) || (p?.demo ?? false));
         }).toList();
 
         if (profiles.isEmpty) {

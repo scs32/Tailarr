@@ -10,6 +10,7 @@ import 'package:lunasea/system/cache/memory/memory_store.dart';
 import 'package:lunasea/system/network/network.dart';
 import 'package:lunasea/system/notifications/notifications.dart';
 import 'package:lunasea/system/network/tailscale_connecting_overlay.dart';
+import 'package:lunasea/widgets/ui/demo_banner.dart';
 import 'package:tailscale_embed/tailscale_embed.dart';
 import 'package:lunasea/system/recovery_mode/main.dart';
 import 'package:lunasea/system/window_manager/window_manager.dart';
@@ -80,7 +81,7 @@ class LunaBIOS extends StatelessWidget {
                 builder: (context, child) => DevicePreview.appBuilder(
                   context,
                   TailscaleGuard(
-                    child: child,
+                    child: DemoModeBanner(child: child),
                     onError: (error, stack) => LunaLogger()
                         .error('Failed to connect Tailscale', error, stack),
                     // Deferred so fast connects don't flash a spinner frame.

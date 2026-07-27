@@ -1,0 +1,95 @@
+[
+  {
+    "id": 1,
+    "title": "Sintel",
+    "sortTitle": "sintel",
+    "status": "ended",
+    "ended": true,
+    "monitored": true,
+    "year": 2010,
+    "network": "Blender",
+    "runtime": 15,
+    "seriesType": "standard",
+    "qualityProfileId": 1,
+    "languageProfileId": 1,
+    "overview": "A lone warrior searches for the dragon she befriended as a child. Blender Foundation open movie, used as demo content.",
+    "certification": "PG",
+    "genres": ["Animation", "Fantasy"],
+    "seasons": [
+      {"seasonNumber": 1, "monitored": true, "statistics": {"episodeFileCount": 6, "episodeCount": 6, "totalEpisodeCount": 6, "sizeOnDisk": 12000000000, "percentOfEpisodes": 100.0}}
+    ],
+    "statistics": {"seasonCount": 1, "episodeFileCount": 6, "episodeCount": 6, "totalEpisodeCount": 6, "sizeOnDisk": 12000000000, "percentOfEpisodes": 100.0},
+    "images": [],
+    "tags": []
+  },
+  {
+    "id": 2,
+    "title": "Tears of Steel",
+    "sortTitle": "tears of steel",
+    "status": "continuing",
+    "ended": false,
+    "monitored": true,
+    "year": 2012,
+    "network": "Blender",
+    "runtime": 12,
+    "seriesType": "standard",
+    "qualityProfileId": 1,
+    "languageProfileId": 1,
+    "overview": "In a future Amsterdam, warriors and scientists try to save the world. Blender Foundation open movie (demo content).",
+    "certification": "PG",
+    "genres": ["Science Fiction", "Action"],
+    "seasons": [
+      {"seasonNumber": 1, "monitored": true, "statistics": {"episodeFileCount": 8, "episodeCount": 8, "totalEpisodeCount": 8, "sizeOnDisk": 18000000000, "percentOfEpisodes": 100.0}},
+      {"seasonNumber": 2, "monitored": true, "statistics": {"episodeFileCount": 6, "episodeCount": 10, "totalEpisodeCount": 10, "sizeOnDisk": 14000000000, "percentOfEpisodes": 60.0}}
+    ],
+    "statistics": {"seasonCount": 2, "episodeFileCount": 14, "episodeCount": 18, "totalEpisodeCount": 18, "sizeOnDisk": 32000000000, "percentOfEpisodes": 78.0},
+    "images": [],
+    "tags": []
+  },
+  {
+    "id": 3,
+    "title": "Cosmos Laundromat",
+    "sortTitle": "cosmos laundromat",
+    "status": "continuing",
+    "ended": false,
+    "monitored": true,
+    "year": 2015,
+    "network": "Blender",
+    "runtime": 12,
+    "seriesType": "standard",
+    "qualityProfileId": 1,
+    "languageProfileId": 1,
+    "overview": "A suicidal sheep meets a fast-talking salesman. A Blender open movie pilot, used as demo content.",
+    "certification": "PG",
+    "genres": ["Animation", "Comedy"],
+    "seasons": [
+      {"seasonNumber": 1, "monitored": true, "statistics": {"episodeFileCount": 4, "episodeCount": 6, "totalEpisodeCount": 6, "sizeOnDisk": 9000000000, "percentOfEpisodes": 66.0}}
+    ],
+    "statistics": {"seasonCount": 1, "episodeFileCount": 4, "episodeCount": 6, "totalEpisodeCount": 6, "sizeOnDisk": 9000000000, "percentOfEpisodes": 66.0},
+    "images": [],
+    "tags": []
+  },
+  {
+    "id": 4,
+    "title": "Spring",
+    "sortTitle": "spring",
+    "status": "ended",
+    "ended": true,
+    "monitored": false,
+    "year": 2019,
+    "network": "Blender",
+    "runtime": 8,
+    "seriesType": "standard",
+    "qualityProfileId": 1,
+    "languageProfileId": 1,
+    "overview": "A shepherd girl and her dog face ancient spirits to continue the cycle of life. Blender open movie (demo content).",
+    "certification": "G",
+    "genres": ["Animation", "Fantasy"],
+    "seasons": [
+      {"seasonNumber": 1, "monitored": false, "statistics": {"episodeFileCount": 5, "episodeCount": 5, "totalEpisodeCount": 5, "sizeOnDisk": 10000000000, "percentOfEpisodes": 100.0}}
+    ],
+    "statistics": {"seasonCount": 1, "episodeFileCount": 5, "episodeCount": 5, "totalEpisodeCount": 5, "sizeOnDisk": 10000000000, "percentOfEpisodes": 100.0},
+    "images": [],
+    "tags": []
+  }
+]

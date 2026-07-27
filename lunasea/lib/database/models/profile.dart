@@ -219,6 +219,16 @@ class LunaProfile extends HiveObject {
   @HiveField(53, defaultValue: '')
   String serverAdminToken;
 
+  /// A throwaway, read-only demo profile (bundled fixtures, no backend). Like
+  /// [serverOwned] it is name-locked and hidden from the profile switcher /
+  /// rename / delete, and it never counts toward Pro gating. Entered from the
+  /// first-run landing ("Start Demo Mode") and always exitable via the Demo
+  /// banner. Modules render server-driven-shaped against the `demo.tailarr`
+  /// sentinel host, intercepted by the `DemoAdapter`.
+  @JsonKey(defaultValue: false)
+  @HiveField(54, defaultValue: false)
+  bool demo;
+
   @JsonKey()
   @HiveField(40, defaultValue: false)
   bool overseerrEnabled;
@@ -282,6 +292,7 @@ class LunaProfile extends HiveObject {
     required this.gatewayManagedModules,
     required this.serverOwned,
     required this.uiBasic,
+    required this.demo,
     //Tautulli
     required this.tautulliEnabled,
     required this.tautulliHost,
@@ -341,6 +352,7 @@ class LunaProfile extends HiveObject {
     List<String>? gatewayManagedModules,
     bool? serverOwned,
     bool? uiBasic,
+    bool? demo,
     //Tautulli
     bool? tautulliEnabled,
     String? tautulliHost,
@@ -399,6 +411,7 @@ class LunaProfile extends HiveObject {
       gatewayManagedModules: gatewayManagedModules ?? [],
       serverOwned: serverOwned ?? false,
       uiBasic: uiBasic ?? false,
+      demo: demo ?? false,
       // Tautulli
       tautulliEnabled: tautulliEnabled ?? false,
       tautulliHost: tautulliHost ?? '',
