@@ -54,8 +54,11 @@ stale live-E2E test-infra notes. Session logs retain the detail.)
   "Request Access" for Sonarr is this client bug, not the server. NEXT: ship on
   the next TestFlight build.
 
-- **Jellyfin badge grants access but never PROVISIONS the account — SERVER bug
-  (podscale), 2026-07-26**: a person WITH the `jellyfin` badge still gets
+- **Jellyfin badge grants access but never PROVISIONS the account — RESOLVED
+  2026-07-27 (server-side fix landed; live-E2E now GREEN)**: the podscale
+  provisioning gap below is fixed — a badged person now provisions and
+  `/self/jellyfin` returns their account. Kept for history. Original writeup —
+  SERVER bug (podscale), 2026-07-26: a person WITH the `jellyfin` badge still got
   `/self/jellyfin → "no Jellyfin access"` (confirmed live for "Stephen" +
   "Claude Matrix Run"). Root cause in `podscale/web/app.py`: the badge and a
   provisioned Jellyfin account are separate — `_jf_person_ctx` requires a stored
@@ -85,8 +88,13 @@ stale live-E2E test-infra notes. Session logs retain the detail.)
   unit tests + all 52 green. Design: `scratchpad/config-changed-push-design.md`.
   NEXT: ship on the next TestFlight build.
 
-- **Jellyfin per-person module — COMMITTED + SHIPPED (build 30 LIVE), live-E2E
-  pending**: committed as `35445905` and shipped to TestFlight as **build 30**
+- **Jellyfin per-person module — DONE: COMMITTED + SHIPPED + LIVE-E2E GREEN
+  (2026-07-27)**: the live end-to-end now works on a real box — a Jellyfin-badged
+  person opens the module, Quick Connects a code from the official client, and
+  logs in passwordless as that person. This was the last outstanding validation;
+  it was blocked only by the server provisioning bug (now RESOLVED, see the item
+  above). The whole feature is shipped and verified. History below.
+  Committed as `35445905` and shipped to TestFlight as **build 30**
   (VALID, beta review APPROVED, in Public Beta group — 2026-07-25 night).
   server release 2 shipped as **tailarr-server v0.68.0** (GHCR amd64+arm64) — the
   five `/self/jellyfin/*` routes are live and honor the frozen contract exactly.
@@ -126,10 +134,9 @@ stale live-E2E test-infra notes. Session logs retain the detail.)
   (JELLYFIN=SimpleIcons.jellyfin). Screen: Quick Connect authorize, device list +
   sign-out, set/change/clear password, read-only url + libraries. Design doc:
   `~/projects/podscale/docs/jellyfin-identity-design.md`. Committed `35445905`,
-  build 30 live. Still device/live-unverified — the module hides itself unless
-  the server grants Jellyfin access, so low-risk for other testers. **NEXT is
-  the live E2E above** (real box, server ≥ v0.68.0 + Jellyfin deployed + a
-  badged person).
+  build 30 live. **Live E2E GREEN 2026-07-27** (real box, Jellyfin deployed + a
+  badged person → passwordless Quick Connect login as that person) once the
+  server provisioning bug was fixed. Feature complete.
 
 - **Request-Access connection UX — DONE 2026-07-25** (TestFlight feedback:
   "gray out connection details when it's request only"): across all 6 native
