@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:lunasea/core.dart';
 import 'package:lunasea/modules/sabnzbd.dart';
+import 'package:lunasea/modules/settings/core/server_driven_connection.dart';
 
 class SABnzbdDialogs {
   SABnzbdDialogs._();
 
   static Future<List<dynamic>> globalSettings(BuildContext context) async {
     List<List<dynamic>> _options = [
-      ['View Web GUI', Icons.language_rounded, 'web_gui'],
+      if (!ServerDrivenConnection.hidesRawServiceAdmin())
+        ['View Web GUI', Icons.language_rounded, 'web_gui'],
       ['Add NZB', Icons.add_rounded, 'add_nzb'],
       ['Sort Queue', Icons.sort_rounded, 'sort'],
       ['Clear History', Icons.clear_all_rounded, 'clear_history'],

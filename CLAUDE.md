@@ -24,6 +24,21 @@ the Users PEOPLE model, ntfy notifications stage 1, the second-share crash
 [sharing was replaced by gateway auto-config], share-config UX polish, and
 stale live-E2E test-infra notes. Session logs retain the detail.)
 
+- **"View Web GUI" hidden for badge-less auto-config members — DONE
+  2026-07-27, not yet committed→built**: TestFlight feedback (2026-07-27,
+  build 33) "remove the web ui options if a user doesn't have a server badge as
+  part of auto config" (screenshot = NZBGet Settings sheet showing View Web
+  GUI). A server-driven member reaches the service only through the app and
+  holds no web-login creds, so the service's own admin page is a dead end. New
+  pure predicates in `ServerDrivenConnection`: `hasServerBadge()` (holds the
+  `tailarr` badge = admin-capable) + `hidesRawServiceAdmin()` (server-driven
+  `hasServerGrantList()` AND no server badge). The three modules that expose the
+  action (NZBGet/SABnzbd/Lidarr `core/dialogs.dart` `globalSettings`) drop the
+  `web_gui` option when true; admins (server badge) and standalone/manual (Pro)
+  profiles keep it. 4 unit tests in `test/server_driven_connection_test.dart`
+  (9/9 file, 119/119 suite green, analyze clean). Data/unit-verified only, NOT
+  device-rendered. NEXT: ship on the next TestFlight build.
+
 - **Self-config throttle bug — FIXED 2026-07-26 (`dbe75be9`), not yet built**:
   Services + Jellyfin self-config armed their 15-min throttle on a FAILED dial
   (node not up yet at launch → "Failed host lookup: tailarr-gate"), locking out

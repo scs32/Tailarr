@@ -72,4 +72,47 @@ void main() {
       );
     });
   });
+
+  // Hides raw service admin surfaces (e.g. "View Web GUI") for a server-driven
+  // auto-config member who lacks the server badge. TestFlight 2026-07-27:
+  // "remove the web ui options if a user doesn't have a server badge as part
+  // of auto config".
+  group('hidesRawServiceAdminFor', () {
+    test('server-driven member WITHOUT the server badge → hidden', () {
+      // Synced against a server, granted only sonarr — no 'tailarr' badge.
+      final p = _profile(managed: ['sonarr']);
+      expect(
+        ServerDrivenConnection.hidesRawServiceAdminFor(p, servicesSynced: true),
+        isTrue,
+      );
+    });
+
+    test('server-driven admin WITH the server badge → shown', () {
+      // The 'tailarr' managed marker is the admin-capable server badge.
+      final p = _profile(serverOwned: true, managed: ['tailarr', 'sonarr']);
+      expect(
+        ServerDrivenConnection.hidesRawServiceAdminFor(p, servicesSynced: true),
+        isFalse,
+      );
+    });
+
+    test('server badge via an enabled Tailarr Server module → shown', () {
+      final p = _profile(
+        serverEnabled: true,
+        serverHost: 'https://tailarr.tail600657.ts.net',
+      );
+      expect(
+        ServerDrivenConnection.hidesRawServiceAdminFor(p, servicesSynced: false),
+        isFalse,
+      );
+    });
+
+    test('plain standalone/manual profile → shown (never a server member)', () {
+      final p = _profile();
+      expect(
+        ServerDrivenConnection.hidesRawServiceAdminFor(p, servicesSynced: false),
+        isFalse,
+      );
+    });
+  });
 }

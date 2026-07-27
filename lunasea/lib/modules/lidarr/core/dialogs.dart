@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lunasea/core.dart';
 import 'package:lunasea/extensions/int/bytes.dart';
 import 'package:lunasea/modules/lidarr.dart';
+import 'package:lunasea/modules/settings/core/server_driven_connection.dart';
 
 class LidarrDialogs {
   Future<Tuple2<bool, LidarrMonitorStatus?>> selectMonitoringOption(
@@ -247,7 +248,8 @@ class LidarrDialogs {
 
   static Future<List<dynamic>> globalSettings(BuildContext context) async {
     List<List<dynamic>> _options = [
-      ['View Web GUI', Icons.language_rounded, 'web_gui'],
+      if (!ServerDrivenConnection.hidesRawServiceAdmin())
+        ['View Web GUI', Icons.language_rounded, 'web_gui'],
       ['Update Library', Icons.autorenew_rounded, 'update_library'],
       ['Run RSS Sync', Icons.rss_feed_rounded, 'rss_sync'],
       ['Search All Missing', Icons.search_rounded, 'missing_search'],

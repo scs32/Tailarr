@@ -59,6 +59,32 @@ class ServerDrivenConnection {
   static bool shouldRequestAccess(String type) =>
       !isManaged(type) && hasServerGrantList();
 
+  /// The person holds the Tailarr Server ("server") badge — the admin-capable
+  /// signal, granted as the `tailarr` service. Pure form for testing.
+  static bool hasServerBadgeFor(LunaProfile profile) =>
+      profile.gatewayManagedModules.contains('tailarr') ||
+      profile.tailarrServerEnabled;
+
+  static bool hasServerBadge() => hasServerBadgeFor(LunaProfile.current);
+
+  /// A raw service admin surface — e.g. a module's "View Web GUI" action —
+  /// should be HIDDEN for a server-driven auto-config member who lacks the
+  /// server badge. Such a member reaches the service only through the app and
+  /// holds no web-login credentials, so the service's own admin page is a dead
+  /// end. Admins (server badge) keep it; standalone/manual profiles keep it.
+  /// Pure form for testing.
+  static bool hidesRawServiceAdminFor(
+    LunaProfile profile, {
+    required bool servicesSynced,
+  }) =>
+      hasServerGrantListFor(profile, servicesSynced: servicesSynced) &&
+      !hasServerBadgeFor(profile);
+
+  static bool hidesRawServiceAdmin() => hidesRawServiceAdminFor(
+        LunaProfile.current,
+        servicesSynced: NotificationsDatabase.SERVICES_LAST_SYNC.read() > 0,
+      );
+
   /// The module's Enable toggle, gated for server-owned config. On a server
   /// profile the enable state is the server's to decide, so:
   /// - granted (managed) → a read-only "Enabled by your Tailarr Server" row;
