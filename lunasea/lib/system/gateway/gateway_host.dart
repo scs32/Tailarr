@@ -1,6 +1,14 @@
+import 'package:flutter/foundation.dart';
 import 'package:lunasea/api/ntfy/ntfy.dart';
 import 'package:lunasea/system/network/platform/network_io.dart'
     if (dart.library.html) 'package:lunasea/system/network/platform/network_html.dart';
+
+/// Test/demo-only seam: when set, [gatewayClient] returns this instead of
+/// dialing the live `tailarr-gate`. Null in production — no runtime effect.
+/// Used by the Jellyfin/services demo harnesses to render module screens
+/// against canned data with no backend.
+@visibleForTesting
+Future<NtfyGatewayClient> Function()? debugGatewayClientBuilder;
 
 /// Pure throttle decision shared by the services + Jellyfin opportunistic
 /// re-sync paths. A fetch that REACHED the gate holds for [reached]; a dial
@@ -34,6 +42,8 @@ bool gatewaySyncThrottled({
 /// to the bare name only when the node isn't up yet (or on web, which has no
 /// tunnel and no status).
 Future<NtfyGatewayClient> gatewayClient() async {
+  final override = debugGatewayClientBuilder;
+  if (override != null) return override();
   var host = NtfyGatewayClient.DEFAULT_HOST;
   try {
     final suffix = (await IO.tailscaleStatus())?.magicDnsSuffix;
