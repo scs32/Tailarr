@@ -40,7 +40,23 @@ class NotificationService: UNNotificationServiceExtension {
         // profile's slice and show the newest unseen message across all.
         NtfyFetcher.fetchUnseenAcross(slices) { results in
             defer { contentHandler(content) }
-            let all = results.flatMap { $0.messages }.sorted { $0.time < $1.time }
+
+            // Advance each slice's markers for EVERYTHING fetched — including
+            // silent config-changed control signals — so BG refresh doesn't
+            // re-notify. (Done before the display filter so config signals
+            // still mark seen even when nothing is shown.)
+            for result in results where !result.messages.isEmpty {
+                result.slice.markNotified(result.messages)
+            }
+
+            // Config-changed control messages (tlr-ctrl-<uid>) drive a re-sync,
+            // never a banner. Filter them out of what we promote; if the wake
+            // carried only control signals, deliver the content-free wake
+            // unchanged (no notification shown).
+            let all = results
+                .flatMap { $0.messages }
+                .filter { !$0.isConfigControl }
+                .sorted { $0.time < $1.time }
             guard let newest = all.last else { return }
 
             content.title = newest.displayTitle
@@ -49,11 +65,6 @@ class NotificationService: UNNotificationServiceExtension {
                 content.body += " (+\(all.count - 1) more)"
             }
             content.threadIdentifier = newest.topic
-
-            // Advance each slice's markers so BG refresh doesn't re-notify.
-            for result in results where !result.messages.isEmpty {
-                result.slice.markNotified(result.messages)
-            }
         }
     }
 
@@ -141,6 +152,11 @@ struct NtfyMessage {
     let topic: String
     let title: String?
     let message: String?
+
+    /// Silent server→client config-changed control signal (rides the per-person
+    /// `tlr-ctrl-<uid>` topic). Wakes the app to re-sync — never shown as a
+    /// notification. Mirrors the Dart `NtfyMessage.isConfigControl` filter.
+    var isConfigControl: Bool { topic.hasPrefix("tlr-ctrl-") }
 
     var displayTitle: String {
         if let title = title, !title.isEmpty { return title }
