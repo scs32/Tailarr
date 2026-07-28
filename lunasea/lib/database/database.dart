@@ -44,7 +44,7 @@ class LunaDatabase {
     await LunaBox.open();
     if (LunaBox.profiles.isEmpty) await bootstrap();
     migrateGlobalTailscaleToProfile();
-    migrateLegacyServerProfiles();
+    await migrateLegacyServerProfiles();
   }
 
   /// Invites accepted before the server-owned-profile feature wrote their
@@ -55,7 +55,7 @@ class LunaDatabase {
   /// rename to the server-derived name. Runs once (already-owned profiles
   /// are skipped) and preserves the stored Tailscale identity, so the node
   /// enrollment is untouched.
-  void migrateLegacyServerProfiles() {
+  Future<void> migrateLegacyServerProfiles() async {
     for (final name in LunaProfile.list) {
       final profile = LunaBox.profiles.read(name);
       if (profile == null) continue;
@@ -75,7 +75,7 @@ class LunaDatabase {
       // that one safe case.
       if (name != LunaProfile.DEFAULT_PROFILE) {
         profile.serverOwned = true;
-        profile.save();
+        await profile.save();
         continue;
       }
 
@@ -83,18 +83,18 @@ class LunaDatabase {
           LunaProfileTools.serverProfileName(profile.tailarrServerHost);
       if (desired == name || LunaBox.profiles.contains(desired)) {
         profile.serverOwned = true;
-        profile.save();
+        await profile.save();
         continue;
       }
 
       // Rename at the box level (no LunaState/router — the UI isn't up yet):
       // clone under the new key, repoint the active pointer, drop the old.
       final renamed = LunaProfile.clone(profile)..serverOwned = true;
-      LunaBox.profiles.update(desired, renamed);
+      await LunaBox.profiles.update(desired, renamed);
       if (LunaSeaDatabase.ENABLED_PROFILE.read() == name) {
-        LunaSeaDatabase.ENABLED_PROFILE.update(desired);
+        await LunaSeaDatabase.ENABLED_PROFILE.update(desired);
       }
-      profile.delete();
+      await profile.delete();
     }
   }
 

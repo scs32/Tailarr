@@ -360,3 +360,11 @@ season-detail state would then query with the invalid id. Both now capture
 `seriesId`, return on null, and pass the real id (`seasonNumber ?? -1` kept — that
 sentinel intentionally means "All Seasons"). All other round-4 areas were SOLID
 with no regressions.
+
+### Round 6 — the last un-awaited write in the restore transaction
+Final pass: Fable SHIP; Codex flagged one strict consistency item —
+`migrateLegacyServerProfiles()` was called (in both `open()` and the restore
+transaction) without awaiting its fire-and-forget Hive writes (`save`/`update`/
+`delete`), so a migration write failure wouldn't propagate to the rollback. The
+method is now `Future<void>`, awaits each internal write, and is awaited at both
+call sites — completing the "every restore write is awaited" guarantee.

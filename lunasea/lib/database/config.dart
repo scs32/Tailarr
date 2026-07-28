@@ -48,8 +48,9 @@ class LunaConfig {
 
       // A restored backup can carry server-attached profiles from a build
       // that predates serverOwned — the launch migration already ran before
-      // this manual restore, so convert them now too.
-      LunaDatabase().migrateLegacyServerProfiles();
+      // this manual restore, so convert them now too. Awaited so a migration
+      // write failure reaches the rollback (H1 transactional guarantee).
+      await LunaDatabase().migrateLegacyServerProfiles();
 
       // Device-local secrets (the ntfy bearer + APNs push token) are
       // deliberately absent from the export (H2). Carry THIS device's current
