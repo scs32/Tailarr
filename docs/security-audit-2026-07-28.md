@@ -351,3 +351,12 @@ list. Round 4 closes all of it:
 Still non-blocking / tracked: Fable #7 (integration test) and Fable's micro note
 that a token keyed to the legacy `default` profile isn't carried across the
 migration rename (gateway re-mints it).
+
+### Round 5 — the last null-id gap
+Codex round-4 was SHIP-minus-one: the two Sonarr **primary-tap** `_onTap()`
+handlers (`missing_tile.dart`, `upcoming_tile.dart`) still navigated with
+`series=-1` on a null `seriesId` (only long-press/search were guarded), which the
+season-detail state would then query with the invalid id. Both now capture
+`seriesId`, return on null, and pass the real id (`seasonNumber ?? -1` kept — that
+sentinel intentionally means "All Seasons"). All other round-4 areas were SOLID
+with no regressions.

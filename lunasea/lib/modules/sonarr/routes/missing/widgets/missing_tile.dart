@@ -93,8 +93,11 @@ class _State extends State<SonarrMissingTile> {
   }
 
   Future<void> _onTap() async {
+    final seriesId = widget.record.seriesId;
+    if (seriesId == null) return;
     SonarrRoutes.SERIES_SEASON.go(params: {
-      'series': (widget.record.seriesId ?? -1).toString(),
+      'series': seriesId.toString(),
+      // -1 season intentionally means "All Seasons".
       'season': (widget.record.seasonNumber ?? -1).toString(),
     });
   }
