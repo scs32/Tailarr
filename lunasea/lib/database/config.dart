@@ -43,7 +43,7 @@ class LunaConfig {
         throw const FormatException('Backup contained no profiles.');
       }
       if (!LunaProfile.list.contains(LunaSeaDatabase.ENABLED_PROFILE.read())) {
-        LunaSeaDatabase.ENABLED_PROFILE.update(LunaProfile.list.first);
+        await LunaSeaDatabase.ENABLED_PROFILE.update(LunaProfile.list.first);
       }
 
       // A restored backup can carry server-attached profiles from a build
