@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lunasea/core.dart';
+import 'package:lunasea/system/security/ssrf_guard.dart';
 import 'package:lunasea/modules/sabnzbd.dart';
 import 'package:lunasea/modules/settings.dart';
 import 'package:lunasea/router/routes/settings.dart';
@@ -143,6 +144,11 @@ class _State extends State<ConfigurationSABnzbdConnectionDetailsRoute>
             message: 'settings.ApiKeyRequiredMessage'
                 .tr(args: [LunaModule.SABNZBD.title]),
           );
+          return;
+        }
+        final blocked = await SsrfGuard.guard(_profile.sabnzbdHost);
+        if (blocked != null) {
+          showLunaErrorSnackBar(title: 'Address Blocked', message: blocked);
           return;
         }
         SABnzbdAPI.from(LunaProfile.current)

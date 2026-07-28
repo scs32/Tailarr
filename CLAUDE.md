@@ -129,18 +129,44 @@ Pruned once shipped + verified (session logs retain full detail):
   NSAllowsLocalNetworking), M4 allowBackup=false, M6 location trim, M3 backup
   strips the Tailscale key, L3 LogRedactor, L7 Android perm cleanup, and **M2
   Hive-encryption-at-rest** (`HiveAesCipher` + Keychain key + migration, build
-  28, device-verified). **OPEN fast-follow**: M3-full (encrypt the whole backup,
-  not just strip the key); M5 Test-Connection SSRF guard; L2 secret copies →
+  28, device-verified). **M5 Test-Connection SSRF guard — DONE 2026-07-28**
+  (`lib/system/security/ssrf_guard.dart`, spec `~/tailarr-handoff/m5-ssrf-guard.md`):
+  mirrors the server's `_ssrf_check`. Blocks only loopback/link-local(metadata)/
+  multicast/unspecified on the RESOLVED host (NOT the socket — the embedded
+  tailnet proxy legitimately connects to loopback); LAN + tailnet + public
+  allowed. Walks redirect hops (`followRedirects:false` HEAD, ≤5) to close the
+  public→302→169.254.169.254 bypass. Wired into all 6 service Test-Connection
+  buttons + the untrusted shared-config import test. 14 unit tests. Residual:
+  DNS-rebind/TOCTOU (connect-IP validation is a network-layer follow-up
+  complicated by the proxy). **OPEN fast-follow**: M3-full (encrypt the whole
+  backup, not just strip the key); L2 secret copies →
   general/synced pasteboard with expiry (needs a native `UIPasteboard` channel);
   L1 Keychain-back the ntfy token (rides M2's secure-storage); L5 stale security
   deps (dio/go_router/share_plus/retrofit/flutter_local_notifications; Hive 2.x).
   Android `usesCleartextTraffic` left ON (LAN-HTTP) — revisit once non-server=Pro
   makes the free tier tailnet-only. L6 (`aps-environment=development`) is FINE
   (distribution profile overrides to production; push verified live).
-  **Server-side audit → SERVER-SESSION job** (`docs/security-audit-server-2026-07-25.md`):
-  H1 API bearer OFF by default; H2 catalog-install `NAME_RE` gap → path traversal
-  + ACL grant injection; M1 gate cred-harvest (caller-supplied `ip`); M2 key
-  reissue doesn't revoke old key; M3 NFS `host_path` injection; L1-L6.
+  **Server-side audit — MOSTLY CLOSED (server hardened it, verified 2026-07-28).**
+  Do NOT flag these as open — the app backlog was quoting the pre-remediation
+  findings; the server session traced all five against live `web/app.py`:
+  - **H1** exec/install unauth → **FIXED**: `admin_auth_ok` gates every mutating
+    POST (app.py:11098); exec/install are NOT in `ADMIN_POST_EXEMPT` (only
+    `/api/gateway/resolve` + `/api/pair/start`); admin token auto-provisioned.
+    The tailnet ACL is defense-in-depth, not the only gate. (Bootstrap token in a
+    0600 host file is a higher-trust residual, retired once the app mints its own
+    via Quick Connect.)
+  - **H2** catalog `NAME_RE` traversal/ACL-injection → **FIXED** (op_install
+    4525, comment cites the `dst:["*"]` example).
+  - **M2** key reissue doesn't revoke old → **FIXED** (op_person reissue 1784
+    `_revoke_person_keys` first).
+  - **M3** NFS host_path injection → **FIXED** (op_share_add 9803 `SAFE_PATH_RE`).
+  - **M1** gate cred-harvest → **bounded residual, not "all creds"**:
+    `op_gateway_resolve` requires a per-install shared secret (constant-time) +
+    tailscale whois → real person tag + currently-online-peer check + rate limit.
+    Worst case = a compromised gateway/stolen install-secret can slowly resolve
+    the handout for currently-ONLINE person-devices (creds a badge already
+    grants). Optional follow-up: gateway cryptographically proves the live
+    connection instead of passing an `ip` (a design change, not a one-liner).
 
 - **Sovereign mode** (design only): embedded headscale in tailarr-server —
   full writeup in that repo's `docs/sovereign-mode-design.md` (2026-07-19).

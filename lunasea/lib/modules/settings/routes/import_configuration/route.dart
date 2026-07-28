@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lunasea/core.dart';
+import 'package:lunasea/system/security/ssrf_guard.dart';
 import 'package:lunasea/extensions/string/string.dart';
 import 'package:lunasea/modules/lidarr.dart';
 import 'package:lunasea/modules/nzbget.dart';
@@ -303,6 +304,13 @@ class _State extends State<ImportConfigurationRoute>
 
   /// Tests use ONLY the payload values — never the recipient's saved profile.
   Future<void> _testConnection(SharedModuleConfiguration config) async {
+    // Untrusted shared payload — guard against pointing Test Connection at an
+    // internal target (loopback / cloud-metadata / link-local), redirects too.
+    final blocked = await SsrfGuard.guard(config.host);
+    if (blocked != null) {
+      showLunaErrorSnackBar(title: 'Address Blocked', message: blocked);
+      return;
+    }
     Future<void> test;
     switch (config.module) {
       case LunaModule.SONARR:

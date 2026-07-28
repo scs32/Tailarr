@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lunasea/core.dart';
+import 'package:lunasea/system/security/ssrf_guard.dart';
 import 'package:lunasea/modules/settings.dart';
 import 'package:lunasea/modules/tautulli.dart';
 import 'package:lunasea/router/routes/settings.dart';
@@ -143,6 +144,11 @@ class _State extends State<ConfigurationTautulliConnectionDetailsRoute>
             message: 'settings.ApiKeyRequiredMessage'
                 .tr(args: [LunaModule.TAUTULLI.title]),
           );
+          return;
+        }
+        final blocked = await SsrfGuard.guard(_profile.tautulliHost);
+        if (blocked != null) {
+          showLunaErrorSnackBar(title: 'Address Blocked', message: blocked);
           return;
         }
         TautulliAPI(
