@@ -407,6 +407,117 @@ The whole stack (Go tsnet proxy, Swift MethodChannel bridge, findProxy/HttpOverr
 
 ---
 
+## Session Log — 2026-07-28 (part 2: two-agent security-review LOOP → build 39, embed v0.3.9, shared bug-tracker artifact)
+
+Everything pushed to master; **TestFlight build 39 is LIVE (review APPROVED)**.
+Two big deliverables + a shared tracker.
+
+### THE WORKFLOW (reusable): adversarial two-agent review loop
+Ran a **Fable 5 agent** (`Agent` tool, `model: fable`, general-purpose) AND
+**codex** (`codex exec --sandbox workspace-write -C <repo>`, piping a prompt file
+to stdin) as independent reviewers, framed as a **defensive maintainer hardening
+their OWN open-source code** (Fable shuts down on any "help me attack" framing —
+lead with ownership + point at real files/known-bugs, like the server's example
+prompt). Looped: review → fix → re-review until BOTH said SHIP.
+- **Codex's sandbox CANNOT run Flutter** (blocked writing
+  `/opt/homebrew/share/flutter/bin/cache/engine.stamp`) → its reviews are
+  by-reading only, yet it caught the two real ship-blockers. Keep it in the loop.
+- Prompts saved in this session's scratchpad (`fix_review_prompt*.md`).
+- Both were worth it: Codex caught H1 (backup could wipe all data) + H2 (token
+  regression I introduced); Fable independently caught the inbox-loss + a failing
+  integration test. Full round-by-round record in `docs/security-audit-2026-07-28.md`.
+
+### Deliverable 1 — Security hardening batch (dual-SHIP), shipped build 39
+Full write-up: **`docs/security-audit-2026-07-28.md`** (findings + rounds 1–6).
+Fixed + reviewed to dual-SHIP (Fable 5 + codex), **140 tests, 0 analyzer errors**:
+- **H1** backup restore is now transactional: `_parseAndValidate` → `_snapshot`
+  (integrity-checked) → clear INSIDE try → **every write awaited** (made
+  `LunaTableMixin.update/import` + `LunaTable.import` return `Future`; 5 table
+  overrides now `async`) → `flushConfig()` barrier → rollback preserves the
+  ORIGINAL error. Clears only `LunaDatabase.configBoxes` (NOT the inbox/logs).
+  `LunaBox.clear()` now awaits Hive's native clear. `migrateLegacyServerProfiles()`
+  is now `async`+awaited too. (`lib/database/config.dart`, `box.dart`, `database.dart`, `table.dart`).
+- **H2** strip `serverAdminToken` + ntfy `TOKEN`/`PUSH_TOKEN` from backup export
+  (blockedFromImportExport); device-local tokens carried across a restore
+  (`_restoreLocalTokens`) so they don't drop.
+- **H3** null-safe *arr everywhere: catalogue sort/filter, upcoming, missing,
+  tiles, `sonarr/core/state.dart` id-map, detail nav. Sentinel-id actions no-op.
+- **H4** `LunaNtfy.purgeProfileName()` on profile delete + `NtfyHiveMigration`
+  (new platform-neutral file, used by io AND web stub) so web cleans up too.
+- **M1** clear-inbox + `_compact` per-profile; `recordDismissed({profile})` pinned.
+- **M2** Jellyfin availability only on authoritative outcomes (`gateway_jellyfin`);
+  `hasNoAccess` narrowed so a stray "access" substring can't disable it.
+- **L1** rename migrates ntfy state. **L2** passwords out of logs (nzbget/sabnzbd)
+  + `value3` redacted. **L3** LogRedactor masks `*Key/*Pass/*Token` JSON fields.
+- **STILL OPEN** (tracked): M3-full (encrypt whole backup), L4 (NSE `tlr-config`
+  tag parity), L5 (storeMessages profile-switch race), Android cleartext, stale
+  deps, and a NEW one Codex surfaced — **APP-1: app may reuse `serverAdminToken`
+  against a server-driven NEW host without re-verifying identity** (worth a fix).
+- Fable follow-up NOT done (tracked): a `config_import_test` locking the H1
+  snapshot/rollback (needs full box/adapter harness + BuildContext → belongs in
+  integration_test/).
+
+### Deliverable 2 — tailscale_embed **v0.3.9** (streaming + teardown reliability)
+Pin `v0.3.6 → v0.3.9` in `lunasea/pubspec.yaml` + `flutter pub upgrade`
+(framework-v1.92.5-9, resolved-ref `dc0febc…`; first iOS build re-downloads the
+xcframework, SHA-verified). Fixes: 30s plain-http truncation, CONNECT/stream
+teardown on profile switch, **rollback re-adopts the proxy port** (main path), no
+DERP-blip counting as a rebind, and a new **`STATUS_UNAVAILABLE`** code (node up,
+status momentarily unreadable). Wired on the Tailscale Status page
+(`tailscale_status.dart`): that code shows the plugin's "status refreshing" copy,
+NOT disconnected (imports `flutter/services` for `PlatformException`). Confirmed
+NOTHING needed for the rollback-port fix (routing goes through the plugin's
+`TailscaleHttpOverrides`/`findProxy`, reads the live port) or the stuck-notice.
+**Device soak still owed**: >30s download, profile-switch teardown, failed-switch
+rollback recovery. Deferred UPSTREAM (not ours): native `Up()` cancel for a
+wedged connect; blocking gomobile calls off the iOS main thread.
+
+### Modules-not-showing (C-04) — RESOLVED server-side (NOT our bug)
+Stephen's hunch was right. Drawer went empty after the server's C-04
+least-privilege ACL rework granted the **gateway→controller edge only :443**, but
+the gateway dials the controller on **:8080** → 502 on every `/self/*` → app
+un-manages every module. `op_person_services` (the handout) was fine; the
+*delivery* rode the ACL. Fixed on the server (**v0.108.0**, port asserted in the
+fabric test). App code was innocent (the reconciler correctly preserves on 502).
+Diagnosed + handed off on **GitHub issue `scs32/tailarr#1`**.
+
+### Deliverable 3 — SHARED BUG-TRACKER ARTIFACT (canonical, cross-session)
+Merged all bugs (server + app + embed) into Stephen's existing artifact, IN PLACE:
+**https://claude.ai/code/artifact/50aadd99-fe55-4c61-85a8-25d9585425dc**
+("Tailarr — Bug Tracker"). Kept the server session's rows verbatim; replaced the
+old "app repo handoff" section with authoritative current status (build-39 fixes),
+added embed rows, added an Area filter. **This is now the single source of truth**
+— always update THAT artifact in place (WebFetch → merge your area only → Artifact
+tool with `url:` = that URL). Saved to memory (`tailarr-bug-tracker-artifact.md`).
+Stephen is telling the server + embed sessions the same (prompt provided).
+
+### Release ops (build 39)
+- Merged `harden/security-audit-2026-07-28` (FF) + `embed/tailscale-embed-v0.3.9`
+  (--no-ff) into master → HEAD `f4cb4793`, pushed. Triggered `testflight.yml` via
+  `gh workflow run testflight.yml --ref master` (run 30393950148, SUCCESS).
+- `asc_release.py --skip 6639f84a-708b-4acd-87b0-7b13279f544f`(=build 38)
+  `--notes-file <whatsnew> --revoke-cert` → build **39 = `fb93fcdb-5af7-48f5-b4b9-3b8036967165`**
+  VALID → beta review 201 → Public Beta 204 → notes 200 → revoked oldest orphan
+  cert (kept in-use `R2P6B5AYT5`). **Review APPROVED** (same-version fast path).
+- **`tlr-ops` push works via the CONTROLLER**: `ssh tailarr` (user `ubuntu`),
+  `sudo -n` to read `/root/Pods/.ntfy.json` (public_url `ntfy.tail074f8b.ts.net`,
+  publisher creds under `.publisher`). Wrote `/tmp/tlr_push.py` on the box
+  (argv: title msg tags prio; reads the config, HTTP-Basic to `<public_url>/tlr-ops`).
+  **GOTCHAS**: HTTP headers are latin-1 → NO em-dash/unicode in Title; the Oracle
+  box's public SSH (`141.148.178.154:22`) was FLAKY (intermittent timeouts) —
+  retry. Notified Stephen of the live build via this path.
+- **Next build's `--skip` target = build 39 id `fb93fcdb-5af7-48f5-b4b9-3b8036967165`.**
+
+### NEXT
+- On-device soak of the embed v0.3.9 paths (Stephen, on build 39).
+- Open security fast-follows: **APP-1** (re-verify server identity before reusing
+  admin token), M3-full, L4, L5, Android cleartext, dep bumps; the H1
+  integration test.
+- Per-device revoke still needs the SERVER route (issue #1).
+- Keep the shared bug-tracker artifact current as things land.
+
+---
+
 ## Session Log — 2026-07-28 (MARATHON: demo mode + first-run landing, builds 34→38, Jellyfin live-E2E green, per-device revoke, M5 SSRF, launch-readiness)
 
 Enormous session; everything pushed to master, **TestFlight builds 34–38 all
