@@ -25,7 +25,7 @@ enum BIOSDatabase<T> with LunaTableMixin<T> {
   }
 
   @override
-  void import(dynamic value) {
+  Future<void> import(dynamic value) async {
     BIOSDatabase db = this;
     dynamic result;
 

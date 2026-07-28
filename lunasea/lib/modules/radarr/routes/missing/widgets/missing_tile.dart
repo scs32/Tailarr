@@ -86,19 +86,23 @@ class _State extends State<RadarrMissingTile> {
   LunaIconButton _trailing() {
     return LunaIconButton(
       icon: Icons.search_rounded,
-      onPressed: () async => RadarrAPIHelper().automaticSearch(
-          context: context,
-          movieId: (widget.movie.id ?? 0),
-          title: (widget.movie.title ?? "")),
-      onLongPress: () => RadarrRoutes.MOVIE_RELEASES.go(params: {
-        'movie': (widget.movie.id?.toString() ?? ""),
-      }),
+      onPressed: () async {
+        final id = widget.movie.id;
+        if (id == null) return;
+        RadarrAPIHelper().automaticSearch(
+            context: context, movieId: id, title: (widget.movie.title ?? ""));
+      },
+      onLongPress: () {
+        final id = widget.movie.id;
+        if (id == null) return;
+        RadarrRoutes.MOVIE_RELEASES.go(params: {'movie': id.toString()});
+      },
     );
   }
 
   Future<void> _onTap() async {
-    RadarrRoutes.MOVIE.go(params: {
-      'movie': (widget.movie.id?.toString() ?? ""),
-    });
+    final id = widget.movie.id;
+    if (id == null) return;
+    RadarrRoutes.MOVIE.go(params: {'movie': id.toString()});
   }
 }

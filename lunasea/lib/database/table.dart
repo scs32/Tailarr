@@ -67,11 +67,13 @@ enum LunaTable<T extends LunaTableMixin> {
     return results;
   }
 
-  void import(Map<String, dynamic>? table) {
+  Future<void> import(Map<String, dynamic>? table) async {
     if (table == null || table.isEmpty) return;
     for (final key in table.keys) {
       final db = _itemFromKey(key);
-      db?.import(table[key]);
+      // Await each write so a failure propagates to the backup-restore
+      // transaction instead of being a swallowed fire-and-forget.
+      await db?.import(table[key]);
     }
   }
 }
@@ -84,7 +86,9 @@ mixin LunaTableMixin<T> on Enum {
   String get key => '${table.key.toUpperCase()}_$name';
 
   T read() => box.read(key, fallback: fallback);
-  void update(T value) => box.update(key, value);
+  // Returns the Hive write Future so callers that need durability (backup
+  // restore) can await it. Fire-and-forget callers may still ignore it.
+  Future<void> update(T value) => box.update(key, value);
 
   /// Default is an empty list and does not register any Hive adapters
   void register() {}
@@ -99,7 +103,7 @@ mixin LunaTableMixin<T> on Enum {
   }
 
   @mustCallSuper
-  void import(dynamic value) {
+  Future<void> import(dynamic value) async {
     if (blockedFromImportExport.contains(this) || value == null) return;
     return update(value as T);
   }

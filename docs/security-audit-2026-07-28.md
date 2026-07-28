@@ -320,3 +320,34 @@ NO-SHIP on two counts. Both were right about real gaps, now closed:
 Not done (non-blocking): Fable #7 — a `config_import_test` locking the
 snapshot/rollback. It needs the full box/adapter harness + a `BuildContext` for
 `LunaState.reset`, so it belongs in `integration_test/`; tracked as a follow-up.
+
+---
+
+## Re-review (round 4) — closing Codex's remaining NO-SHIP
+
+Round 3 verdicts split again (Fable SHIP; Codex NO-SHIP), but on a converging
+list. Round 4 closes all of it:
+
+- **Awaited table writes (Codex #2 / Fable #2).** `LunaTableMixin.update` and
+  `.import`, and `LunaTable.import`, now return `Future<void>` and are awaited
+  (all 5 table `import` overrides converted to `async`); `config.dart` awaits each
+  `table.import`, so a table write failure now propagates into the restore
+  transaction → rollback (the flush barrier is no longer load-bearing alone).
+- **Snapshot integrity for all config boxes (Codex #3 / Fable #1).** `_snapshot`
+  now runs the captured-vs-live count check on profiles, indexers, AND external
+  modules via `_captureBox`, aborting before any mutation if any under-captured.
+- **Sonarr Missing crash (Codex #1).** `sonarr/routes/missing/widgets/missing_tile
+  .dart` no longer force-unwraps `monitored`/`seriesId`/`id`; its actions no-op on
+  a null id.
+- **Null-id actions (Codex #5).** Radarr upcoming/missing + Sonarr upcoming tiles
+  now guard nav/search on a null id (early-return) instead of firing sentinel
+  `0`/`""` ids at the server.
+- **Detail-sheet dismiss (Codex #4).** The notification detail sheet's Dismiss
+  now pins `recordDismissed(..., profile: notification.profile)` like the swipe
+  path.
+- **leaveDemo isolation (Codex #6).** The demo notification purge is now in its
+  own `try`, so a purge failure can't skip the session refresh.
+
+Still non-blocking / tracked: Fable #7 (integration test) and Fable's micro note
+that a token keyed to the legacy `default` profile isn't carried across the
+migration rename (gateway re-mints it).

@@ -70,7 +70,7 @@ enum RadarrDatabase<T> with LunaTableMixin<T> {
   }
 
   @override
-  void import(dynamic value) {
+  Future<void> import(dynamic value) async {
     RadarrDatabase db = this;
     dynamic result;
 

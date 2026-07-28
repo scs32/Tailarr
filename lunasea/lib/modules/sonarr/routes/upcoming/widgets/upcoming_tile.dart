@@ -102,16 +102,18 @@ class _State extends State<SonarrUpcomingTile> {
   }
 
   Future<void> _onLongPress() async {
-    SonarrRoutes.SERIES.go(params: {
-      'series': (widget.record.seriesId?.toString() ?? ""),
-    });
+    final seriesId = widget.record.seriesId;
+    if (seriesId == null) return;
+    SonarrRoutes.SERIES.go(params: {'series': seriesId.toString()});
   }
 
   Future<void> _trailingOnPressed() async {
+    final episodeId = widget.record.id;
+    if (episodeId == null) return;
     Provider.of<SonarrState>(context, listen: false)
         .api!
         .command
-        .episodeSearch(episodeIds: [(widget.record.id ?? 0)])
+        .episodeSearch(episodeIds: [episodeId])
         .then((_) => showLunaSuccessSnackBar(
               title: 'Searching for Episode...',
               message: widget.record.title,

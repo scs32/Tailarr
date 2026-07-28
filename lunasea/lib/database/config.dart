@@ -30,7 +30,9 @@ class LunaConfig {
       await _setProfiles(config[LunaBox.profiles.key]);
       await _setIndexers(config[LunaBox.indexers.key]);
       await _setExternalModules(config[LunaBox.externalModules.key]);
-      for (final table in LunaTable.values) table.import(config[table.key]);
+      for (final table in LunaTable.values) {
+        await table.import(config[table.key]);
+      }
       // Durability barrier: force the writes to disk so an I/O failure surfaces
       // HERE (→ rollback) instead of being swallowed as a fire-and-forget flush.
       await LunaDatabase().flushConfig();
@@ -90,19 +92,29 @@ class LunaConfig {
     for (final key in LunaBox.lunasea.keys) {
       lunasea[key] = LunaBox.lunasea.read(key);
     }
-    final profiles = LunaBox.profiles.export();
     // box.export() swallows any toJson error and returns [] — a silently-empty
-    // snapshot would "roll back" to an empty database. If the box had entries
-    // but we captured none, abort BEFORE clearing so nothing is lost.
-    if (profiles.length != LunaBox.profiles.keys.length) {
-      throw StateError('Config snapshot incomplete — import aborted to protect data.');
-    }
+    // snapshot would "roll back" to an empty database. Verify each captured box
+    // matches its live entry count and abort BEFORE clearing if any under-
+    // captured, so nothing is lost. See docs/security-audit-2026-07-28.md (H1).
+    final profiles = _captureBox(LunaBox.profiles);
+    final indexers = _captureBox(LunaBox.indexers);
+    final externalModules = _captureBox(LunaBox.externalModules);
     return _ConfigSnapshot(
       profiles: profiles,
-      indexers: LunaBox.indexers.export(),
-      externalModules: LunaBox.externalModules.export(),
+      indexers: indexers,
+      externalModules: externalModules,
       lunasea: lunasea,
     );
+  }
+
+  List<Map<String, dynamic>> _captureBox(LunaBox box) {
+    final captured = box.export();
+    if (captured.length != box.keys.length) {
+      throw StateError(
+        'Config snapshot of "${box.key}" incomplete — import aborted to protect data.',
+      );
+    }
+    return captured;
   }
 
   Future<void> _restoreSnapshot(_ConfigSnapshot snapshot) async {

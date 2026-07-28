@@ -69,7 +69,7 @@ enum LunaSeaDatabase<T> with LunaTableMixin<T> {
   }
 
   @override
-  void import(dynamic value) {
+  Future<void> import(dynamic value) async {
     LunaSeaDatabase db = this;
     dynamic result;
 

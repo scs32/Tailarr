@@ -403,11 +403,17 @@ class LunaProfileTools {
     LunaSeaDatabase.ENABLED_PROFILE.update(destination);
     await LunaBox.profiles.delete(current);
 
+    // Demo auto-config may have written NOTIFICATIONS_*@<demo> keys while demo
+    // was active — purge them so they don't outlive the profile. Isolated so a
+    // purge failure can't skip the session refresh below.
+    try {
+      await LunaNtfy().purgeProfileName(current);
+    } catch (error, trace) {
+      LunaLogger().error('Demo notification purge failed', error, trace);
+    }
+
     // Best-effort session refresh — never blocks or reverts the exit.
     try {
-      // Demo auto-config may have written NOTIFICATIONS_*@<demo> keys while demo
-      // was active — purge them so they don't outlive the profile.
-      await LunaNtfy().purgeProfileName(current);
       LunaState.reset();
       IO.syncTailscaleToProfile();
       LunaNtfy().onConfigChanged();

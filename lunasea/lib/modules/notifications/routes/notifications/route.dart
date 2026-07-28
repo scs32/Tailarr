@@ -367,7 +367,8 @@ class _State extends State<NotificationsRoute> with LunaScrollControllerMixin {
                       icon: Icons.delete_rounded,
                       color: LunaColours.red,
                       onTap: () async {
-                        await LunaNtfy().recordDismissed([notification.id]);
+                        await LunaNtfy().recordDismissed([notification.id],
+                            profile: notification.profile);
                         await notification.delete();
                         if (context.mounted) Navigator.of(context).pop();
                       },

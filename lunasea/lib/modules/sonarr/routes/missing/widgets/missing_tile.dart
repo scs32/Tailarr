@@ -39,7 +39,7 @@ class _State extends State<SonarrMissingTile> {
         _subtitle2(),
         _subtitle3(),
       ],
-      disabled: !widget.record.monitored!,
+      disabled: widget.record.monitored != true,
       onTap: _onTap,
       onLongPress: _onLongPress,
       trailing: _trailing(),
@@ -100,16 +100,20 @@ class _State extends State<SonarrMissingTile> {
   }
 
   Future<void> _onLongPress() async {
+    final seriesId = widget.record.seriesId;
+    if (seriesId == null) return;
     SonarrRoutes.SERIES.go(params: {
-      'series': widget.record.seriesId!.toString(),
+      'series': seriesId.toString(),
     });
   }
 
   Future<void> _trailingOnTap() async {
+    final episodeId = widget.record.id;
+    if (episodeId == null) return;
     Provider.of<SonarrState>(context, listen: false)
         .api!
         .command
-        .episodeSearch(episodeIds: [widget.record.id!])
+        .episodeSearch(episodeIds: [episodeId])
         .then((_) => showLunaSuccessSnackBar(
               title: 'Searching for Episode...',
               message: widget.record.title,
@@ -127,8 +131,10 @@ class _State extends State<SonarrMissingTile> {
   }
 
   Future<void> _trailingOnLongPress() async {
+    final episodeId = widget.record.id;
+    if (episodeId == null) return;
     return SonarrRoutes.RELEASES.go(queryParams: {
-      'episode': widget.record.id!.toString(),
+      'episode': episodeId.toString(),
     });
   }
 }
