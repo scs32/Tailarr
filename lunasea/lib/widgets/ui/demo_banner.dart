@@ -5,6 +5,7 @@ import 'package:lunasea/router/router.dart';
 import 'package:lunasea/router/routes.dart';
 import 'package:lunasea/system/demo/demo.dart';
 import 'package:lunasea/utils/profile_tools.dart';
+import 'package:lunasea/widgets/pages/first_run_landing.dart';
 import 'package:lunasea/widgets/ui.dart';
 
 /// Wraps the app and, while [DemoMode.active], pins a persistent
@@ -71,6 +72,11 @@ class DemoModeBanner extends StatelessWidget {
 
   Future<void> _exit(BuildContext context) async {
     await LunaProfileTools().leaveDemo();
-    LunaRouter.router.go(LunaRoutes.initialLocation);
+    // Go straight to the landing when nothing is configured (the usual case) —
+    // explicit target instead of relying on the '/' redirect's timing.
+    final target = LunaProfileTools.isFirstRun()
+        ? FirstRunLandingRoute.path
+        : LunaRoutes.initialLocation;
+    LunaRouter.router.go(target);
   }
 }

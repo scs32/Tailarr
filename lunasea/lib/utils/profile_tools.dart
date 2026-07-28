@@ -380,25 +380,38 @@ class LunaProfileTools {
     final leaving = LunaBox.profiles.read(current);
     if (leaving == null || !leaving.demo) return null;
 
-    try {
-      final others = LunaProfile.list.where((p) => p != current).toList();
-      String destination;
-      if (others.isNotEmpty) {
-        destination = others.firstWhere(
-          (p) => !(LunaBox.profiles.read(p)?.demo ?? false),
-          orElse: () => others.first,
-        );
-      } else {
-        destination = LunaProfile.DEFAULT_PROFILE;
-        if (!LunaBox.profiles.contains(destination)) await _create(destination);
-      }
-      _changeTo(destination);
-      await _remove(current);
-      return destination;
-    } catch (error, trace) {
-      LunaLogger().error('Failed to leave demo', error, trace);
-      return null;
+    // Destination: a real/pristine profile, creating a default if none.
+    final others = LunaProfile.list.where((p) => p != current).toList();
+    String destination;
+    if (others.isNotEmpty) {
+      destination = others.firstWhere(
+        (p) => !(LunaBox.profiles.read(p)?.demo ?? false),
+        orElse: () => others.first,
+      );
+    } else {
+      destination = LunaProfile.DEFAULT_PROFILE;
     }
+
+    // Box mutations FIRST and unconditionally — these decide isFirstRun (and
+    // thus whether the app returns to the landing). They must NOT be stranded
+    // by a flaky node/ntfy side-effect: previously `_changeTo`'s channel calls
+    // could throw AFTER switching but BEFORE the demo profile was removed,
+    // leaving it behind so the landing never showed.
+    if (!LunaBox.profiles.contains(destination)) {
+      await LunaBox.profiles.update(destination, LunaProfile());
+    }
+    LunaSeaDatabase.ENABLED_PROFILE.update(destination);
+    await LunaBox.profiles.delete(current);
+
+    // Best-effort session refresh — never blocks or reverts the exit.
+    try {
+      LunaState.reset();
+      IO.syncTailscaleToProfile();
+      LunaNtfy().onConfigChanged();
+    } catch (error, trace) {
+      LunaLogger().error('Demo exit side-effects failed', error, trace);
+    }
+    return destination;
   }
 
   Future<bool> rename(
