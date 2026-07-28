@@ -39,7 +39,7 @@ void main() {
     await LunaBox.profiles.update(LunaProfile.DEFAULT_PROFILE, legacy);
     LunaSeaDatabase.ENABLED_PROFILE.update(LunaProfile.DEFAULT_PROFILE);
 
-    LunaDatabase().migrateLegacyServerProfiles();
+    await LunaDatabase().migrateLegacyServerProfiles();
 
     // Renamed to the server-derived name and now active.
     expect(LunaProfile.list, contains('Tailarr'));
@@ -54,7 +54,7 @@ void main() {
     expect(migrated.gatewayManagedModules, contains('tailarr'));
 
     // Idempotent: a second pass is a no-op.
-    LunaDatabase().migrateLegacyServerProfiles();
+    await LunaDatabase().migrateLegacyServerProfiles();
     expect(LunaProfile.list.where((n) => n == 'Tailarr').length, 1);
   });
 
@@ -69,7 +69,7 @@ void main() {
     );
     await LunaBox.profiles.update('My Setup', mine);
 
-    LunaDatabase().migrateLegacyServerProfiles();
+    await LunaDatabase().migrateLegacyServerProfiles();
 
     expect(LunaProfile.list, contains('My Setup'));
     expect(LunaBox.profiles.read('My Setup')!.serverOwned, isFalse);
@@ -91,7 +91,7 @@ void main() {
       ),
     );
 
-    LunaDatabase().migrateLegacyServerProfiles();
+    await LunaDatabase().migrateLegacyServerProfiles();
 
     expect(LunaProfile.list, contains('Apple Container'));
     expect(LunaBox.profiles.read('Apple Container')!.serverOwned, isTrue);
@@ -114,7 +114,7 @@ void main() {
     );
     LunaSeaDatabase.ENABLED_PROFILE.update(LunaProfile.DEFAULT_PROFILE);
 
-    LunaDatabase().migrateLegacyServerProfiles();
+    await LunaDatabase().migrateLegacyServerProfiles();
 
     expect(LunaProfile.list, contains('Tailarr'));
     expect(LunaProfile.list, isNot(contains('default')));
