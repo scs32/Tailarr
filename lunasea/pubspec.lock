@@ -1429,11 +1429,11 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: "v0.3.6"
-      resolved-ref: "9e2d08d7f9e4b382fd998725ecf8164ec930b8a2"
+      ref: "v0.3.9"
+      resolved-ref: dc0febc578f9f57c22cd14d4544ab06c0adcb7e4
       url: "https://github.com/scs32/tailscale_embed.git"
     source: git
-    version: "0.3.6"
+    version: "0.3.9"
   term_glyph:
     dependency: transitive
     description:
