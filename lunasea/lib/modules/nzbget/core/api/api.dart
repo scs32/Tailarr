@@ -416,10 +416,10 @@ class NZBGetAPI {
         return true;
       throw (Error());
     } on DioException catch (error, stack) {
-      logError('Failed to set job password ($id, $password)', error, stack);
+      logError('Failed to set job password ($id)', error, stack);
       return Future.error(error, stack);
     } catch (error, stack) {
-      logError('Failed to set job password ($id, $password)', error, stack);
+      logError('Failed to set job password ($id)', error, stack);
       return Future.error(error, stack);
     }
   }

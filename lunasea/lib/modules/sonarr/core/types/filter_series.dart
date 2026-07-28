@@ -98,17 +98,20 @@ class _Sorter {
     }
   }
 
+  // Null-safe predicates: `monitored`/`ended` are nullable on the wire;
+  // force-unwrapping crashed the catalogue when a skewed/hostile server omitted
+  // a field. Treat absent as false. See docs/security-audit-2026-07-28.md (H3).
   List<SonarrSeries> _monitored(List<SonarrSeries> series) =>
-      series.where((s) => s.monitored!).toList();
+      series.where((s) => s.monitored == true).toList();
 
   List<SonarrSeries> _unmonitored(List<SonarrSeries> series) =>
-      series.where((s) => !s.monitored!).toList();
+      series.where((s) => s.monitored != true).toList();
 
   List<SonarrSeries> _continuing(List<SonarrSeries> series) =>
-      series.where((s) => !s.ended!).toList();
+      series.where((s) => s.ended != true).toList();
 
   List<SonarrSeries> _ended(List<SonarrSeries> series) =>
-      series.where((s) => s.ended!).toList();
+      series.where((s) => s.ended == true).toList();
 
   List<SonarrSeries> _missing(List<SonarrSeries> series) {
     return series

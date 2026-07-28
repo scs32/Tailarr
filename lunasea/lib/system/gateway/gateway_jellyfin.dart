@@ -74,7 +74,23 @@ class GatewayJellyfinSync {
 
       final current = LunaProfile.current;
       final wasEnabled = current.jellyfinEnabled;
-      current.jellyfinEnabled = self.isAvailable;
+
+      // Mutate availability only on an AUTHORITATIVE outcome. The gateway
+      // parses every <500 response into an envelope, so a bare `ok:false` is
+      // NOT proof the module is gone — a transient 4xx, an unassigned-device
+      // whois race, or a malformed body would otherwise disable a working
+      // module. Enable on ok; disable only on a definite "no such module"
+      // (old server / endpoint gone) or a definite "no Jellyfin badge";
+      // preserve the stored state on everything else (unassigned / generic
+      // refusal / malformed). See docs/security-audit-2026-07-28.md (M2).
+      bool? authoritative;
+      if (self.isAvailable) {
+        authoritative = true;
+      } else if (self.isUnavailable || self.hasNoAccess) {
+        authoritative = false;
+      }
+      if (authoritative != null) current.jellyfinEnabled = authoritative;
+
       // Empty url = pod stopped: keep the last known value.
       if (self.isAvailable && self.url.isNotEmpty) {
         current.jellyfinUrl = self.url;

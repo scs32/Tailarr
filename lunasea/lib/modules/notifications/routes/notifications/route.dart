@@ -149,11 +149,24 @@ class _State extends State<NotificationsRoute> with LunaScrollControllerMixin {
   }
 
   Future<void> _clearInbox() async {
-    if (LunaBox.notifications.isEmpty) return;
-    // Remember every id so a refresh/poll can't resurrect the cleared inbox.
-    await LunaNtfy()
-        .recordDismissed(LunaBox.notifications.data.map((n) => n.id).toList());
-    await LunaBox.notifications.clear();
+    // Scope to the ACTIVE profile only — the inbox shows one profile's slice,
+    // so a global clear would destroy other profiles' notifications, and their
+    // ids would be recorded as dismissed against the wrong (active) slice,
+    // resurrecting them unread on the next sync. See
+    // docs/security-audit-2026-07-28.md (M1).
+    final active = LunaSeaDatabase.ENABLED_PROFILE.read();
+    final keys = LunaBox.notifications.keys
+        .where((k) => LunaBox.notifications.read(k)?.matchesProfile(active) ?? false)
+        .toList();
+    if (keys.isEmpty) return;
+
+    // Remember this profile's ids so a refresh/poll can't resurrect them.
+    final ids = [
+      for (final k in keys) LunaBox.notifications.read(k)!.id,
+    ];
+    await LunaNtfy().recordDismissed(ids);
+    for (final k in keys) await LunaBox.notifications.delete(k);
+
     showLunaSuccessSnackBar(
       title: 'Inbox Cleared',
       message: 'New alerts will keep arriving',

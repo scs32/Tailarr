@@ -216,10 +216,10 @@ class SABnzbdAPI {
       });
       return response.data['status'] != null && response.data['status'];
     } on DioException catch (error, stack) {
-      logError('Failed to set job password ($nzoId, $password)', error, stack);
+      logError('Failed to set job password ($nzoId)', error, stack);
       return Future.error(error);
     } catch (error, stack) {
-      logError('Failed to set job password ($nzoId, $password)', error, stack);
+      logError('Failed to set job password ($nzoId)', error, stack);
       return Future.error(error);
     }
   }
@@ -526,11 +526,11 @@ class SABnzbdAPI {
       });
       return response.data['status'] != null && response.data['status'];
     } on DioException catch (error, stack) {
-      logError('Failed to retry job with new password ($nzoId, $password)',
+      logError('Failed to retry job with new password ($nzoId)',
           error, stack);
       return Future.error(error);
     } catch (error, stack) {
-      logError('Failed to retry job with new password ($nzoId, $password)',
+      logError('Failed to retry job with new password ($nzoId)',
           error, stack);
       return Future.error(error);
     }

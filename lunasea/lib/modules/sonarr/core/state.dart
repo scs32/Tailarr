@@ -126,7 +126,12 @@ class SonarrState extends LunaModuleState {
     if (_api != null) {
       _series = _api!.series.getAll(includeSeasonImages: true).then((series) {
         return {
-          for (SonarrSeries s in series) s.id!: s,
+          // Skip id-less entries instead of force-unwrapping: a single series
+          // missing `id` on a version-skewed/hostile server would otherwise
+          // throw here and PERMANENTLY poison this future — every Sonarr screen
+          // dead, retry re-crashes. See docs/security-audit-2026-07-28.md (H3).
+          for (SonarrSeries s in series)
+            if (s.id != null) s.id!: s,
         };
       });
     }

@@ -50,6 +50,19 @@ enum NotificationsDatabase<T> with LunaTableMixin<T> {
   @override
   LunaTable get table => LunaTable.notifications;
 
+  /// Security: a backup is a plaintext, user-shareable file. TOKEN is the live
+  /// ntfy bearer (sent as `Authorization: Bearer`) and PUSH_TOKEN is the APNs
+  /// device token — neither belongs in a shared/cloud export. Both re-mint on
+  /// restore (ntfy re-fetches from the gateway; push re-registers). See
+  /// docs/security-audit-2026-07-28.md (H2).
+  @override
+  List<NotificationsDatabase> get blockedFromImportExport {
+    return [
+      NotificationsDatabase.TOKEN,
+      NotificationsDatabase.PUSH_TOKEN,
+    ];
+  }
+
   /// Per-profile key: `NOTIFICATIONS_<FIELD>@<profile>`. Reads/writes/watches
   /// all resolve against the currently enabled profile, so every consumer
   /// (settings UI, stream manager, gateway sync, push) is profile-scoped

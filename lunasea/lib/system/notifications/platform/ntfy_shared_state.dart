@@ -125,6 +125,14 @@ class NtfySharedState {
     if (activeProfile == oldName) activeProfile = newName;
   }
 
+  /// Drop a profile's slice entirely (used when the profile is deleted) so the
+  /// NSE + background isolate — which fetch EVERY slice — stop authenticating
+  /// to a server the user removed. Pure — the caller loads, calls this, saves.
+  void removeProfile(String name) {
+    profiles.remove(name);
+    if (activeProfile == name) activeProfile = '';
+  }
+
   static const _channel = MethodChannel('com.stephenspeicher.tailarr/push');
   static String? _appGroupPath;
   static bool _appGroupResolved = false;

@@ -482,6 +482,12 @@ class LunaProfileTools {
     final identity = LunaBox.profiles.read(profile)?.tailscaleIdentity ?? '';
     await LunaBox.profiles.delete(profile);
 
+    // Per-profile notification state is keyed by name — purge it so the deleted
+    // profile's ntfy/push credentials don't stay live (the NSE fetches every
+    // slice) and a later same-named profile can't adopt its inbox/creds.
+    // See docs/security-audit-2026-07-28.md (H4).
+    await LunaNtfy().purgeProfileName(profile);
+
     // The deleted profile's node state is orphaned — remove it. Best
     // effort: only the active identity can refuse deletion, and the
     // active profile can't be removed.
@@ -510,6 +516,12 @@ class LunaProfileTools {
     final newDb = LunaProfile.clone(oldDb);
 
     await LunaBox.profiles.update(newProfile, newDb);
+
+    // Per-profile notification state is keyed by name — migrate it BEFORE the
+    // switch so the renamed profile keeps its subscription/inbox/push instead
+    // of orphaning the old creds (a non-server profile can hold gateway-
+    // configured notifications). See docs/security-audit-2026-07-28.md (L1).
+    await LunaNtfy().migrateProfileName(oldProfile, newProfile);
     _changeTo(newProfile);
 
     oldDb.delete();

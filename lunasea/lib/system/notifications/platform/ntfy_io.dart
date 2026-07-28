@@ -240,6 +240,35 @@ class LunaNtfy {
     await state.save();
   }
 
+  /// Delete ALL per-profile notification state for a removed profile: the
+  /// config keys (incl. the ntfy bearer + push token), the inbox entries, and
+  /// the shared-state slice. Without this a deleted profile's credentials stay
+  /// live — the NSE + background isolate fetch every slice, so pushes keep
+  /// authenticating to the removed server, and a later same-named profile
+  /// adopts the orphaned inbox/creds. See docs/security-audit-2026-07-28.md (H4).
+  Future<void> purgeProfileName(String name) async {
+    if (name.isEmpty) return;
+
+    // 1. Config keys: NOTIFICATIONS_<FIELD>@<profile>.
+    const prefix = 'NOTIFICATIONS_';
+    for (final field in NotificationsDatabase.values) {
+      final key = '$prefix${field.name}@$name';
+      if (LunaBox.lunasea.contains(key)) await LunaBox.lunasea.delete(key);
+    }
+
+    // 2. Inbox: every entry tagged with this profile.
+    for (final key in LunaBox.notifications.keys.toList()) {
+      final n = LunaBox.notifications.read(key);
+      if (n == null || n.profile != name) continue;
+      await LunaBox.notifications.delete(key);
+    }
+
+    // 3. Shared-state slice: drop it so the NSE stops fetching the dead server.
+    final state = await NtfySharedState.load();
+    state.removeProfile(name);
+    await state.save();
+  }
+
   Future<void> onConfigChanged() async {
     await NtfySync.mirrorConfig();
     NtfyStreamManager.instance.restart();

@@ -155,9 +155,9 @@ class _Sorter {
   List<SonarrSeries> _alphabetical(List<SonarrSeries> series, bool ascending) {
     ascending
         ? series.sort((a, b) =>
-            a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase()))
+            a.sonarrSortKey.compareTo(b.sonarrSortKey))
         : series.sort((a, b) =>
-            b.sortTitle!.toLowerCase().compareTo(a.sortTitle!.toLowerCase()));
+            b.sonarrSortKey.compareTo(a.sonarrSortKey));
     return series;
   }
 
@@ -168,14 +168,14 @@ class _Sorter {
         if (b.added == null) return -1;
         int _comparison = a.added!.compareTo(b.added!);
         return _comparison == 0
-            ? a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase())
+            ? a.sonarrSortKey.compareTo(b.sonarrSortKey)
             : _comparison;
       } else {
         if (b.added == null) return -1;
         if (a.added == null) return 1;
         int _comparison = b.added!.compareTo(a.added!);
         return _comparison == 0
-            ? a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase())
+            ? a.sonarrSortKey.compareTo(b.sonarrSortKey)
             : _comparison;
       }
     });
@@ -188,7 +188,7 @@ class _Sorter {
           ? a.lunaPercentageComplete.compareTo(b.lunaPercentageComplete)
           : b.lunaPercentageComplete.compareTo(a.lunaPercentageComplete);
       return _comparison == 0
-          ? a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase())
+          ? a.sonarrSortKey.compareTo(b.sonarrSortKey)
           : _comparison;
     });
     return series;
@@ -202,7 +202,7 @@ class _Sorter {
           : (b.network ?? LunaUI.TEXT_EMDASH)
               .compareTo((a.network ?? LunaUI.TEXT_EMDASH));
       return _comparison == 0
-          ? a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase())
+          ? a.sonarrSortKey.compareTo(b.sonarrSortKey)
           : _comparison;
     });
     return series;
@@ -213,21 +213,21 @@ class _Sorter {
       if (a.nextAiring == null && b.nextAiring == null) {
         if (a.status == 'ended' && b.status != 'ended') return 1;
         if (b.status == 'ended' && a.status != 'ended') return -1;
-        return a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase());
+        return a.sonarrSortKey.compareTo(b.sonarrSortKey);
       }
       if (ascending) {
         if (a.nextAiring == null) return 1;
         if (b.nextAiring == null) return -1;
         int _comparison = a.nextAiring!.compareTo(b.nextAiring!);
         return _comparison == 0
-            ? a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase())
+            ? a.sonarrSortKey.compareTo(b.sonarrSortKey)
             : _comparison;
       } else {
         if (b.nextAiring == null) return -1;
         if (a.nextAiring == null) return 1;
         int _comparison = b.nextAiring!.compareTo(a.nextAiring!);
         return _comparison == 0
-            ? a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase())
+            ? a.sonarrSortKey.compareTo(b.sonarrSortKey)
             : _comparison;
       }
     });
@@ -240,21 +240,21 @@ class _Sorter {
       if (a.previousAiring == null && b.previousAiring == null) {
         if (a.status == 'ended' && b.status != 'ended') return 1;
         if (b.status == 'ended' && a.status != 'ended') return -1;
-        return a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase());
+        return a.sonarrSortKey.compareTo(b.sonarrSortKey);
       }
       if (ascending) {
         if (a.previousAiring == null) return 1;
         if (b.previousAiring == null) return -1;
         int _comparison = a.previousAiring!.compareTo(b.previousAiring!);
         return _comparison == 0
-            ? a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase())
+            ? a.sonarrSortKey.compareTo(b.sonarrSortKey)
             : _comparison;
       } else {
         if (b.previousAiring == null) return -1;
         if (a.previousAiring == null) return 1;
         int _comparison = b.previousAiring!.compareTo(a.previousAiring!);
         return _comparison == 0
-            ? a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase())
+            ? a.sonarrSortKey.compareTo(b.sonarrSortKey)
             : _comparison;
       }
     });
@@ -267,7 +267,7 @@ class _Sorter {
           ? (a.qualityProfileId ?? 0).compareTo(b.qualityProfileId ?? 0)
           : (b.qualityProfileId ?? 0).compareTo(a.qualityProfileId ?? 0);
       return _comparison == 0
-          ? a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase())
+          ? a.sonarrSortKey.compareTo(b.sonarrSortKey)
           : _comparison;
     });
     return series;
@@ -281,7 +281,7 @@ class _Sorter {
           : (b.statistics?.sizeOnDisk ?? 0)
               .compareTo(a.statistics?.sizeOnDisk ?? 0);
       return _comparison == 0
-          ? a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase())
+          ? a.sonarrSortKey.compareTo(b.sonarrSortKey)
           : _comparison;
     });
     return series;
@@ -292,19 +292,27 @@ class _Sorter {
         .where((element) => element.seriesType == SonarrSeriesType.ANIME)
         .toList();
     _anime.sort((a, b) =>
-        a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase()));
+        a.sonarrSortKey.compareTo(b.sonarrSortKey));
     List<SonarrSeries> _daily = series
         .where((element) => element.seriesType == SonarrSeriesType.DAILY)
         .toList();
     _daily.sort((a, b) =>
-        a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase()));
+        a.sonarrSortKey.compareTo(b.sonarrSortKey));
     List<SonarrSeries> _stand = series
         .where((element) => element.seriesType == SonarrSeriesType.STANDARD)
         .toList();
     _stand.sort((a, b) =>
-        a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase()));
+        a.sonarrSortKey.compareTo(b.sonarrSortKey));
     return ascending
         ? [..._anime, ..._daily, ..._stand]
         : [..._stand, ..._daily, ..._anime];
   }
+}
+
+extension on SonarrSeries {
+  /// Null-safe alphabetical sort key. `sortTitle` is nullable on the wire; a
+  /// version-skewed/hostile server that omits it would otherwise crash the
+  /// whole catalogue during sort. Falls back to `title`, then empty.
+  /// See docs/security-audit-2026-07-28.md (H3).
+  String get sonarrSortKey => (sortTitle ?? title ?? '').toLowerCase();
 }

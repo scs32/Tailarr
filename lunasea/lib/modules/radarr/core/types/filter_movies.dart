@@ -98,17 +98,24 @@ class _Filterer {
     }
   }
 
+  // Null-safe predicates: `monitored`/`hasFile`/`movieFile` are nullable on the
+  // wire; force-unwrapping them crashed the whole catalogue when a version-
+  // skewed/hostile server omitted a field. Treat absent as false.
+  // See docs/security-audit-2026-07-28.md (H3).
   List<RadarrMovie> _monitored(List<RadarrMovie> movies) =>
-      movies.where((movie) => movie.monitored!).toList();
+      movies.where((movie) => movie.monitored == true).toList();
   List<RadarrMovie> _unmonitored(List<RadarrMovie> movies) =>
-      movies.where((movie) => !movie.monitored!).toList();
-  List<RadarrMovie> _missing(List<RadarrMovie> movies) =>
-      movies.where((movie) => !movie.hasFile! && movie.monitored!).toList();
-  List<RadarrMovie> _wanted(List<RadarrMovie> movies) =>
-      movies.where((movie) => !movie.hasFile! && movie.monitored!).toList();
+      movies.where((movie) => movie.monitored != true).toList();
+  List<RadarrMovie> _missing(List<RadarrMovie> movies) => movies
+      .where((movie) => movie.hasFile != true && movie.monitored == true)
+      .toList();
+  List<RadarrMovie> _wanted(List<RadarrMovie> movies) => movies
+      .where((movie) => movie.hasFile != true && movie.monitored == true)
+      .toList();
   List<RadarrMovie> _cutoffUnmet(List<RadarrMovie> movies) => movies
       .where((movie) =>
-          (movie.hasFile! && movie.movieFile!.qualityCutoffNotMet!) &&
-          movie.monitored!)
+          movie.hasFile == true &&
+          (movie.movieFile?.qualityCutoffNotMet == true) &&
+          movie.monitored == true)
       .toList();
 }

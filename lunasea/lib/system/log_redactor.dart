@@ -70,6 +70,15 @@ class LogRedactor {
           caseSensitive: false),
       (m) => '${m[1]}$mask',
     ),
+    // App-internal secret fields: any JSON key ending in key/pass/token —
+    // sonarrKey, radarrKey, nzbgetPass, serverAdminToken, tailscaleAuthKey, …
+    // These surface e.g. in a FormatException snippet from a failed backup
+    // import. See docs/security-audit-2026-07-28.md (L3).
+    _Rule(
+      RegExp(r'''("[A-Za-z]*(?:key|pass|password|token)"\s*:\s*")[^"]*''',
+          caseSensitive: false),
+      (m) => '${m[1]}$mask',
+    ),
   ];
 
   /// Returns [input] with any recognized credential replaced by [mask].

@@ -178,9 +178,9 @@ class _Sorter {
   List<RadarrMovie> _alphabetical(List<RadarrMovie> series, bool ascending) {
     ascending
         ? series.sort((a, b) =>
-            a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase()))
+            a.radarrSortKey.compareTo(b.radarrSortKey))
         : series.sort((a, b) =>
-            b.sortTitle!.toLowerCase().compareTo(a.sortTitle!.toLowerCase()));
+            b.radarrSortKey.compareTo(a.radarrSortKey));
     return series;
   }
 
@@ -195,7 +195,7 @@ class _Sorter {
             ? a.added!.compareTo(b.added!)
             : b.added!.compareTo(a.added!);
       return _comparison == 0
-          ? a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase())
+          ? a.radarrSortKey.compareTo(b.radarrSortKey)
           : _comparison!;
     });
     return movies;
@@ -212,7 +212,7 @@ class _Sorter {
             ? a.digitalRelease!.compareTo(b.digitalRelease!)
             : b.digitalRelease!.compareTo(a.digitalRelease!);
       return _comparison == 0
-          ? a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase())
+          ? a.radarrSortKey.compareTo(b.radarrSortKey)
           : _comparison!;
     });
     return movies;
@@ -229,7 +229,7 @@ class _Sorter {
             ? a.inCinemas!.compareTo(b.inCinemas!)
             : b.inCinemas!.compareTo(a.inCinemas!);
       return _comparison == 0
-          ? a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase())
+          ? a.radarrSortKey.compareTo(b.radarrSortKey)
           : _comparison!;
     });
     return movies;
@@ -250,7 +250,7 @@ class _Sorter {
             : b.minimumAvailability!.value
                 .compareTo(a.minimumAvailability!.value);
       return _comparison == 0
-          ? a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase())
+          ? a.radarrSortKey.compareTo(b.radarrSortKey)
           : _comparison!;
     });
     return movies;
@@ -268,7 +268,7 @@ class _Sorter {
             ? a.physicalRelease!.compareTo(b.physicalRelease!)
             : b.physicalRelease!.compareTo(a.physicalRelease!);
       return _comparison == 0
-          ? a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase())
+          ? a.radarrSortKey.compareTo(b.radarrSortKey)
           : _comparison!;
     });
     return movies;
@@ -289,7 +289,7 @@ class _Sorter {
             ? a.runtime!.compareTo(b.runtime!)
             : b.runtime!.compareTo(a.runtime!);
       return _comparison == 0
-          ? a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase())
+          ? a.radarrSortKey.compareTo(b.radarrSortKey)
           : _comparison!;
     });
     return movies;
@@ -313,7 +313,7 @@ class _Sorter {
             ? a.qualityProfileId!.compareTo(b.qualityProfileId!)
             : b.qualityProfileId!.compareTo(a.qualityProfileId!);
       return _comparison == 0
-          ? a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase())
+          ? a.radarrSortKey.compareTo(b.radarrSortKey)
           : _comparison!;
     });
     return movies;
@@ -334,7 +334,7 @@ class _Sorter {
             ? a.sizeOnDisk!.compareTo(b.sizeOnDisk!)
             : b.sizeOnDisk!.compareTo(a.sizeOnDisk!);
       return _comparison == 0
-          ? a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase())
+          ? a.radarrSortKey.compareTo(b.radarrSortKey)
           : _comparison!;
     });
     return movies;
@@ -355,7 +355,7 @@ class _Sorter {
             ? (a.studio!.toLowerCase()).compareTo(b.studio!.toLowerCase())
             : (b.studio!.toLowerCase()).compareTo(a.studio!.toLowerCase());
       return _comparison == 0
-          ? a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase())
+          ? a.radarrSortKey.compareTo(b.radarrSortKey)
           : _comparison!;
     });
     return movies;
@@ -372,9 +372,17 @@ class _Sorter {
         _comparison =
             ascending ? a.year!.compareTo(b.year!) : b.year!.compareTo(a.year!);
       return _comparison == 0
-          ? a.sortTitle!.toLowerCase().compareTo(b.sortTitle!.toLowerCase())
+          ? a.radarrSortKey.compareTo(b.radarrSortKey)
           : _comparison!;
     });
     return movies;
   }
+}
+
+extension on RadarrMovie {
+  /// Null-safe alphabetical sort key. `sortTitle` is nullable on the wire; a
+  /// version-skewed/hostile server that omits it would otherwise crash the
+  /// whole catalogue during sort (which runs inside the list builder). Falls
+  /// back to `title`, then empty. See docs/security-audit-2026-07-28.md (H3).
+  String get radarrSortKey => (sortTitle ?? title ?? '').toLowerCase();
 }
