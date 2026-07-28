@@ -42,7 +42,7 @@ class _State extends State<RadarrUpcomingTile> {
           posterIsSquare: false,
           posterUrl: context.read<RadarrState>().getPosterURL(widget.movie.id),
           onTap: _onTap,
-          disabled: !widget.movie.monitored!,
+          disabled: widget.movie.monitored != true,
         );
       },
     );
@@ -121,18 +121,18 @@ class _State extends State<RadarrUpcomingTile> {
       icon: Icons.search_rounded,
       onPressed: () async => RadarrAPIHelper().automaticSearch(
         context: context,
-        movieId: widget.movie.id!,
-        title: widget.movie.title!,
+        movieId: (widget.movie.id ?? 0),
+        title: (widget.movie.title ?? ""),
       ),
       onLongPress: () => RadarrRoutes.MOVIE_RELEASES.go(params: {
-        'movie': widget.movie.id!.toString(),
+        'movie': (widget.movie.id?.toString() ?? ""),
       }),
     );
   }
 
   Future<void> _onTap() async {
     RadarrRoutes.MOVIE.go(params: {
-      'movie': widget.movie.id!.toString(),
+      'movie': (widget.movie.id?.toString() ?? ""),
     });
   }
 }

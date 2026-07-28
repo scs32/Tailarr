@@ -32,7 +32,7 @@ class _State extends State<RadarrMissingTile> {
         posterUrl: context.read<RadarrState>().getPosterURL(widget.movie.id),
         posterHeaders: context.read<RadarrState>().headers,
         posterPlaceholderIcon: LunaIcons.VIDEO_CAM,
-        disabled: !widget.movie.monitored!,
+        disabled: widget.movie.monitored != true,
         title: widget.movie.title,
         body: [
           _subtitle1(),
@@ -88,17 +88,17 @@ class _State extends State<RadarrMissingTile> {
       icon: Icons.search_rounded,
       onPressed: () async => RadarrAPIHelper().automaticSearch(
           context: context,
-          movieId: widget.movie.id!,
-          title: widget.movie.title!),
+          movieId: (widget.movie.id ?? 0),
+          title: (widget.movie.title ?? "")),
       onLongPress: () => RadarrRoutes.MOVIE_RELEASES.go(params: {
-        'movie': widget.movie.id!.toString(),
+        'movie': (widget.movie.id?.toString() ?? ""),
       }),
     );
   }
 
   Future<void> _onTap() async {
     RadarrRoutes.MOVIE.go(params: {
-      'movie': widget.movie.id!.toString(),
+      'movie': (widget.movie.id?.toString() ?? ""),
     });
   }
 }

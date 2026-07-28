@@ -63,8 +63,15 @@ enum LunaBox<T> {
   }
 
   Future<void> clear() async {
-    _instance.keys.forEach((k) async => await _instance.delete(k));
+    // Await the deletion: the old forEach launched async deletes and returned
+    // immediately, so a caller (backup restore / rollback) could start writing
+    // while clears were still in flight and deletion errors went unhandled.
+    await _instance.clear();
   }
+
+  /// Force pending writes to disk. Used as a durability barrier by the backup
+  /// restore so an I/O failure surfaces synchronously instead of being lost.
+  Future<void> flush() => _instance.flush();
 
   Future<Box<T>> _open() async {
     return Hive.openBox<T>(key, encryptionCipher: cipher);

@@ -405,6 +405,9 @@ class LunaProfileTools {
 
     // Best-effort session refresh — never blocks or reverts the exit.
     try {
+      // Demo auto-config may have written NOTIFICATIONS_*@<demo> keys while demo
+      // was active — purge them so they don't outlive the profile.
+      await LunaNtfy().purgeProfileName(current);
       LunaState.reset();
       IO.syncTailscaleToProfile();
       LunaNtfy().onConfigChanged();

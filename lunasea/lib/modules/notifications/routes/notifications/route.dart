@@ -268,7 +268,7 @@ class _State extends State<NotificationsRoute> with LunaScrollControllerMixin {
       direction: DismissDirection.endToStart,
       onDismissed: (_) {
         // Remember the dismissal so a refresh/poll can't resurrect it.
-        LunaNtfy().recordDismissed([notification.id]);
+        LunaNtfy().recordDismissed([notification.id], profile: notification.profile);
         notification.delete();
       },
       background: Container(

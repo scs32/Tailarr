@@ -61,9 +61,18 @@ class JellyfinSelf {
   bool get isUnavailable => statusCode == 404 || _err.contains('unknown request');
 
   /// This person has no Jellyfin badge — the endpoint refuses with a
-  /// "no Jellyfin access"-class error. The module hides.
+  /// "no Jellyfin access"-class error. The module hides. Matched narrowly so an
+  /// incidental "access" substring (e.g. "cannot access upstream") can't
+  /// authoritatively disable a working module — an unrecognized refusal falls
+  /// through to "preserve stored state". See docs/security-audit-2026-07-28.md.
   bool get hasNoAccess =>
-      !ok && !isUnavailable && (_err.contains('access') || _err.contains('badge'));
+      !ok &&
+      !isUnavailable &&
+      (_err.contains('no access') ||
+          _err.contains('no jellyfin') ||
+          _err.contains('access denied') ||
+          _err.contains('jellyfin access') ||
+          _err.contains('badge'));
 
   /// The gateway's "this machine isn't attached to any person" refusal — the
   /// fix is an admin action (assign the device), not a retry.

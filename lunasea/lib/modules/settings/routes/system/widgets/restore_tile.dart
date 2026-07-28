@@ -44,6 +44,13 @@ class SettingsSystemBackupRestoreRestoreTile extends StatelessWidget {
         title: 'settings.RestoreFromCloudSuccess'.tr(),
         message: 'settings.RestoreFromCloudSuccessMessage'.tr(),
       );
+    } on FormatException catch (error) {
+      // A validated-but-unusable backup (bad JSON / shape / no profiles). The
+      // existing config was rolled back untouched — tell the user why.
+      showLunaErrorSnackBar(
+        title: 'settings.RestoreFromCloudFailure'.tr(),
+        message: error.message,
+      );
     } catch (_) {
       showLunaErrorSnackBar(
         title: 'settings.RestoreFromCloudFailure'.tr(),

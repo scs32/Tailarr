@@ -284,3 +284,39 @@ commit:
 Still open (tracked, not regressions): L4 (NSE `tlr-config` tag parity), L5 (the
 narrow profile-switch storage race in `storeMessages` — distinct from the
 `recordDismissed` race, which is now closed), and M3-full (encrypt whole backup).
+
+---
+
+## Re-review (round 3) — closing the split verdict
+
+Round 2 was reviewed by two agents. Fable verified by execution
+(`analyze`=0 errors, 140/140 tests) and said SHIP; Codex (by-reading) said
+NO-SHIP on two counts. Both were right about real gaps, now closed:
+
+- **H1 transactional integrity (Codex + Fable #1/#2).**
+  - The initial `clear()` moved INSIDE the guard, so a mid-clear failure rolls
+    back too; the rollback is itself wrapped so a rollback error is logged
+    separately and never masks the original import error.
+  - `LunaBox.clear()` now `await`s Hive's native clear (was fire-and-forget), and
+    `import` adds a `flushConfig()` durability barrier so an I/O write failure
+    surfaces synchronously → rollback (the `_set*` helpers are awaited too).
+  - Restore now clears only the **config** boxes (`clearConfig` = profiles /
+    indexers / externalModules / lunasea), NOT the notifications-inbox / logs /
+    alerts — so a restore (or rollback) no longer wipes the notification inbox
+    (Fable #1).
+  - `_snapshot()` aborts BEFORE any mutation if `export()` silently captured
+    fewer profiles than the box holds (its catch-returns-`[]` path), so a
+    snapshot can't roll back to an empty DB (Fable #2).
+- **H3 upcoming/missing paths (Codex).** Null-safed the Radarr comparators
+  (`radarr_movie.dart` `_radarrSortKey`) and the Radarr/Sonarr upcoming + missing
+  tiles/routes (`monitored`/`hasFile`/`id`/`seriesId`/`title`), which the catalogue
+  pass hadn't reached.
+- **Follow-ups (Fable #3/#4/#5/#6).** `leaveDemo` now purges the demo profile's
+  notification state; single-item inbox dismissals are pinned to
+  `notification.profile`; `hasNoAccess` matches narrowly (an incidental "access"
+  substring can no longer disable Jellyfin); a validated-but-unusable backup now
+  surfaces its real reason instead of "Incorrect encryption key".
+
+Not done (non-blocking): Fable #7 — a `config_import_test` locking the
+snapshot/rollback. It needs the full box/adapter harness + a `BuildContext` for
+`LunaState.reset`, so it belongs in `integration_test/`; tracked as a follow-up.

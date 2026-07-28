@@ -6,6 +6,11 @@ import 'package:lunasea/extensions/int/duration.dart';
 import 'package:lunasea/modules/radarr.dart';
 
 extension LunaRadarrMovieExtension on RadarrMovie {
+  /// Null-safe alphabetical sort key — `sortTitle` is nullable on the wire and
+  /// force-unwrapping it crashed the upcoming/missing sorts on a skewed/hostile
+  /// server. See docs/security-audit-2026-07-28.md (H3).
+  String get _radarrSortKey => (sortTitle ?? title ?? '').toLowerCase();
+
   String get lunaRuntime {
     return this.runtime.asVideoDuration();
   }
@@ -164,9 +169,8 @@ extension LunaRadarrMovieExtension on RadarrMovie {
         movie.physicalRelease == null &&
         movie.digitalRelease == null)
       return this
-          .sortTitle!
-          .toLowerCase()
-          .compareTo(movie.sortTitle!.toLowerCase());
+          ._radarrSortKey
+          .compareTo(movie._radarrSortKey);
     if (this.physicalRelease == null && this.digitalRelease == null) return 1;
     if (movie.physicalRelease == null && movie.digitalRelease == null)
       return -1;
@@ -181,9 +185,8 @@ extension LunaRadarrMovieExtension on RadarrMovie {
     int comparison = a.compareTo(b);
     if (comparison == 0)
       comparison = this
-          .sortTitle!
-          .toLowerCase()
-          .compareTo(movie.sortTitle!.toLowerCase());
+          ._radarrSortKey
+          .compareTo(movie._radarrSortKey);
     return comparison;
   }
 
@@ -191,17 +194,15 @@ extension LunaRadarrMovieExtension on RadarrMovie {
   int lunaCompareToByInCinemas(RadarrMovie movie) {
     if (this.inCinemas == null && movie.inCinemas == null)
       return this
-          .sortTitle!
-          .toLowerCase()
-          .compareTo(movie.sortTitle!.toLowerCase());
+          ._radarrSortKey
+          .compareTo(movie._radarrSortKey);
     if (this.inCinemas == null) return 1;
     if (movie.inCinemas == null) return -1;
     int comparison = this.inCinemas!.compareTo(movie.inCinemas!);
     if (comparison == 0)
       comparison = this
-          .sortTitle!
-          .toLowerCase()
-          .compareTo(movie.sortTitle!.toLowerCase());
+          ._radarrSortKey
+          .compareTo(movie._radarrSortKey);
     return comparison;
   }
 

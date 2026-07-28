@@ -128,7 +128,7 @@ class _State extends State<SonarrUpcomingRoute>
           upcoming.length,
           (index) => SonarrUpcomingTile(
             record: upcoming[index],
-            series: series[upcoming[index].seriesId!],
+            series: series[upcoming[index].seriesId],
           ),
         ),
       ];

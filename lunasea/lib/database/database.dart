@@ -145,6 +145,25 @@ class LunaDatabase {
     for (final box in LunaBox.values) await box.clear();
   }
 
+  /// The boxes a config backup/restore actually repopulates. The inbox
+  /// (notifications), logs, and alerts are deliberately NOT here — they aren't
+  /// in a backup, so clearing them on restore would lose live state (e.g. the
+  /// notification inbox). See docs/security-audit-2026-07-28.md (H1).
+  static const List<LunaBox> configBoxes = [
+    LunaBox.profiles,
+    LunaBox.indexers,
+    LunaBox.externalModules,
+    LunaBox.lunasea,
+  ];
+
+  Future<void> clearConfig() async {
+    for (final box in configBoxes) await box.clear();
+  }
+
+  Future<void> flushConfig() async {
+    for (final box in configBoxes) await box.flush();
+  }
+
   Future<void> deinitialize() async {
     await Hive.close();
   }

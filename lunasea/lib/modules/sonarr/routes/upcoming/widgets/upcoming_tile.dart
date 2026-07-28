@@ -36,7 +36,7 @@ class _State extends State<SonarrUpcomingTile> {
         _subtitle2(),
         _subtitle3(),
       ],
-      disabled: !widget.record.monitored!,
+      disabled: widget.record.monitored != true,
       onTap: _onTap,
       onLongPress: _onLongPress,
       trailing: _trailing(),
@@ -72,7 +72,7 @@ class _State extends State<SonarrUpcomingTile> {
   }
 
   TextSpan _subtitle3() {
-    Color color = widget.record.hasFile!
+    Color color = (widget.record.hasFile == true)
         ? LunaColours.accent
         : widget.record.lunaHasAired
             ? LunaColours.red
@@ -83,9 +83,9 @@ class _State extends State<SonarrUpcomingTile> {
         color: color,
       ),
       children: [
-        if (!widget.record.hasFile!)
+        if (!(widget.record.hasFile == true))
           TextSpan(text: widget.record.lunaHasAired ? 'Missing' : 'Unaired'),
-        if (widget.record.hasFile!)
+        if ((widget.record.hasFile == true))
           TextSpan(
             text:
                 'Downloaded (${widget.record.episodeFile?.quality?.quality?.name ?? 'Unknown'})',
@@ -103,7 +103,7 @@ class _State extends State<SonarrUpcomingTile> {
 
   Future<void> _onLongPress() async {
     SonarrRoutes.SERIES.go(params: {
-      'series': widget.record.seriesId!.toString(),
+      'series': (widget.record.seriesId?.toString() ?? ""),
     });
   }
 
@@ -111,7 +111,7 @@ class _State extends State<SonarrUpcomingTile> {
     Provider.of<SonarrState>(context, listen: false)
         .api!
         .command
-        .episodeSearch(episodeIds: [widget.record.id!])
+        .episodeSearch(episodeIds: [(widget.record.id ?? 0)])
         .then((_) => showLunaSuccessSnackBar(
               title: 'Searching for Episode...',
               message: widget.record.title,

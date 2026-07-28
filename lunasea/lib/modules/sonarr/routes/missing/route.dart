@@ -83,7 +83,7 @@ class _State extends State<SonarrMissingRoute>
       itemExtent: SonarrMissingTile.itemExtent,
       itemBuilder: (context, index) => SonarrMissingTile(
         record: missing.records![index],
-        series: series[missing.records![index].seriesId!],
+        series: series[missing.records![index].seriesId],
       ),
     );
   }

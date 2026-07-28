@@ -17,14 +17,23 @@ class LunaConfig {
     //      snapshot BACK instead of resetting to defaults.
     // See docs/security-audit-2026-07-28.md (H1).
     final Map<String, dynamic> config = _parseAndValidate(data);
+    // Snapshot BEFORE any mutation. If the snapshot itself can't be trusted
+    // (see _snapshot), it throws here and nothing is touched.
     final _ConfigSnapshot snapshot = _snapshot();
 
-    await LunaDatabase().clear();
     try {
-      _setProfiles(config[LunaBox.profiles.key]);
-      _setIndexers(config[LunaBox.indexers.key]);
-      _setExternalModules(config[LunaBox.externalModules.key]);
+      // Clear ONLY the config boxes import repopulates — never the inbox / logs
+      // / alerts (they aren't in a backup, and clearing them would lose the
+      // notification inbox on any restore). The clear is INSIDE the guard so a
+      // failure mid-clear rolls back too.
+      await LunaDatabase().clearConfig();
+      await _setProfiles(config[LunaBox.profiles.key]);
+      await _setIndexers(config[LunaBox.indexers.key]);
+      await _setExternalModules(config[LunaBox.externalModules.key]);
       for (final table in LunaTable.values) table.import(config[table.key]);
+      // Durability barrier: force the writes to disk so an I/O failure surfaces
+      // HERE (→ rollback) instead of being swallowed as a fire-and-forget flush.
+      await LunaDatabase().flushConfig();
 
       // A backup with no usable profile would leave the app unusable — treat it
       // as a failed restore and roll back rather than seat the user on defaults.
@@ -46,8 +55,19 @@ class LunaConfig {
       // device's backup doesn't drop live notifications until the gateway
       // re-mints them. See docs/security-audit-2026-07-28.md (H2).
       await _restoreLocalTokens(snapshot);
+      await LunaDatabase().flushConfig();
     } catch (error, stack) {
-      await _restoreSnapshot(snapshot);
+      // Roll the user's real configuration back. Report a rollback failure
+      // separately so it never masks the original import error.
+      try {
+        await _restoreSnapshot(snapshot);
+      } catch (rollbackError, rollbackStack) {
+        LunaLogger().error(
+          'Backup rollback FAILED after a bad import',
+          rollbackError,
+          rollbackStack,
+        );
+      }
       LunaLogger().error(
         'Invalid backup — restored previous configuration',
         error,
@@ -70,8 +90,15 @@ class LunaConfig {
     for (final key in LunaBox.lunasea.keys) {
       lunasea[key] = LunaBox.lunasea.read(key);
     }
+    final profiles = LunaBox.profiles.export();
+    // box.export() swallows any toJson error and returns [] — a silently-empty
+    // snapshot would "roll back" to an empty database. If the box had entries
+    // but we captured none, abort BEFORE clearing so nothing is lost.
+    if (profiles.length != LunaBox.profiles.keys.length) {
+      throw StateError('Config snapshot incomplete — import aborted to protect data.');
+    }
     return _ConfigSnapshot(
-      profiles: LunaBox.profiles.export(),
+      profiles: profiles,
       indexers: LunaBox.indexers.export(),
       externalModules: LunaBox.externalModules.export(),
       lunasea: lunasea,
@@ -79,13 +106,14 @@ class LunaConfig {
   }
 
   Future<void> _restoreSnapshot(_ConfigSnapshot snapshot) async {
-    await LunaDatabase().clear();
-    _setProfiles(snapshot.profiles);
-    _setIndexers(snapshot.indexers);
-    _setExternalModules(snapshot.externalModules);
+    await LunaDatabase().clearConfig();
+    await _setProfiles(snapshot.profiles);
+    await _setIndexers(snapshot.indexers);
+    await _setExternalModules(snapshot.externalModules);
     for (final entry in snapshot.lunasea.entries) {
       await LunaBox.lunasea.update(entry.key, entry.value);
     }
+    await LunaDatabase().flushConfig();
   }
 
   /// Refill the device-local notification tokens (`NOTIFICATIONS_TOKEN@…`,
@@ -172,32 +200,32 @@ class LunaConfig {
     return json.encode(config);
   }
 
-  void _setProfiles(List? data) {
+  Future<void> _setProfiles(List? data) async {
     if (data == null) return;
 
     for (final item in data) {
       final content = (item as Map).cast<String, dynamic>();
       final key = content['key'] ?? 'default';
       final obj = LunaProfile.fromJson(content);
-      LunaBox.profiles.update(key, obj);
+      await LunaBox.profiles.update(key, obj);
     }
   }
 
-  void _setIndexers(List? data) {
+  Future<void> _setIndexers(List? data) async {
     if (data == null) return;
 
     for (final indexer in data) {
       final obj = LunaIndexer.fromJson(indexer);
-      LunaBox.indexers.create(obj);
+      await LunaBox.indexers.create(obj);
     }
   }
 
-  void _setExternalModules(List? data) {
+  Future<void> _setExternalModules(List? data) async {
     if (data == null) return;
 
     for (final module in data) {
       final obj = LunaExternalModule.fromJson(module);
-      LunaBox.externalModules.create(obj);
+      await LunaBox.externalModules.create(obj);
     }
   }
 }
