@@ -15,6 +15,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Note:** Forked from the archived LunaSea project for personal development.
 
+## Session Start Routine
+
+**At the start of every working session, check Apple/TestFlight feedback** and
+triage it against the backlog:
+
+```bash
+/usr/bin/python3 scripts/asc_feedback.py            # all, newest first
+/usr/bin/python3 scripts/asc_feedback.py --since <YYYY-MM-DD>   # only newer
+```
+
+Download any screenshot URL with `curl` to view it. Surface anything NEW (not
+already tracked/shipped) to Stephen before starting other work.
+
 ## Backlog
 
 Bugs, features, and cleanups. Monetization/tier work lives in **Pro Backlog**
@@ -69,11 +82,18 @@ Pruned once shipped + verified (session logs retain full detail):
     profiles-box listenable. Polish, not a correctness hole. SEQUENCE: after
     device-verifying Basic; build only if the lag is noticeable.
 
-- **No in-app way to revoke a device for a user (2026-07-24)**: the person-detail
-  Devices list is READ-ONLY — an admin can't remove/revoke a specific device
-  without the Tailscale admin console. Add a per-device revoke action (Users →
-  person → Devices → device → remove) wired to a new tailarr-server route that
-  deauthorizes/removes the node + drops its person binding.
+- **Per-device revoke — APP SIDE BUILT 2026-07-28, needs SERVER route**: the
+  person-detail Devices list now has a red revoke action per device (confirm →
+  `TailarrServerAPI.revokeDevice(nodeId)` → `POST api/users/<nodeId>/device
+  {do:"revoke"}` → refresh). **Current-device GUARD**: the row whose tailnet
+  ip/hostname matches the app's own `IO.tailscaleStatus().self` shows "This
+  device" + no revoke (you can't cut yourself off — leave via Settings → System).
+  Contract frozen; the route 404s until the server ships it, so the action is
+  inert for testers meanwhile → **SERVER-SESSION job on issue #1**: add
+  `api/users/<nodeId>/device {do:"revoke"}` that deauthorizes the node + drops its
+  person binding. Files: `api/tailarr_server/tailarr_server.dart`,
+  `modules/tailarr_server/routes/person_details/route.dart`. analyze clean;
+  126 tests green. NOT device-verified (needs the server route live).
 
 - **Tailarr Server module v2 remainder**: controller self-upgrade screen,
   catalog/install wizard, pod busy auto-refresh, diagnose viewer, Kuma
