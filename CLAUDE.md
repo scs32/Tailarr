@@ -54,16 +54,12 @@ Pruned once shipped + verified (session logs retain full detail):
   `TailscaleStuckNotice`); confirm on device that it actually breaks the lockup.
   Handoff: `scratchpad/embed-guard-lockup-handoff.md`.
 
-- **Basic mode (Model A) — IMPLEMENTED + SHIPPED (build 32, `67affc2b`), NOT
-  device-verified**: design `docs/basic-mode-design.md`. Safe shell: (1) Settings
-  LOCKED via a top-level GoRouter redirect (`basicBlocksSettingsRoute` → catches
-  deep links, not just the button); (2) **Leave Server** escape
-  (`LunaProfileTools.leaveServer()`) in the drawer header behind a confirm; (3)
-  drawer + full module use kept. Ships on the `ui.basic` flag (no server change);
-  inert until the server tags someone Basic. 4 unit tests lock the Settings-guard
-  invariant. **NEXT: device-verify with a Basic-tagged person** (lands in a usable
-  shell, Settings unreachable by any path, Leave Server returns to first-run).
-  - **Live basic↔regular switching (follow-up) — DESIGN only
+- **Basic mode (Model A) — DONE: SHIPPED (build 32, `67affc2b`) + device-verified
+  working 2026-07-28**: design `docs/basic-mode-design.md`. Safe shell: Settings
+  LOCKED via a top-level GoRouter redirect (`basicBlocksSettingsRoute`), **Leave
+  Server** escape in the drawer header, drawer + full module use kept. Ships on the
+  `ui.basic` flag. Confirmed working on device.
+  - **Live basic↔regular switching (follow-up, optional) — DESIGN only
     `docs/basic-mode-live-switching-design.md`**: the flip updates `profile.uiBasic`
     via the config-changed push (data path DONE both directions), but the shell
     doesn't RE-RENDER live — the drawer header watches `ENABLED_PROFILE`, not the
@@ -131,9 +127,14 @@ Pruned once shipped + verified (session logs retain full detail):
 
 ## Pro Backlog
 
-Monetization / tier work. Product direction (decided 2026-07-24, refined
-2026-07-25): **Free = talk to a Tailarr Server** (your own via invite, or the
-in-app demo). **Pro = point the app at services yourself, with no server**
+**LAUNCH DECISION 2026-07-28: v1 ships WITHOUT Pro.** Everything is free/open
+for launch — no gate, no IAP. Demo mode already makes the first-run reviewable
+(App Review 4.2 covered). The Pro tier below is a POST-LAUNCH fast-follow, not a
+release blocker. Nothing here gates the App Store submission.
+
+Monetization / tier work (deferred). Product direction (decided 2026-07-24,
+refined 2026-07-25): **Free = talk to a Tailarr Server** (your own via invite, or
+the in-app demo). **Pro = point the app at services yourself, with no server**
 (manual host + key entry). Multiple profiles is NOT the axis — server vs.
 non-server is. GPL makes the client gate soft; accepted — the goal is
 product-focus, not revenue-max (Zagreus ships paid IAP as precedent).
