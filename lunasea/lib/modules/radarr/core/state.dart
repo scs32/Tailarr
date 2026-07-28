@@ -173,7 +173,7 @@ class RadarrState extends LunaModuleState {
     if (_movies != null)
       _upcoming = _movies!.then((movies) {
         List<RadarrMovie> _missingOnly = movies
-            .where((movie) => movie.monitored! && !movie.hasFile!)
+            .where((movie) => movie.monitored == true && movie.hasFile != true)
             .toList();
         // List of movies not yet released, but in cinemas, sorted by date
         List<RadarrMovie> _notYetReleased = [];
@@ -204,8 +204,8 @@ class RadarrState extends LunaModuleState {
     if (_movies != null)
       _missing = _movies!.then((movies) {
         List<RadarrMovie> _movies = movies.where((movie) {
-          if (!movie.monitored!) return false;
-          if (movie.hasFile! || movie.movieFile != null) return false;
+          if (movie.monitored != true) return false;
+          if (movie.hasFile == true || movie.movieFile != null) return false;
           if (!movie.lunaIsReleased) return false;
           return true;
         }).toList();
@@ -220,9 +220,9 @@ class RadarrState extends LunaModuleState {
           _comparison ??=
               b.lunaEarlierReleaseDate!.compareTo(a.lunaEarlierReleaseDate!);
           if (_comparison == 0)
-            return a.sortTitle!
+            return (a.sortTitle ?? a.title ?? '')
                 .toLowerCase()
-                .compareTo(b.sortTitle!.toLowerCase());
+                .compareTo((b.sortTitle ?? b.title ?? '').toLowerCase());
           return _comparison;
         });
         return _movies;

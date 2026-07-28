@@ -7,14 +7,17 @@ import 'package:lunasea/database/table.dart';
 
 class LunaConfig {
   Future<void> import(BuildContext context, String data) async {
-    // Security/robustness: validate the ENTIRE backup BEFORE touching the live
-    // database. The old code cleared first, so a truncated/malformed/wrong-shape
-    // file wiped every profile, credential, indexer, module, and setting
-    // irrecoverably (the catch only bootstrapped a fresh default). Parse + shape-
-    // check up front and throw on anything invalid — the caller surfaces the
-    // error and the user's existing config is left untouched. See
-    // docs/security-audit-2026-07-28.md (H1).
+    // Security/robustness: NEVER let a bad restore destroy the user's data. The
+    // old code cleared the database first, so a truncated/malformed/empty/
+    // "valid-enough" file (`{}`, `{"profiles":[1]}`, …) wiped every profile,
+    // credential, indexer, module, and setting irrecoverably. Now:
+    //   1. cheaply reject structurally-invalid input before touching anything;
+    //   2. snapshot the live config;
+    //   3. apply; and on ANY failure (incl. "no usable profile") roll the
+    //      snapshot BACK instead of resetting to defaults.
+    // See docs/security-audit-2026-07-28.md (H1).
     final Map<String, dynamic> config = _parseAndValidate(data);
+    final _ConfigSnapshot snapshot = _snapshot();
 
     await LunaDatabase().clear();
     try {
@@ -23,21 +26,30 @@ class LunaConfig {
       _setExternalModules(config[LunaBox.externalModules.key]);
       for (final table in LunaTable.values) table.import(config[table.key]);
 
+      // A backup with no usable profile would leave the app unusable — treat it
+      // as a failed restore and roll back rather than seat the user on defaults.
+      if (LunaProfile.list.isEmpty) {
+        throw const FormatException('Backup contained no profiles.');
+      }
       if (!LunaProfile.list.contains(LunaSeaDatabase.ENABLED_PROFILE.read())) {
-        LunaSeaDatabase.ENABLED_PROFILE.update(LunaProfile.list[0]);
+        LunaSeaDatabase.ENABLED_PROFILE.update(LunaProfile.list.first);
       }
 
       // A restored backup can carry server-attached profiles from a build
       // that predates serverOwned — the launch migration already ran before
       // this manual restore, so convert them now too.
       LunaDatabase().migrateLegacyServerProfiles();
+
+      // Device-local secrets (the ntfy bearer + APNs push token) are
+      // deliberately absent from the export (H2). Carry THIS device's current
+      // values forward for any profile that still exists so restoring your own
+      // device's backup doesn't drop live notifications until the gateway
+      // re-mints them. See docs/security-audit-2026-07-28.md (H2).
+      await _restoreLocalTokens(snapshot);
     } catch (error, stack) {
-      // The backup validated but a value failed to apply (rare — well-formed
-      // JSON, our own fromJson). Reset to a clean default rather than leave a
-      // half-imported database, then let the caller report the failure.
-      await LunaDatabase().bootstrap();
+      await _restoreSnapshot(snapshot);
       LunaLogger().error(
-        'Failed to apply validated backup, resetting to default',
+        'Invalid backup — restored previous configuration',
         error,
         stack,
       );
@@ -46,6 +58,58 @@ class LunaConfig {
     }
 
     LunaState.reset(context);
+  }
+
+  /// An in-memory copy of everything [import] can overwrite, used to roll back a
+  /// failed restore. Profiles/indexers/modules are captured as their serialized
+  /// maps (re-applied via `fromJson`, so no stale HiveObject is reused); the
+  /// `lunasea` box (all table state, incl. the device-local tokens that are
+  /// blocked from export) is captured raw.
+  _ConfigSnapshot _snapshot() {
+    final lunasea = <dynamic, dynamic>{};
+    for (final key in LunaBox.lunasea.keys) {
+      lunasea[key] = LunaBox.lunasea.read(key);
+    }
+    return _ConfigSnapshot(
+      profiles: LunaBox.profiles.export(),
+      indexers: LunaBox.indexers.export(),
+      externalModules: LunaBox.externalModules.export(),
+      lunasea: lunasea,
+    );
+  }
+
+  Future<void> _restoreSnapshot(_ConfigSnapshot snapshot) async {
+    await LunaDatabase().clear();
+    _setProfiles(snapshot.profiles);
+    _setIndexers(snapshot.indexers);
+    _setExternalModules(snapshot.externalModules);
+    for (final entry in snapshot.lunasea.entries) {
+      await LunaBox.lunasea.update(entry.key, entry.value);
+    }
+  }
+
+  /// Refill the device-local notification tokens (`NOTIFICATIONS_TOKEN@…`,
+  /// `NOTIFICATIONS_PUSH_TOKEN@…`) from [snapshot] for any profile that survived
+  /// the restore and whose imported value is empty (the backup never carries
+  /// them). Never overwrites a value the backup did set.
+  Future<void> _restoreLocalTokens(_ConfigSnapshot snapshot) async {
+    const prefixes = ['NOTIFICATIONS_TOKEN@', 'NOTIFICATIONS_PUSH_TOKEN@'];
+    for (final entry in snapshot.lunasea.entries) {
+      final key = entry.key;
+      final value = entry.value;
+      if (key is! String || value == null || value == '') continue;
+      final prefix = prefixes.firstWhere(
+        (p) => key.startsWith(p),
+        orElse: () => '',
+      );
+      if (prefix.isEmpty) continue;
+      final profile = key.substring(prefix.length);
+      if (!LunaProfile.list.contains(profile)) continue;
+      final current = LunaBox.lunasea.read(key);
+      if (current == null || current == '') {
+        await LunaBox.lunasea.update(key, value);
+      }
+    }
   }
 
   /// Decode [data] and confirm it is a configuration object with correctly-
@@ -136,4 +200,19 @@ class LunaConfig {
       LunaBox.externalModules.create(obj);
     }
   }
+}
+
+/// In-memory rollback copy of everything [LunaConfig.import] can overwrite.
+class _ConfigSnapshot {
+  final List<Map<String, dynamic>> profiles;
+  final List<Map<String, dynamic>> indexers;
+  final List<Map<String, dynamic>> externalModules;
+  final Map<dynamic, dynamic> lunasea;
+
+  const _ConfigSnapshot({
+    required this.profiles,
+    required this.indexers,
+    required this.externalModules,
+    required this.lunasea,
+  });
 }

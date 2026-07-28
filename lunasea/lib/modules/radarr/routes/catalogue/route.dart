@@ -109,7 +109,7 @@ class _State extends State<RadarrCatalogueRoute>
     // Filter
     List<RadarrMovie> filtered = movies.where((movie) {
       if (query.isNotEmpty && movie.id != null)
-        return movie.title!.toLowerCase().contains(query.toLowerCase());
+        return (movie.title ?? "").toLowerCase().contains(query.toLowerCase());
       return movie.id != null;
     }).toList();
     filtered = filter.filter(filtered);

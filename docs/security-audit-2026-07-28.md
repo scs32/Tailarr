@@ -242,3 +242,45 @@ worth not regressing** — see the bottom section.
 Nothing here blocks launch by anything but our own bar — but **H1 and H2 should
 land before shipping any build a user might back up**, and H4 before broad
 multi-server use.
+
+---
+
+## Re-review (round 2) — reviewer verdicts on the fixes + corrections
+
+The fix commit was re-reviewed adversarially. Codex (by-reading; its sandbox
+blocks Flutter tooling) returned per-fix verdicts; the two ship-blockers and
+several INCOMPLETE calls were correct and have been addressed in a follow-up
+commit:
+
+- **H1 (was INCOMPLETE):** the first cut only rejected structurally-invalid
+  input, so `{}` / `{"profiles":[1]}` still cleared the DB then reset to
+  defaults. **Now:** `import()` snapshots the live config (`_snapshot`), applies,
+  and on ANY failure — including "no usable profile" — rolls the snapshot back
+  (`_restoreSnapshot`) instead of bootstrapping defaults. A restore can no longer
+  destroy user data.
+- **H2 (was a REGRESSION):** blocking `TOKEN`/`PUSH_TOKEN` from export is correct,
+  but a normal restore clears then can't re-apply them, dropping live push/ntfy
+  until re-mint. **Now:** the pre-clear snapshot carries THIS device's tokens
+  forward for any surviving profile (`_restoreLocalTokens`) — they never enter
+  the export, but a restore of your own backup keeps them. (Service API keys +
+  custom headers deliberately remain in the export — they're user-entered config
+  needed for restore and don't re-mint; the real answer is M3-full encrypt-whole-
+  backup, still tracked.)
+- **H3 (was INCOMPLETE):** extended past sort/filter to the render + derived-list
+  + detail-nav paths — `radarr/.../movie_tile.dart`,
+  `sonarr/.../series_tile.dart`, both catalogue-route search predicates,
+  `radarr/core/state.dart` upcoming/missing, `sonarr/core/state.dart`
+  `setSingleSeries`.
+- **M1 (was INCOMPLETE):** `_compact` is now per-profile (a busy profile can't
+  evict another's inbox), and `recordDismissed` takes an explicit `profile` so a
+  switch mid-clear can't misfile dismissals.
+- **H4/L1 (was INCOMPLETE on web):** the Hive parts (config keys + inbox) moved
+  to a platform-neutral `NtfyHiveMigration` used by BOTH the io plugin and the
+  web stub, so web profile delete/rename no longer strands notification state.
+- **L2 (was INCOMPLETE):** SABnzbd's `value3` (job-password slot) added to the
+  redactor's URL-query rule, closing the `DioException`-URI leak.
+- **M2, L3:** confirmed SOLID; unchanged.
+
+Still open (tracked, not regressions): L4 (NSE `tlr-config` tag parity), L5 (the
+narrow profile-switch storage race in `storeMessages` — distinct from the
+`recordDismissed` race, which is now closed), and M3-full (encrypt whole backup).

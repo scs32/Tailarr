@@ -22,8 +22,11 @@ class LogRedactor {
   static final List<_Rule> _rules = [
     // apikey / api_key / api_token / token / password as a URL query parameter
     // (Sonarr/Radarr/Lidarr/Tautulli/SABnzbd pass apikey in the query string).
+    // `value3` is SABnzbd's rename-mode slot that carries a job password
+    // (setJobPassword) — a failed request's DioException embeds the URI, so
+    // scrub it here. See docs/security-audit-2026-07-28.md (L2).
     _Rule(
-      RegExp(r'''([?&](?:api[_-]?key|api[_-]?token|token|passwd|password)=)[^&\s"']+''',
+      RegExp(r'''([?&](?:api[_-]?key|api[_-]?token|token|passwd|password|value3)=)[^&\s"']+''',
           caseSensitive: false),
       (m) => '${m[1]}$mask',
     ),

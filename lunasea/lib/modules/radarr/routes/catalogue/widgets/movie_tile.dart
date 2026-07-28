@@ -60,7 +60,7 @@ class _State extends State<RadarrCatalogueTile> {
       posterHeaders: context.read<RadarrState>().headers,
       backgroundHeaders: context.read<RadarrState>().headers,
       posterPlaceholderIcon: LunaIcons.VIDEO_CAM,
-      disabled: !widget.movie.monitored!,
+      disabled: widget.movie.monitored != true,
       title: widget.movie.title,
       body: [
         _subtitle1(),
@@ -84,7 +84,7 @@ class _State extends State<RadarrCatalogueTile> {
       posterPlaceholderIcon: LunaIcons.VIDEO_CAM,
       title: widget.movie.title,
       subtitle: TextSpan(text: _sorting.value(widget.movie, widget.profile)),
-      disabled: !widget.movie.monitored!,
+      disabled: widget.movie.monitored != true,
       onTap: _onTap,
       onLongPress: _onLongPress,
     );
@@ -189,11 +189,11 @@ class _State extends State<RadarrCatalogueTile> {
           _buildReleaseIcon(
             Icons.check_circle_rounded,
             LunaColours.accent,
-            widget.movie.hasFile!,
+            (widget.movie.hasFile == true),
           ),
           Container(
             height: LunaBlock.SUBTITLE_HEIGHT,
-            child: widget.movie.hasFile!
+            child: (widget.movie.hasFile == true)
                 ? widget.movie.lunaHasFileTextObject()
                 : widget.movie.lunaNextReleaseTextObject(),
             alignment: Alignment.center,
@@ -205,7 +205,7 @@ class _State extends State<RadarrCatalogueTile> {
 
   Future<void> _onTap() async {
     RadarrRoutes.MOVIE.go(params: {
-      'movie': widget.movie.id!.toString(),
+      'movie': (widget.movie.id?.toString() ?? ""),
     });
   }
 

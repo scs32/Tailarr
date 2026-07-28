@@ -148,7 +148,8 @@ class SonarrState extends LunaModuleState {
   }
 
   Future<void> setSingleSeries(SonarrSeries series) async {
-    (await _series)![series.id!] = series;
+    final id = series.id;
+    if (id != null) (await _series)![id] = series;
     notifyListeners();
   }
 

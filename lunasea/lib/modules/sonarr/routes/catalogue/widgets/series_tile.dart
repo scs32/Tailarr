@@ -59,7 +59,7 @@ class _State extends State<SonarrSeriesTile> {
       posterUrl: context.read<SonarrState>().getPosterURL(widget.series.id),
       posterHeaders: context.read<SonarrState>().headers,
       posterPlaceholderIcon: LunaIcons.VIDEO_CAM,
-      disabled: !widget.series.monitored!,
+      disabled: widget.series.monitored != true,
       title: widget.series.title,
       body: [
         _subtitle1(),
@@ -82,7 +82,7 @@ class _State extends State<SonarrSeriesTile> {
       posterPlaceholderIcon: LunaIcons.VIDEO_CAM,
       title: widget.series.title,
       subtitle: TextSpan(text: _sorting.value(widget.series, widget.profile)),
-      disabled: !widget.series.monitored!,
+      disabled: widget.series.monitored != true,
       onTap: _onTap,
       onLongPress: _onLongPress,
     );
@@ -168,7 +168,7 @@ class _State extends State<SonarrSeriesTile> {
 
   Future<void> _onTap() async {
     SonarrRoutes.SERIES.go(params: {
-      'series': widget.series.id!.toString(),
+      'series': (widget.series.id?.toString() ?? ""),
     });
   }
 

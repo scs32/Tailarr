@@ -164,7 +164,9 @@ class _State extends State<NotificationsRoute> with LunaScrollControllerMixin {
     final ids = [
       for (final k in keys) LunaBox.notifications.read(k)!.id,
     ];
-    await LunaNtfy().recordDismissed(ids);
+    // Pin dismissals to the captured profile so a switch mid-clear can't record
+    // them against another slice. See docs/security-audit-2026-07-28.md (M1).
+    await LunaNtfy().recordDismissed(ids, profile: active);
     for (final k in keys) await LunaBox.notifications.delete(k);
 
     showLunaSuccessSnackBar(

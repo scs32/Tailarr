@@ -114,7 +114,7 @@ class _State extends State<SonarrCatalogueRoute>
     // Filter
     List<SonarrSeries> filtered = series.values.where((show) {
       if (query.isNotEmpty && show.id != null)
-        return show.title!.toLowerCase().contains(query.toLowerCase());
+        return (show.title ?? "").toLowerCase().contains(query.toLowerCase());
       return show.id != null;
     }).toList();
     filtered = filter.filter(filtered);

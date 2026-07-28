@@ -19,6 +19,7 @@ import 'package:lunasea/system/gateway/gateway_host.dart';
 import 'package:lunasea/system/gateway/gateway_jellyfin.dart';
 import 'package:lunasea/system/gateway/gateway_services.dart';
 import 'package:lunasea/system/logger.dart';
+import 'package:lunasea/system/notifications/ntfy_hive_migration.dart';
 import 'package:lunasea/system/notifications/platform/ntfy_shared_state.dart';
 
 /// Entry point for the ntfy notification pipeline: foreground stream while
@@ -90,12 +91,15 @@ class LunaNtfy {
   /// Record that these message ids were deleted from the inbox so a later poll
   /// can't resurrect them (see [NtfyProfileState.dismissedIds]). Scoped to the
   /// active profile — the slice the inbox sync uses.
-  Future<void> recordDismissed(Iterable<String> ids) async {
+  Future<void> recordDismissed(Iterable<String> ids, {String? profile}) async {
     final incoming = ids.where((id) => id.isNotEmpty).toList();
     if (incoming.isEmpty) return;
-    final profile = LunaSeaDatabase.ENABLED_PROFILE.read();
+    // Pin to the caller-supplied profile when given: a profile switch between
+    // capturing the ids and this write would otherwise record them against the
+    // wrong slice. Falls back to the active profile.
+    final target = profile ?? LunaSeaDatabase.ENABLED_PROFILE.read();
     final state = await NtfySharedState.load();
-    final slice = state.slice(profile);
+    final slice = state.slice(target);
     // Insertion-ordered set: existing ids first, new last; keep the newest 500.
     final merged = <String>{...slice.dismissedIds, ...incoming}.toList();
     slice.dismissedIds =
@@ -200,38 +204,8 @@ class LunaNtfy {
   Future<void> migrateProfileName(String oldName, String newName) async {
     if (oldName == newName || newName.isEmpty) return;
 
-    // 1. Config keys: NOTIFICATIONS_<FIELD>@<profile> (see Notifications
-    // Database.key). Copy each present field to the new suffix, drop the old.
-    const prefix = 'NOTIFICATIONS_'; // LunaTable.notifications.key.toUpperCase()
-    for (final field in NotificationsDatabase.values) {
-      final oldKey = '$prefix${field.name}@$oldName';
-      if (!LunaBox.lunasea.contains(oldKey)) continue;
-      await LunaBox.lunasea
-          .update('$prefix${field.name}@$newName', LunaBox.lunasea.read(oldKey));
-      await LunaBox.lunasea.delete(oldKey);
-    }
-
-    // 2. Inbox: entries carry an immutable `profile` tag and a
-    // profile-namespaced box key — re-create each under the new name.
-    for (final key in LunaBox.notifications.keys.toList()) {
-      final n = LunaBox.notifications.read(key);
-      if (n == null || n.profile != oldName) continue;
-      await LunaBox.notifications.update(
-        LunaNotification.boxKey(newName, n.id),
-        LunaNotification(
-          id: n.id,
-          time: n.time,
-          topic: n.topic,
-          title: n.title,
-          body: n.body,
-          priority: n.priority,
-          tags: n.tags,
-          read: n.read,
-          profile: newName,
-        ),
-      );
-      await LunaBox.notifications.delete(key);
-    }
+    // 1+2. Config keys + inbox rows (platform-neutral Hive state).
+    await NtfyHiveMigration.migrate(oldName, newName);
 
     // 3. Shared-state slice: rename in place, preserving since-markers so the
     // renamed profile doesn't re-notify its backlog.
@@ -249,19 +223,8 @@ class LunaNtfy {
   Future<void> purgeProfileName(String name) async {
     if (name.isEmpty) return;
 
-    // 1. Config keys: NOTIFICATIONS_<FIELD>@<profile>.
-    const prefix = 'NOTIFICATIONS_';
-    for (final field in NotificationsDatabase.values) {
-      final key = '$prefix${field.name}@$name';
-      if (LunaBox.lunasea.contains(key)) await LunaBox.lunasea.delete(key);
-    }
-
-    // 2. Inbox: every entry tagged with this profile.
-    for (final key in LunaBox.notifications.keys.toList()) {
-      final n = LunaBox.notifications.read(key);
-      if (n == null || n.profile != name) continue;
-      await LunaBox.notifications.delete(key);
-    }
+    // 1+2. Config keys + inbox rows (platform-neutral Hive state).
+    await NtfyHiveMigration.purge(name);
 
     // 3. Shared-state slice: drop it so the NSE stops fetching the dead server.
     final state = await NtfySharedState.load();
@@ -608,9 +571,17 @@ class NtfySync {
 
   static void _compact([int count = INBOX_LIMIT]) {
     if (LunaBox.notifications.size <= count) return;
-    final items = LunaBox.notifications.data.toList()
-      ..sort((a, b) => b.time.compareTo(a.time));
-    items.skip(count).forEach((notification) => notification.delete());
+    // Cap PER PROFILE, not globally — a busy profile must not evict another
+    // profile's inbox. See docs/security-audit-2026-07-28.md (M1).
+    final byProfile = <String, List<LunaNotification>>{};
+    for (final n in LunaBox.notifications.data) {
+      (byProfile[n.profile] ??= []).add(n);
+    }
+    for (final items in byProfile.values) {
+      if (items.length <= count) continue;
+      items.sort((a, b) => b.time.compareTo(a.time));
+      items.skip(count).forEach((notification) => notification.delete());
+    }
   }
 
   /// Background-isolate fetch across EVERY server-owned profile: file-backed
