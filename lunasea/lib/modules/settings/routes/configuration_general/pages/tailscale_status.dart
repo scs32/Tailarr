@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:lunasea/core.dart';
 import 'package:lunasea/system/network/platform/network_io.dart'
@@ -77,9 +78,19 @@ class _State extends State<ConfigurationGeneralTailscaleStatusRoute>
       // The embedded node can briefly stop responding (e.g. while it rebinds
       // after a network change). This page polls every 5s, so present it as a
       // transient reconnecting state, not a hard "An Error Has Occurred".
+      //
+      // tailscale_embed v0.3.9 distinguishes STATUS_UNAVAILABLE (the node is
+      // UP but a status read momentarily failed — e.g. mid magicsock rebind)
+      // from NOT_RUNNING (node actually stopped). Surface the plugin's copy for
+      // the former so it reads as "status refreshing", never "disconnected".
+      final code =
+          _error is PlatformException ? (_error as PlatformException).code : null;
+      final text = code == TailscaleErrorCodes.statusUnavailable
+          ? TailscaleAuthKeys.friendlyError(_error!)
+          : 'Tailscale isn\'t responding right now — it may be reconnecting. '
+              'This screen refreshes automatically.';
       return LunaMessage(
-        text: 'Tailscale isn\'t responding right now — it may be reconnecting. '
-            'This screen refreshes automatically.',
+        text: text,
         buttonText: 'Retry Now',
         onTap: _refresh,
       );
