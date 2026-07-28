@@ -196,6 +196,19 @@ class TailarrServerAPI {
     await httpClient.post('api/users/$nodeId', data: {'nickname': nickname});
   }
 
+  /// Revoke a single device: deauthorize its tailnet node and drop its person
+  /// binding. Contract (pending server support — see issue #1): the route
+  /// 404s until the server ships it, so a revoke is inert (surfaces "unknown
+  /// request") rather than harmful meanwhile. NEVER call this for the caller's
+  /// own device — the app guards that in the UI (leave via Settings instead).
+  Future<TailarrServerActionResult> revokeDevice(String nodeId) async {
+    final response = await httpClient.post(
+      'api/users/$nodeId/device',
+      data: {'do': 'revoke'},
+    );
+    return TailarrServerActionResult.fromJson(response.data);
+  }
+
   /// Grant/revoke a service by flipping `tag:tailarr-can-<service>` —
   /// effective in seconds, no pod restart.
   Future<TailarrServerActionResult> setUserAccess(

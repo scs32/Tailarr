@@ -4,6 +4,8 @@ import 'package:lunasea/extensions/datetime.dart';
 import 'package:lunasea/extensions/string/string.dart';
 import 'package:lunasea/modules/settings.dart';
 import 'package:lunasea/modules/tailarr_server.dart';
+import 'package:lunasea/system/network/platform/network_io.dart'
+    if (dart.library.html) 'package:lunasea/system/network/platform/network_html.dart';
 import 'package:share_plus/share_plus.dart';
 
 class PersonDetailsRoute extends StatefulWidget {
@@ -26,10 +28,40 @@ class _State extends State<PersonDetailsRoute> with LunaScrollControllerMixin {
   /// Services with a grant/revoke call in flight (switches disabled).
   final Set<String> _pending = {};
 
+  /// This app's own tailnet node, so its device row is protected from revoke
+  /// (you'd cut yourself off) — leave via Settings → System instead.
+  List<String> _selfIps = const [];
+  String _selfHostname = '';
+
   @override
   void initState() {
     super.initState();
     _fetch();
+    _loadSelfNode();
+  }
+
+  Future<void> _loadSelfNode() async {
+    try {
+      final self = (await IO.tailscaleStatus())?.self;
+      if (!mounted || self == null) return;
+      setState(() {
+        _selfIps = self.ips;
+        _selfHostname = self.hostName;
+      });
+    } catch (_) {
+      // Status unavailable (node not up / web) — treat nothing as "this
+      // device"; the server-side guard is the backstop.
+    }
+  }
+
+  /// Whether [device] is the device running this app. Matched by tailnet IP
+  /// (exact) or, as a fallback, the tailnet hostname.
+  bool _isCurrentDevice(TailarrServerUserDevice device) {
+    if (device.ip.isNotEmpty && _selfIps.contains(device.ip)) return true;
+    if (device.hostname.isNotEmpty && device.hostname == _selfHostname) {
+      return true;
+    }
+    return false;
   }
 
   void _fetch() {
@@ -244,6 +276,8 @@ class _State extends State<PersonDetailsRoute> with LunaScrollControllerMixin {
   }
 
   Widget _deviceBlock(TailarrServerUserDevice device) {
+    final isCurrent = _isCurrentDevice(device);
+    final pending = _pending.contains(device.id);
     return LunaBlock(
       title: device.displayName,
       body: [
@@ -255,18 +289,60 @@ class _State extends State<PersonDetailsRoute> with LunaScrollControllerMixin {
           ),
         ),
         TextSpan(
-          text: [device.os, device.ip]
-              .where((s) => s.isNotEmpty)
-              .join(LunaUI.TEXT_BULLET.pad()),
+          text: [
+            if (isCurrent) 'This device',
+            device.os,
+            device.ip,
+          ].where((s) => s.isNotEmpty).join(LunaUI.TEXT_BULLET.pad()),
         ),
       ],
-      trailing: LunaIconButton(
-        icon: device.isOnline
-            ? Icons.smartphone_rounded
-            : Icons.mobile_off_rounded,
-        color: device.isOnline ? LunaColours.accent : LunaColours.grey,
-      ),
+      // The current device can't be revoked here — that would cut this app off
+      // mid-action. Leaving is a deliberate act from Settings → System instead.
+      trailing: isCurrent
+          ? const LunaIconButton(
+              icon: Icons.smartphone_rounded,
+              color: LunaColours.accent,
+            )
+          : LunaIconButton(
+              icon: pending
+                  ? Icons.hourglass_empty_rounded
+                  : Icons.remove_circle_outline_rounded,
+              color: pending ? LunaColours.grey : LunaColours.red,
+              onPressed: pending ? null : () => _revokeDevice(device),
+            ),
     );
+  }
+
+  Future<void> _revokeDevice(TailarrServerUserDevice device) async {
+    if (_isCurrentDevice(device)) return; // belt-and-suspenders
+    final api = context.read<TailarrServerState>().api;
+    if (api == null) return;
+    final confirmed = await TailarrServerDialogs().confirmAction(
+      context,
+      title: 'Revoke Device',
+      message: 'Remove "${device.displayName}" from this user? It loses tailnet '
+          'access and must re-enroll with a new key to return.',
+      buttonText: 'Revoke',
+    );
+    if (!confirmed) return;
+    setState(() => _pending.add(device.id));
+    try {
+      final result = await api.revokeDevice(device.id);
+      if (result.ok) {
+        showLunaSuccessSnackBar(title: 'Device Revoked', message: '');
+        _fetch();
+      } else {
+        showLunaErrorSnackBar(
+          title: 'Revoke Failed',
+          message: result.error ?? 'Unknown error',
+        );
+      }
+    } catch (error, stack) {
+      LunaLogger().error('Device revoke failed', error, stack);
+      showLunaErrorSnackBar(title: 'Revoke Failed', error: error);
+    } finally {
+      if (mounted) setState(() => _pending.remove(device.id));
+    }
   }
 
   Widget _notificationsBlock(TailarrServerPerson person) {
