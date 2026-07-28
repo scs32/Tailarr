@@ -77,6 +77,7 @@ class _State extends State<JellyfinRoute> with LunaScrollControllerMixin {
 
   Widget _appBar() {
     return LunaAppBar(
+      useDrawer: true,
       title: 'Jellyfin',
       scrollControllers: [scrollController],
     );
