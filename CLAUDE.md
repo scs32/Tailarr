@@ -407,6 +407,100 @@ The whole stack (Go tsnet proxy, Swift MethodChannel bridge, findProxy/HttpOverr
 
 ---
 
+## Session Log — 2026-07-28 (MARATHON: demo mode + first-run landing, builds 34→38, Jellyfin live-E2E green, per-device revoke, M5 SSRF, launch-readiness)
+
+Enormous session; everything pushed to master, **TestFlight builds 34–38 all
+LIVE**. Product is now launch-ready — Demo Mode closed the App-Review-4.2 risk,
+no feature gates the launch.
+
+### Builds shipped (all 11.0.0 fast path, LIVE)
+- **34**: web-GUI gating (`3f6fbb25`) + "Sign This Device Out" moved to
+  Settings → System (`1a73917a`) + config-banner NSE filter (`275af0ae`).
+- **35**: **Demo mode + first-run landing** (`ed5c3959`).
+- **36**: demo **exit → landing** fix (`79c63bc9`).
+- **37**: **Jellyfin back-button** fix (`3bedd150`) + **per-device revoke**
+  app-side (`cf25b75c`).
+- **38**: **M5 SSRF guard** (`de6d4b46`).
+
+### THE BIG ONE — Demo mode + first-run landing (build 35, exit fix build 36)
+Unconfigured app now opens to a **landing** (`FirstRunLandingRoute`, `/landing`,
+gated by `LunaProfileTools.isFirstRun()` in the router redirect): **Join Tailarr
+Server** (paste invite → `/import`) / **Start Demo Mode**. Demo = throwaway
+name-locked `demo` profile (HiveField 54) with Sonarr/Radarr/Tautulli
+gateway-managed against `https://demo.tailarr`; `DemoAdapter`
+(`lib/system/demo/`) serves `assets/demo/*.json` (Blender open movies) so the
+REAL module UI renders populated, offline. Persistent "Demo Mode — Exit" banner
+(`DemoModeBanner` in main.dart). **Existing configured testers never see the
+landing** (isFirstRun false). Sim-verified E2E (landing + populated Radarr grid).
+- **Exit bug (build 36)**: exiting demo didn't return to the landing — `leaveDemo`
+  ran through `_changeTo`, whose node/ntfy channel calls threw AFTER switching but
+  BEFORE removing the demo profile → it lingered → isFirstRun stayed false.
+  Diagnosed via on-device integration test (`profiles=[Demo,default]`). Fixed: box
+  mutations (switch+delete) first & unconditional, side-effects best-effort;
+  `_exit` navigates explicitly to `/landing`. Design doc `docs/demo-mode-design.md`
+  marked BUILT.
+
+### Jellyfin — DONE (live-E2E GREEN) + back-button fix
+Server provisioning bug fixed server-side → the passwordless per-person Quick
+Connect flow works end-to-end on a real box. Module complete. Also fixed
+"Jellyfin back button doesn't work" (TestFlight): the route was missing
+`useDrawer: true` (every other module has it) → dead back-arrow instead of the
+drawer hamburger.
+
+### Per-device revoke — APP SIDE built (build 37), needs SERVER route
+Red revoke per device in Users → person → Devices. **Current-device GUARD**: the
+row matching the app's own `IO.tailscaleStatus().self` (ip/hostname) shows "This
+device" + no revoke (leave via Settings instead). Contract handed off:
+`~/tailarr-handoff/device-revoke-contract.md` (`POST api/users/<nodeId>/device
+{do:"revoke"}`). Inert until the server ships it.
+
+### M5 SSRF guard (build 38) — `lib/system/security/ssrf_guard.dart`
+Spec `~/tailarr-handoff/m5-ssrf-guard.md`. Blocks loopback/link-local(metadata)/
+multicast/unspecified on the RESOLVED host (NOT the socket — the tailnet proxy
+uses loopback); LAN+tailnet+public allowed. Walks redirect hops to close the
+public→302→169.254.169.254 bypass. Wired into all 6 service Test-Connection
+buttons + the untrusted shared-config import test. 14 unit tests.
+
+### Closed / decided
+- **Basic mode** — device-verified working → DONE.
+- **Pro** — **v1 ships WITHOUT Pro** (all free/open); Pro/IAP post-launch.
+- **Server security** — server session traced H1/H2/M2/M3 → all already fixed on
+  live podscale; M1 a bounded residual. App backlog was quoting the stale
+  pre-remediation list — corrected. Do NOT re-flag these as open.
+- Web-GUI gating, sign-out→Settings, config-banner NSE — shipped build 34.
+
+### New standing routine + tooling
+- **Session-start Apple feedback check** — `scripts/asc_feedback.py` +
+  "Session Start Routine" in CLAUDE.md + memory. Run it every session start,
+  triage vs backlog, surface NEW items.
+- **App Store submission prep plan** — `~/tailarr-handoff/app-store-submission-prep.md`
+  (division of labor: ~85% mine via ASC API + sim screenshots from Demo Mode;
+  Stephen owns agreements, the web privacy form, approvals, final submit).
+  **This is the critical path to launch** — no features block it.
+
+### Ops / gotchas
+- **DISK HIT 100% FULL mid-session** — the real cause of an apparent sim-boot
+  "hang" (sims can't boot with no space; even `git`/Bash output failed with
+  ENOSPC). Freed ~17GB: `rm -rf ~/Library/Developer/Xcode/DerivedData`, deleted a
+  throwaway sim, cleared `lunasea/build`. macOS reclaims purgeable space on
+  retry — retry the `rm` until it runs. Ended ~5.5GB free. **Watch disk before
+  heavy sim/build runs.**
+- Skip-target ids for asc_release this session: 34←33 `9e21a993`, 35←34
+  `cf473f1f`, 36←35 `0ce68d9d`, 37←36 `508ce47e`, 38←37 `f908e061`.
+- All green: **140/140 tests**, `analyze lib` 0 errors. Demo harness left in
+  `integration_test/{demo_mode,demo_exit,jellyfin_demo}_test.dart` (sim visual +
+  logic; no secrets).
+
+### NEXT
+- **App Store submission prep** (the launch critical path) — start with the
+  version-string feasibility check, then screenshots (Demo Mode), then copy.
+- Server-session: per-device revoke route (contract handed off); optional M1
+  gateway-proof tightening.
+- Embed session: profile-delete lockup real fix (v0.3.6 stuck-notice needs
+  device confirm), magicsock warning.
+
+---
+
 ## Session Log — 2026-07-26 (MARATHON: Quick Connect app half built + shipped, builds 31→33, throttle fix, Basic mode, embed v0.3.6, config-changed push, cross-repo issue-thread coordination)
 
 Enormous continuous session. Everything pushed to master; **TestFlight builds 31,
