@@ -7,7 +7,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hive/hive.dart';
+import 'package:hive_ce/hive.dart';
 
 import 'package:lunasea/database/encryption.dart';
 import 'package:lunasea/database/models/notification.dart';
