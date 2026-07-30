@@ -152,11 +152,18 @@ struct NtfyMessage {
     let topic: String
     let title: String?
     let message: String?
+    let tags: [String]
 
     /// Silent server→client config-changed control signal (rides the per-person
-    /// `tlr-ctrl-<uid>` topic). Wakes the app to re-sync — never shown as a
-    /// notification. Mirrors the Dart `NtfyMessage.isConfigControl` filter.
-    var isConfigControl: Bool { topic.hasPrefix("tlr-ctrl-") }
+    /// `tlr-ctrl-<uid>` topic, tagged `tlr-config`). Wakes the app to re-sync —
+    /// never shown as a notification. Mirrors the Dart `NtfyMessage`
+    /// `isConfigControl` filter EXACTLY: the topic prefix is the primary signal,
+    /// the `tlr-config` tag a secondary net in case routing changes — without it
+    /// (L4) a control message on an unusual channel would slip through as a
+    /// banner here even though the Dart side correctly suppresses it.
+    var isConfigControl: Bool {
+        topic.hasPrefix("tlr-ctrl-") || tags.contains("tlr-config")
+    }
 
     var displayTitle: String {
         if let title = title, !title.isEmpty { return title }
@@ -250,7 +257,8 @@ enum NtfyFetcher {
                     time: json["time"] as? Int ?? 0,
                     topic: json["topic"] as? String ?? "",
                     title: json["title"] as? String,
-                    message: json["message"] as? String))
+                    message: json["message"] as? String,
+                    tags: json["tags"] as? [String] ?? []))
             }
             messages.sort { $0.time < $1.time }
             completion(messages)
