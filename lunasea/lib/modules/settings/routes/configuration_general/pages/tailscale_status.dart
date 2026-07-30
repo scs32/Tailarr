@@ -134,6 +134,12 @@ class _State extends State<ConfigurationGeneralTailscaleStatusRoute>
     } else if (status.backendState == 'NeedsLogin') {
       state = 'Needs Login';
       color = LunaColours.red;
+    } else if (status.backendState == 'NeedsMachineAuth') {
+      // The node was deauthorized/revoked (e.g. a lost device revoked from the
+      // admin console). Read it as a clear red problem, not "Attention Needed",
+      // so the user knows access was pulled and to re-enroll (APP-6).
+      state = 'Access Revoked';
+      color = LunaColours.red;
     } else {
       state = status.backendState.isEmpty
           ? 'Attention Needed'

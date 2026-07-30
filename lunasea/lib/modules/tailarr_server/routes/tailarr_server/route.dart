@@ -41,6 +41,17 @@ class _State extends State<TailarrServerRoute>
     );
   }
 
+  /// Clear a stale/revoked admin bearer after a definitive controller 401/403
+  /// so the app stops reporting "connected" (APP-6). No-op once cleared, so the
+  /// re-render this triggers can't loop.
+  void _dropStaleToken() {
+    final profile = LunaProfile.current;
+    if (profile.serverAdminToken.trim().isEmpty) return;
+    profile.serverAdminToken = '';
+    if (profile.isInBox) profile.save();
+    if (mounted) context.read<TailarrServerState>().resetProfile();
+  }
+
   Future<void> _connect() async {
     setState(() => _connecting = true);
     final result = await QuickConnect.selfConfigure(
@@ -156,7 +167,15 @@ class _State extends State<TailarrServerRoute>
           future: pods,
           builder: (context, AsyncSnapshot<List<TailarrServerPod>> snapshot) {
             if (snapshot.hasError) {
-              if (isServerAuthRequired(snapshot.error)) return _connectGate();
+              if (isServerAuthRequired(snapshot.error)) {
+                // APP-6: a controller 401/403 is the definitive "this device's
+                // bearer is stale/revoked" signal. Drop the stored token so
+                // every screen (this gate, the pair route, Sign Out) agrees the
+                // device is disconnected and re-surfaces "Connect This Device".
+                WidgetsBinding.instance
+                    .addPostFrameCallback((_) => _dropStaleToken());
+                return _connectGate();
+              }
               if (snapshot.connectionState != ConnectionState.waiting)
                 LunaLogger().error(
                   'Unable to fetch Tailarr Server pods',
