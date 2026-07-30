@@ -5,9 +5,20 @@ targets:
       - pubspec.*
       - $package$
     builders:
-      # Hive
-      hive_generator:
+      # Hive (hive_ce): generate the per-type TypeAdapters only. The app
+      # registers adapters explicitly via Hive.registerAdapter(), so the
+      # auto-applied registrar/schema builders are disabled to keep the
+      # generated output equivalent to the previous hive_generator setup.
+      hive_ce_generator:hive_type_adapter_generator:
         enabled: true
+      hive_ce_generator:hive_registrar_intermediate_generator:
+        enabled: false
+      hive_ce_generator:hive_registrar_generator:
+        enabled: false
+      hive_ce_generator:hive_adapters_generator:
+        enabled: false
+      hive_ce_generator:hive_schema_migrator:
+        enabled: false
       # JSON Serializable
       json_serializable:
         enabled: true
