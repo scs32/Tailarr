@@ -120,8 +120,13 @@ jobs:
             <string>automatic</string>
             <key>teamID</key>
             <string>${APPLE_TEAM_ID}</string>
+            <!-- Must be false: when true, Xcode re-manages the build number at
+                 export time and can silently drop the upload as a duplicate, so
+                 the build never appears in TestFlight even though the job is
+                 green. false makes the explicit --build-number=${{ github.run_number }}
+                 (baked into the archive as CFBundleVersion) authoritative. -->
             <key>manageAppVersionAndBuildNumber</key>
-            <true/>
+            <false/>
           </dict>
           </plist>
           PLIST
