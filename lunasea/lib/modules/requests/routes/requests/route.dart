@@ -78,8 +78,14 @@ class _State extends State<RequestsRoute> {
       }
       _classifyRefusal(signin);
     } catch (error, stack) {
-      LunaLogger().error('Failed to broker request-portal sign-in', error,
-          stack);
+      // Log the failure TYPE and stack only — never the error object: a
+      // FormatException from a non-JSON gateway response carries the raw body,
+      // which must not reach the log for the session-broker path.
+      LunaLogger().error(
+        'Failed to broker request-portal sign-in (${error.runtimeType})',
+        null,
+        stack,
+      );
       if (!mounted) return;
       setState(() {
         _phase = _Phase.error;
@@ -142,20 +148,30 @@ class _State extends State<RequestsRoute> {
     }
 
     // Pre-set the session cookie for the portal origin BEFORE the first load —
-    // the whole point of the broker. Session cookies (expires:0) live only in
-    // the webview cookie store and are cleared when it is torn down; we never
-    // write the cookie to Hive or secure storage.
-    await WebViewCookieManager().setCookie(cookie);
+    // the whole point of the broker. The cookie lives ONLY in the webview
+    // cookie store (never Hive / secure storage); we clear that store first so
+    // no stale session lingers, and again on dispose() — Android's CookieManager
+    // can otherwise sync a session cookie to disk.
+    final cookies = WebViewCookieManager();
+    await cookies.clearCookies();
+    await cookies.setCookie(cookie);
 
+    final portalHost = Uri.tryParse(signin.url)?.host ?? '';
     final controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         NavigationDelegate(
           onHttpError: (error) {
             final status = error.response?.statusCode;
-            // A 401/403 on the main document means the session lapsed — re-
-            // broker a fresh cookie and reload once, then give up gracefully.
-            if ((status == 401 || status == 403) &&
+            // Only a 401/403 on the PORTAL'S OWN response means the session
+            // lapsed. A third-party subresource (image/API on another host)
+            // must NOT consume the single bounded re-broker. An empty request
+            // host (platform didn't populate it) falls back to "treat as
+            // portal" — the attempt is bounded either way.
+            final reqHost = error.request?.uri.host ?? '';
+            final isPortal = reqHost.isEmpty || reqHost == portalHost;
+            if (isPortal &&
+                (status == 401 || status == 403) &&
                 _rebrokerAttempts < _maxRebroker) {
               _rebrokerAttempts++;
               LunaLogger().debug(
@@ -173,6 +189,16 @@ class _State extends State<RequestsRoute> {
       _signin = signin;
       _phase = _Phase.ready;
     });
+  }
+
+  @override
+  void dispose() {
+    // The brokered session cookie lives only in the webview cookie store —
+    // clear it on teardown so it never lingers (Android's CookieManager can
+    // otherwise persist session cookies to disk). Fire-and-forget: dispose
+    // can't await, and re-entry re-brokers a fresh cookie anyway.
+    if (_webviewSupported) WebViewCookieManager().clearCookies();
+    super.dispose();
   }
 
   @override

@@ -26,8 +26,9 @@ class SeerrCookie {
   final String name;
   final String value;
 
-  /// Absolute expiry as UNIX seconds; 0 means a session cookie (cleared when
-  /// the webview's cookie store is torn down).
+  /// Absolute expiry as UNIX seconds; 0 means a session cookie. The app injects
+  /// it as a session cookie either way (WebViewCookie has no expiry field) and
+  /// clears the webview cookie store on teardown, so nothing is persisted.
   final int expires;
   final String path;
 
@@ -41,13 +42,12 @@ class SeerrCookie {
   bool get isValid => name.isNotEmpty && value.isNotEmpty;
 
   factory SeerrCookie.fromJson(Map<String, dynamic> json) {
+    final path = seerrStr(json['path']).trim();
     return SeerrCookie(
-      name: (json['name'] as String? ?? '').trim(),
-      value: (json['value'] as String? ?? '').trim(),
+      name: seerrStr(json['name']).trim(),
+      value: seerrStr(json['value']).trim(),
       expires: _asInt(json['expires']),
-      path: (json['path'] as String? ?? '/').trim().isEmpty
-          ? '/'
-          : (json['path'] as String).trim(),
+      path: path.isEmpty ? '/' : path,
     );
   }
 
@@ -58,6 +58,11 @@ class SeerrCookie {
     return 0;
   }
 }
+
+/// Defensive string coercion for gateway JSON: a malformed non-string value
+/// (a number, bool, list…) must never throw a runtime cast — it degrades to
+/// empty, which every refusal/availability helper already handles.
+String seerrStr(dynamic value) => value is String ? value : '';
 
 /// Shared refusal-classification over the `{ok, error}` envelope, so the status
 /// snapshot and the sign-in result read the server's graceful-degradation
@@ -78,12 +83,13 @@ mixin SeerrEnvelope {
       statusCode == 404 || _err.contains('unknown request');
 
   /// This person has no request-portal access — no `seerr` badge, or the pod
-  /// isn't deployed. The module hides.
+  /// isn't deployed. Matched on the FROZEN refusal string only, so an
+  /// incidental "request-portal access" substring (e.g. "request-portal access
+  /// check failed") can't authoritatively disable a working module — an
+  /// unrecognized refusal falls through to "preserve stored state" (mirrors the
+  /// Jellyfin module's narrow matching).
   bool get hasNoAccess =>
-      !ok &&
-      !isUnavailable &&
-      (_err.contains('no request-portal access') ||
-          _err.contains('request-portal access'));
+      !ok && !isUnavailable && _err.contains('no request-portal access');
 
   /// The person holds `seerr` but has no Jellyfin identity to sign in with —
   /// the server couples them. Show a soft "ask your admin for Jellyfin access"
@@ -148,8 +154,8 @@ class SeerrSelf with SeerrEnvelope {
       ok: json['ok'] == true,
       statusCode: statusCode,
       error: error == null ? null : error.toString(),
-      pod: (json['pod'] as String? ?? '').trim(),
-      url: (json['url'] as String? ?? '').trim().replaceAll(RegExp(r'/+$'), ''),
+      pod: seerrStr(json['pod']).trim(),
+      url: seerrStr(json['url']).trim().replaceAll(RegExp(r'/+$'), ''),
     );
   }
 }
@@ -204,8 +210,8 @@ class SeerrSignin with SeerrEnvelope {
       ok: json['ok'] == true,
       statusCode: statusCode,
       error: error == null ? null : error.toString(),
-      pod: (json['pod'] as String? ?? '').trim(),
-      url: (json['url'] as String? ?? '').trim().replaceAll(RegExp(r'/+$'), ''),
+      pod: seerrStr(json['pod']).trim(),
+      url: seerrStr(json['url']).trim().replaceAll(RegExp(r'/+$'), ''),
       cookie: cookie is Map<String, dynamic>
           ? SeerrCookie.fromJson(cookie)
           : null,

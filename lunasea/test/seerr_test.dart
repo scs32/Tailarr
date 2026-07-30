@@ -188,6 +188,38 @@ void main() {
       expect(signin.isTransient, isFalse);
     });
 
+    test('a transient "access" message is NOT authoritative no-access', () {
+      // Must NOT flip seerrEnabled off — it falls through to "preserve state".
+      final signin = SeerrSignin.fromJson({
+        'ok': false,
+        'error': 'could not verify request-portal access (HTTP 502)',
+      }, statusCode: 200);
+      expect(signin.hasNoAccess, isFalse);
+      expect(signin.isTransient, isTrue);
+    });
+
+    test('cookie parses with a missing path (defaults to "/", no crash)', () {
+      final signin = SeerrSignin.fromJson({
+        'ok': true,
+        'pod': 'seerr',
+        'url': 'https://seerr.ts.net',
+        'cookie': {'name': 'connect.sid', 'value': 's:p'},
+      }, statusCode: 200);
+      expect(signin.isReady, isTrue);
+      expect(signin.cookie!.path, '/');
+    });
+
+    test('malformed non-string fields degrade to empty, never throw', () {
+      final signin = SeerrSignin.fromJson({
+        'ok': true,
+        'pod': 123,
+        'url': ['not', 'a', 'string'],
+      }, statusCode: 200);
+      expect(signin.pod, isEmpty);
+      expect(signin.url, isEmpty);
+      expect(signin.isReady, isFalse);
+    });
+
     test('sign-in HTTP failure is transient (offer retry)', () {
       final signin = SeerrSignin.fromJson({
         'ok': false,
@@ -287,6 +319,33 @@ void main() {
 
     test('null cookie yields null', () {
       expect(seerrWebViewCookie('https://seerr.ts.net', null), isNull);
+    });
+
+    test('rejects a non-https portal URL (no cleartext session)', () {
+      final cookie = seerrWebViewCookie(
+        'http://seerr.ts.net',
+        const SeerrCookie(
+            name: 'connect.sid', value: 's:a', expires: 0, path: '/'),
+      );
+      expect(cookie, isNull);
+    });
+
+    test('rejects a URL carrying userinfo', () {
+      final cookie = seerrWebViewCookie(
+        'https://evil@seerr.ts.net',
+        const SeerrCookie(
+            name: 'connect.sid', value: 's:a', expires: 0, path: '/'),
+      );
+      expect(cookie, isNull);
+    });
+
+    test('only injects the connect.sid session cookie', () {
+      final cookie = seerrWebViewCookie(
+        'https://seerr.ts.net',
+        const SeerrCookie(
+            name: 'other', value: 's:a', expires: 0, path: '/'),
+      );
+      expect(cookie, isNull);
     });
   });
 }
