@@ -108,6 +108,28 @@ void main() {
       expect(response.isUnavailable, isFalse);
     });
 
+    test('APP-7: "Unknown user." refusal is account-gone, not unassigned', () {
+      final response = parse('{"ok": false, "error": "Unknown user."}');
+      expect(response.isAccountGone, isTrue);
+      // Distinct from an unassigned/not-yet-assigned device (recoverable) and
+      // never a version-skew "unavailable".
+      expect(response.isUnassigned, isFalse);
+      expect(response.isUnavailable, isTrue); // no services payload
+    });
+
+    test('APP-7: an unassigned device is NOT account-gone', () {
+      final response = parse(
+        '{"ok": false, "error": "this device is not assigned to a user"}',
+      );
+      expect(response.isAccountGone, isFalse);
+      expect(response.isUnassigned, isTrue);
+    });
+
+    test('APP-7: a healthy services payload is never account-gone', () {
+      final response = parse(CONTRACT_FIXTURE);
+      expect(response.isAccountGone, isFalse);
+    });
+
     test('no ui object → full experience (default people, older servers)', () {
       final response = parse(CONTRACT_FIXTURE);
       expect(response.ui.basic, isFalse);

@@ -238,6 +238,19 @@ class GatewayServicesResponse {
   bool get isUnassigned =>
       !ok && (error ?? '').toLowerCase().contains('not assigned');
 
+  /// APP-7: the account this device belonged to was removed from the server
+  /// ENTIRELY. The gateway still resolves this device to a person id (its
+  /// person tag hasn't been reconciled off yet), but the server no longer
+  /// knows that person — it answers `{"ok": false, "error": "Unknown user."}`.
+  /// This is DISTINCT from [isUnassigned]: an unassigned (or freshly-enrolled,
+  /// not-yet-assigned) device carries no person id and gets "not assigned",
+  /// which is recoverable by an admin assigning it — whereas an "unknown user"
+  /// means the bound account is gone and the session can only recover via a
+  /// fresh invite. The app uses this to drop a server-owned profile back to the
+  /// safe no-server demo preview instead of a broken/stale session.
+  bool get isAccountGone =>
+      !ok && (error ?? '').toLowerCase().contains('unknown user');
+
   factory GatewayServicesResponse.fromJson(
     Map<String, dynamic> json, {
     int? statusCode,

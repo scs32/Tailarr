@@ -363,6 +363,60 @@ class LunaProfileTools {
     }
   }
 
+  /// APP-7: the person this server-owned profile belonged to was removed from
+  /// the server entirely (the gateway resolves this device to a user the server
+  /// no longer knows — the gateway's `isAccountGone` signal). The server
+  /// session is dead and can't recover without a fresh invite, so fall back to
+  /// the safe no-server DEMO preview instead of leaving the app on a broken /
+  /// stale session, an error dead-end, or an endless spinner.
+  ///
+  /// Enters demo FIRST (which creates + switches to the name-locked `Demo`
+  /// profile) so the dead server profile is no longer active, then removes it —
+  /// forgetting its orphaned tailnet node and purging its notification state,
+  /// exactly like [leaveServer]. Reversible: a new invite re-creates a
+  /// server-owned profile. No-op (returns false) when the active profile isn't
+  /// server-owned. Best-effort — a side-effect failure never leaves the app
+  /// wedged on the dead server.
+  Future<bool> fallbackToDemoOnAccountRemoved() async {
+    final current = LunaSeaDatabase.ENABLED_PROFILE.read();
+    final leaving = LunaBox.profiles.read(current);
+    if (leaving == null || !leaving.serverOwned) return false;
+
+    // Box mutations FIRST and unconditionally — they decide the app's shell
+    // state and must NOT be stranded by a flaky node/ntfy side-effect. This
+    // mirrors leaveDemo's hardening: previously `enterDemo`→`_changeTo`'s
+    // channel calls could throw AFTER switching but BEFORE the dead server
+    // profile was removed, leaving it behind (its orphaned node + live ntfy
+    // creds — the exact H4 leak `_remove` exists to prevent). Create + switch
+    // into the demo profile so the server profile is inactive and removable.
+    await LunaBox.profiles.update(DemoMode.profileName, DemoMode.build());
+    LunaSeaDatabase.ENABLED_PROFILE.update(DemoMode.profileName);
+
+    // Remove the now-inactive dead server profile — _remove forgets its
+    // orphaned tailnet node and purges its notification credentials. Isolated
+    // so a purge/forget hiccup can't leave the app back on the dead server.
+    try {
+      await _remove(current);
+    } catch (error, trace) {
+      LunaLogger()
+          .error('Account-removed profile removal failed', error, trace);
+    }
+
+    // Best-effort session refresh for the now-active demo profile — never
+    // blocks or reverts the fallback.
+    try {
+      LunaState.reset();
+      IO.syncTailscaleToProfile();
+      LunaNtfy().onConfigChanged();
+    } catch (error, trace) {
+      LunaLogger()
+          .error('Demo fallback side-effects failed', error, trace);
+    }
+    LunaLogger()
+        .debug('Account removed on "$current" → fell back to demo mode');
+    return true;
+  }
+
   /// Enter the bundled read-only demo (see [DemoMode]). Creates/refreshes the
   /// name-locked `Demo` profile with the showcase modules server-managed
   /// against the demo sentinel host, then switches to it.

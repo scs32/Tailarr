@@ -403,6 +403,17 @@ class GatewayServicesSync {
       'kind=${response.kind} error=${response.error} '
       'services=${response.services?.length}',
     );
+    // APP-7: the person this device belonged to was removed from the server
+    // entirely — the gateway resolves us to a user it no longer knows
+    // ("Unknown user."). The server session is dead and can't recover without
+    // a fresh invite, so drop a server-owned profile back to the safe
+    // no-server demo preview rather than leave a broken/stale session behind.
+    // Only fires for the current server-owned profile (a standalone/demo
+    // profile never reaches a real gateway).
+    if (response.isAccountGone && LunaProfile.current.serverOwned) {
+      await LunaProfileTools().fallbackToDemoOnAccountRemoved();
+      return GatewayServicesOutcome(response: response);
+    }
     if (!response.ok || !response.isSupported) {
       return GatewayServicesOutcome(response: response);
     }
