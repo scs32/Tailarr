@@ -17,6 +17,7 @@ import 'package:lunasea/database/tables/lunasea.dart';
 import 'package:lunasea/database/tables/notifications.dart';
 import 'package:lunasea/system/gateway/gateway_host.dart';
 import 'package:lunasea/system/gateway/gateway_jellyfin.dart';
+import 'package:lunasea/system/gateway/gateway_seerr.dart';
 import 'package:lunasea/system/gateway/gateway_services.dart';
 import 'package:lunasea/system/logger.dart';
 import 'package:lunasea/system/notifications/ntfy_hive_migration.dart';
@@ -576,6 +577,7 @@ class NtfySync {
       LunaLogger().debug('gateway config-changed signal → forced re-sync');
       await GatewayServicesSync.refresh(force: true);
       await GatewayJellyfinSync.refresh(force: true);
+      await GatewaySeerrSync.refresh(force: true);
     });
   }
 
@@ -690,6 +692,7 @@ class NtfyStreamManager with WidgetsBindingObserver {
       // (both self-throttled).
       await GatewayServicesSync.refresh();
       await GatewayJellyfinSync.refresh();
+      await GatewaySeerrSync.refresh();
       await NtfySync.refreshFromGateway();
       unawaited(NtfyPush.register());
       if (!_foreground || generation != _generation) return;

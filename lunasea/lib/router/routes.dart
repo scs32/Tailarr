@@ -10,6 +10,7 @@ import 'package:lunasea/router/routes/lidarr.dart';
 import 'package:lunasea/router/routes/notifications.dart';
 import 'package:lunasea/router/routes/nzbget.dart';
 import 'package:lunasea/router/routes/radarr.dart';
+import 'package:lunasea/router/routes/requests.dart';
 import 'package:lunasea/router/routes/sabnzbd.dart';
 import 'package:lunasea/router/routes/search.dart';
 import 'package:lunasea/router/routes/settings.dart';
@@ -28,6 +29,7 @@ enum LunaRoutes {
   notifications('notifications', root: NotificationsRoutes.HOME),
   nzbget('nzbget', root: NZBGetRoutes.HOME),
   radarr('radarr', root: RadarrRoutes.HOME),
+  requests('requests', root: RequestsRoutes.HOME),
   sabnzbd('sabnzbd', root: SABnzbdRoutes.HOME),
   search('search', root: SearchRoutes.HOME),
   settings('settings', root: SettingsRoutes.HOME),

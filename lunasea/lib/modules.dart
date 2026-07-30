@@ -29,6 +29,7 @@ const MODULE_NOTIFICATIONS_KEY = 'notifications';
 const MODULE_NZBGET_KEY = 'nzbget';
 const MODULE_OVERSEERR_KEY = 'overseerr';
 const MODULE_RADARR_KEY = 'radarr';
+const MODULE_REQUESTS_KEY = 'requests';
 const MODULE_SABNZBD_KEY = 'sabnzbd';
 const MODULE_SEARCH_KEY = 'search';
 const MODULE_SETTINGS_KEY = 'settings';
@@ -55,6 +56,8 @@ enum LunaModule {
   OVERSEERR(MODULE_OVERSEERR_KEY),
   @HiveField(4)
   RADARR(MODULE_RADARR_KEY),
+  @HiveField(15)
+  REQUESTS(MODULE_REQUESTS_KEY),
   @HiveField(5)
   SABNZBD(MODULE_SABNZBD_KEY),
   @HiveField(6)
@@ -87,6 +90,8 @@ enum LunaModule {
         return LunaModule.NZBGET;
       case MODULE_RADARR_KEY:
         return LunaModule.RADARR;
+      case MODULE_REQUESTS_KEY:
+        return LunaModule.REQUESTS;
       case MODULE_SABNZBD_KEY:
         return LunaModule.SABNZBD;
       case MODULE_SEARCH_KEY:
@@ -154,6 +159,11 @@ extension LunaModuleEnablementExtension on LunaModule {
         return LunaProfile.current.overseerrEnabled;
       case LunaModule.RADARR:
         return LunaProfile.current.radarrEnabled;
+      case LunaModule.REQUESTS:
+        // Entirely server-driven: visible only when the caller's person holds a
+        // request-portal (seerr) badge with a provisioned account, as
+        // maintained by GatewaySeerrSync. Never a manual toggle.
+        return LunaProfile.current.seerrEnabled;
       case LunaModule.SABNZBD:
         return LunaProfile.current.sabnzbdEnabled;
       case LunaModule.SEARCH:
@@ -187,6 +197,8 @@ extension LunaModuleMetadataExtension on LunaModule {
         return 'NZBGet';
       case LunaModule.RADARR:
         return 'Radarr';
+      case LunaModule.REQUESTS:
+        return 'Requests';
       case LunaModule.SABNZBD:
         return 'SABnzbd';
       case LunaModule.SEARCH:
@@ -222,6 +234,8 @@ extension LunaModuleMetadataExtension on LunaModule {
         return LunaIcons.NZBGET;
       case LunaModule.RADARR:
         return LunaIcons.RADARR;
+      case LunaModule.REQUESTS:
+        return Icons.request_page_rounded;
       case LunaModule.SABNZBD:
         return LunaIcons.SABNZBD;
       case LunaModule.SEARCH:
@@ -257,6 +271,8 @@ extension LunaModuleMetadataExtension on LunaModule {
         return const Color(0xFF42D535);
       case LunaModule.RADARR:
         return const Color(0xFFFEC333);
+      case LunaModule.REQUESTS:
+        return const Color(0xFF6366F1);
       case LunaModule.SABNZBD:
         return const Color(0xFFFECC2B);
       case LunaModule.SEARCH:
@@ -292,6 +308,8 @@ extension LunaModuleMetadataExtension on LunaModule {
         return 'https://nzbget.net';
       case LunaModule.RADARR:
         return 'https://radarr.video';
+      case LunaModule.REQUESTS:
+        return 'https://docs.jellyseerr.com';
       case LunaModule.SABNZBD:
         return 'https://sabnzbd.org';
       case LunaModule.SEARCH:
@@ -327,6 +345,8 @@ extension LunaModuleMetadataExtension on LunaModule {
         return 'https://github.com/nzbget/nzbget';
       case LunaModule.RADARR:
         return 'https://github.com/Radarr/Radarr';
+      case LunaModule.REQUESTS:
+        return 'https://github.com/seerr-team/seerr';
       case LunaModule.SABNZBD:
         return 'https://github.com/sabnzbd/sabnzbd';
       case LunaModule.SEARCH:
@@ -362,6 +382,8 @@ extension LunaModuleMetadataExtension on LunaModule {
         return 'Manage Usenet Downloads';
       case LunaModule.RADARR:
         return 'Manage Movies';
+      case LunaModule.REQUESTS:
+        return 'Request Movies & Shows';
       case LunaModule.SABNZBD:
         return 'Manage Usenet Downloads';
       case LunaModule.SEARCH:
@@ -397,6 +419,8 @@ extension LunaModuleMetadataExtension on LunaModule {
         return 'NZBGet is a binary downloader, which downloads files from Usenet based on information given in nzb-files.';
       case LunaModule.RADARR:
         return 'Radarr is a movie collection manager for Usenet and BitTorrent users. It can monitor multiple RSS feeds for new movies and will interface with clients and indexers to grab, sort, and rename them. It can also be configured to automatically upgrade the quality of existing files in the library when a better quality format becomes available.';
+      case LunaModule.REQUESTS:
+        return 'The request portal lets you browse and request new movies and shows for your server. Your Tailarr Server signs you in automatically — no password to type — and your requests flow straight to the people who manage the library.';
       case LunaModule.SABNZBD:
         return 'SABnzbd is a multi-platform binary newsgroup downloader. The program works in the background and simplifies the downloading verifying and extracting of files from Usenet.';
       case LunaModule.SEARCH:
@@ -434,6 +458,8 @@ extension LunaModuleRoutingExtension on LunaModule {
         return LunaRoutes.nzbget.root.path;
       case LunaModule.RADARR:
         return LunaRoutes.radarr.root.path;
+      case LunaModule.REQUESTS:
+        return LunaRoutes.requests.root.path;
       case LunaModule.SABNZBD:
         return LunaRoutes.sabnzbd.root.path;
       case LunaModule.SEARCH:
@@ -472,6 +498,9 @@ extension LunaModuleRoutingExtension on LunaModule {
         return null;
       case LunaModule.RADARR:
         return SettingsRoutes.CONFIGURATION_RADARR;
+      case LunaModule.REQUESTS:
+        // Member-only, entirely server-driven: nothing to configure.
+        return null;
       case LunaModule.SABNZBD:
         return SettingsRoutes.CONFIGURATION_SABNZBD;
       case LunaModule.SEARCH:
@@ -571,6 +600,10 @@ extension LunaModuleExtension on LunaModule {
         return context.read<LidarrState>();
       case LunaModule.RADARR:
         return context.read<RadarrState>();
+      case LunaModule.REQUESTS:
+        // Stateless, like JELLYFIN — the screen brokers a session straight from
+        // the gateway; there is no user-assembled config to hold.
+        return null;
       case LunaModule.SONARR:
         return context.read<SonarrState>();
       case LunaModule.NOTIFICATIONS:

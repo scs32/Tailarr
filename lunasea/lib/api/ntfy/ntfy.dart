@@ -11,6 +11,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:lunasea/api/jellyfin/models.dart';
 import 'package:lunasea/api/ntfy/models.dart';
+import 'package:lunasea/api/seerr/models.dart';
 
 /// Client for the tailarr-gate self-service endpoint (server v0.21.0+).
 ///
@@ -174,6 +175,62 @@ class NtfyGatewayClient {
   /// passwordless / Quick-Connect-only).
   Future<JellyfinActionResult> selfJellyfinPassword(String password) async {
     return _jellyfinAction('self/jellyfin/password', {'password': password});
+  }
+
+  /// Returns the CALLER'S request-portal (Seerr) availability snapshot
+  /// (want:"seerr"). Read-only — mints NO Seerr session; it only reports
+  /// whether this person has a deployed, badged portal, so the module can
+  /// decide visibility cheaply. Older gates (before the /self/seerr route
+  /// deploy) 404 → [SeerrSelf.isUnavailable], not an exception. Throws only on
+  /// transport errors.
+  Future<SeerrSelf> selfSeerr() async {
+    final response = await httpClient.get('self/seerr');
+    final data = response.data;
+    if (data is! Map<String, dynamic>) {
+      // Pre-support gates answer with a non-JSON 404 page.
+      if (response.statusCode == 404) {
+        return SeerrSelf(
+          ok: false,
+          error: 'unknown request',
+          pod: '',
+          url: '',
+          statusCode: response.statusCode,
+        );
+      }
+      throw FormatException(
+        'Unexpected gateway response '
+        '(HTTP ${response.statusCode}): ${response.data}'.trim(),
+      );
+    }
+    return SeerrSelf.fromJson(data, statusCode: response.statusCode);
+  }
+
+  /// The app-brokered request-portal sign-in (want:"seerr-signin"). The server
+  /// replays the member's stored Jellyfin password into Seerr on their behalf
+  /// and returns a `connect.sid` session cookie + the portal URL — the member
+  /// never types a password. No body: the person is whois-resolved. Refusals
+  /// (not-ready / no-Jellyfin-identity / no-access) come back parsed on the
+  /// envelope, not as exceptions; throws only on transport errors.
+  Future<SeerrSignin> selfSeerrSignin() async {
+    final response = await httpClient.post('self/seerr/signin');
+    final data = response.data;
+    if (data is! Map<String, dynamic>) {
+      if (response.statusCode == 404) {
+        return SeerrSignin(
+          ok: false,
+          error: 'unknown request',
+          pod: '',
+          url: '',
+          cookie: null,
+          statusCode: response.statusCode,
+        );
+      }
+      throw FormatException(
+        'Unexpected gateway response '
+        '(HTTP ${response.statusCode}): ${response.data}'.trim(),
+      );
+    }
+    return SeerrSignin.fromJson(data, statusCode: response.statusCode);
   }
 
   Future<JellyfinActionResult> _jellyfinAction(
