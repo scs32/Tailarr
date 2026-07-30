@@ -494,12 +494,22 @@ class NtfySync {
     return _store(messages, slice, state);
   }
 
-  /// Stores stream-delivered messages (active profile) through the same
-  /// dedupe/marker path.
-  static Future<int> storeMessages(List<NtfyMessage> messages) async {
-    final profile = LunaSeaDatabase.ENABLED_PROFILE.read();
+  /// Stores stream-delivered messages through the same dedupe/marker path.
+  ///
+  /// L5: file against the [profile] the stream was opened FOR (captured by the
+  /// caller at connect time), NOT whatever profile happens to be active when
+  /// the message lands. A notification arriving the instant the user switches
+  /// profiles would otherwise be filed under — and advance the inbox marker of
+  /// — the wrong server. Falls back to the active profile when the caller
+  /// doesn't pin one. Mirrors the dismissal-race fix ([recordDismissed], which
+  /// pins to a caller-supplied profile for the same reason).
+  static Future<int> storeMessages(
+    List<NtfyMessage> messages, {
+    String? profile,
+  }) async {
+    final target = profile ?? LunaSeaDatabase.ENABLED_PROFILE.read();
     final state = await NtfySharedState.load();
-    return _store(messages, state.slice(profile), state);
+    return _store(messages, state.slice(target), state);
   }
 
   static Future<int> _store(
@@ -698,7 +708,10 @@ class NtfyStreamManager with WidgetsBindingObserver {
         await for (final message in stream) {
           if (generation != _generation) return;
           backoff = 5;
-          await NtfySync.storeMessages([message]);
+          // L5: pin to the profile this stream belongs to (`active`, captured
+          // at connect above), so a profile switch mid-stream can't mis-file a
+          // just-arrived message under the newly-active server.
+          await NtfySync.storeMessages([message], profile: active);
         }
       } catch (error) {
         if (generation != _generation) return;
