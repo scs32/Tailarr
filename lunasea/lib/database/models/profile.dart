@@ -148,6 +148,22 @@ class LunaProfile extends HiveObject {
   @HiveField(37, defaultValue: '')
   String jellyfinUrl;
 
+  /// The caller's person has a `seerr` badge and a provisioned request-portal
+  /// (Seerr) account reachable via the app-brokered sign-in (want:seerr-signin).
+  /// Set by [GatewaySeerrSync] probing the read-only `self/seerr` status; when
+  /// false the Requests module is hidden. Never a manual toggle — the portal is
+  /// entirely server-driven, exactly like [jellyfinEnabled].
+  @JsonKey()
+  @HiveField(55, defaultValue: false)
+  bool seerrEnabled;
+
+  /// Last known request-portal base URL for this person (https MagicDNS).
+  /// Persisted so a stopped pod (`url:""` in the handout) keeps showing the
+  /// prior value instead of blanking out.
+  @JsonKey()
+  @HiveField(56, defaultValue: '')
+  String seerrUrl;
+
   @JsonKey()
   @HiveField(44, defaultValue: false)
   bool tailarrServerEnabled;
@@ -283,6 +299,9 @@ class LunaProfile extends HiveObject {
     //Jellyfin
     required this.jellyfinEnabled,
     required this.jellyfinUrl,
+    //Requests (Seerr)
+    required this.seerrEnabled,
+    required this.seerrUrl,
     //Tailarr Server
     required this.tailarrServerEnabled,
     required this.tailarrServerHost,
@@ -343,6 +362,9 @@ class LunaProfile extends HiveObject {
     //Jellyfin
     bool? jellyfinEnabled,
     String? jellyfinUrl,
+    //Requests (Seerr)
+    bool? seerrEnabled,
+    String? seerrUrl,
     //Tailarr Server
     bool? tailarrServerEnabled,
     String? tailarrServerHost,
@@ -402,6 +424,9 @@ class LunaProfile extends HiveObject {
       // Jellyfin
       jellyfinEnabled: jellyfinEnabled ?? false,
       jellyfinUrl: jellyfinUrl ?? '',
+      // Requests (Seerr)
+      seerrEnabled: seerrEnabled ?? false,
+      seerrUrl: seerrUrl ?? '',
       // Tailarr Server
       tailarrServerEnabled: tailarrServerEnabled ?? false,
       tailarrServerHost: tailarrServerHost ?? '',
