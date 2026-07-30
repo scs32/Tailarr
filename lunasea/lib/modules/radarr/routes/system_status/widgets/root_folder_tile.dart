@@ -6,9 +6,9 @@ class RadarrRootFolderTile extends StatelessWidget {
   final RadarrRootFolder rootFolder;
 
   const RadarrRootFolderTile({
-    Key? key,
+    super.key,
     required this.rootFolder,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

@@ -6,8 +6,8 @@ import 'package:lunasea/types/list_view_option.dart';
 
 class ConfigurationRadarrDefaultOptionsRoute extends StatefulWidget {
   const ConfigurationRadarrDefaultOptionsRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<ConfigurationRadarrDefaultOptionsRoute> createState() => _State();

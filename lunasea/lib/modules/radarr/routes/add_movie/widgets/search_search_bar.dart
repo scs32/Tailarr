@@ -9,11 +9,11 @@ class RadarrAddMovieSearchSearchBar extends StatefulWidget
   final ScrollController scrollController;
 
   const RadarrAddMovieSearchSearchBar({
-    Key? key,
+    super.key,
     required this.query,
     required this.autofocus,
     required this.scrollController,
-  }) : super(key: key);
+  });
 
   @override
   Size get preferredSize =>

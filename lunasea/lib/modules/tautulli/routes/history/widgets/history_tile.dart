@@ -8,9 +8,9 @@ class TautulliHistoryTile extends StatelessWidget {
   final TautulliHistoryRecord history;
 
   const TautulliHistoryTile({
-    Key? key,
+    super.key,
     required this.history,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

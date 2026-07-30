@@ -6,9 +6,9 @@ class NotEnabledPage extends StatelessWidget {
   final String module;
 
   NotEnabledPage({
-    Key? key,
+    super.key,
     required this.module,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

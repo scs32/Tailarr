@@ -6,8 +6,8 @@ import 'package:lunasea/router/routes/lidarr.dart';
 
 class LidarrRoute extends StatefulWidget {
   const LidarrRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<LidarrRoute> createState() => _State();

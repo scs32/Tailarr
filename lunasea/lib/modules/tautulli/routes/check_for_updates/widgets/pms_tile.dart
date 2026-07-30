@@ -6,9 +6,9 @@ class TautulliCheckForUpdatesPMSTile extends StatelessWidget {
   final TautulliPMSUpdate update;
 
   const TautulliCheckForUpdatesPMSTile({
-    Key? key,
+    super.key,
     required this.update,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

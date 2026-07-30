@@ -5,8 +5,8 @@ import 'package:lunasea/modules/settings.dart';
 class ConfigurationTailarrServerConnectionDetailsHeadersRoute
     extends StatelessWidget {
   const ConfigurationTailarrServerConnectionDetailsHeadersRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {

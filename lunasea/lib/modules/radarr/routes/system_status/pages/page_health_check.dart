@@ -6,9 +6,9 @@ class RadarrSystemStatusHealthCheckPage extends StatefulWidget {
   final ScrollController scrollController;
 
   const RadarrSystemStatusHealthCheckPage({
-    Key? key,
+    super.key,
     required this.scrollController,
-  }) : super(key: key);
+  });
 
   @override
   State<RadarrSystemStatusHealthCheckPage> createState() => _State();

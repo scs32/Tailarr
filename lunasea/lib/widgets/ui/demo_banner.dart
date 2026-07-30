@@ -15,7 +15,7 @@ import 'package:lunasea/widgets/ui.dart';
 class DemoModeBanner extends StatelessWidget {
   final Widget? child;
 
-  const DemoModeBanner({Key? key, required this.child}) : super(key: key);
+  const DemoModeBanner({super.key, required this.child});
 
   @override
   Widget build(BuildContext context) {
@@ -59,7 +59,7 @@ class DemoModeBanner extends StatelessWidget {
                 onPressed: () => _exit(context),
                 style: TextButton.styleFrom(
                   foregroundColor: Colors.white,
-                  backgroundColor: Colors.white.withOpacity(0.18),
+                  backgroundColor: Colors.white.withValues(alpha: 0.18),
                 ),
                 child: const Text('Exit'),
               ),

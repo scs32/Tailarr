@@ -7,9 +7,9 @@ class RadarrAddMovieSearchPage extends StatefulWidget {
   final bool autofocusSearchBar;
 
   const RadarrAddMovieSearchPage({
-    Key? key,
+    super.key,
     required this.autofocusSearchBar,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

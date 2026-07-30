@@ -10,10 +10,10 @@ class TautulliStatisticsMediaTile extends StatefulWidget {
   final TautulliMediaType mediaType;
 
   const TautulliStatisticsMediaTile({
-    Key? key,
+    super.key,
     required this.data,
     required this.mediaType,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

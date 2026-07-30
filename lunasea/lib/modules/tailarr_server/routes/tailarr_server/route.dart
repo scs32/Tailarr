@@ -7,8 +7,8 @@ import 'package:lunasea/router/routes/tailarr_server.dart';
 
 class TailarrServerRoute extends StatefulWidget {
   const TailarrServerRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<TailarrServerRoute> createState() => _State();

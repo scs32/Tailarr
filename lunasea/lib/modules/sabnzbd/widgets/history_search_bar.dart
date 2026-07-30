@@ -6,9 +6,9 @@ class SABnzbdHistorySearchBar extends StatefulWidget {
   final ScrollController scrollController;
 
   const SABnzbdHistorySearchBar({
-    Key? key,
+    super.key,
     required this.scrollController,
-  }) : super(key: key);
+  });
 
   @override
   State<SABnzbdHistorySearchBar> createState() => _State();

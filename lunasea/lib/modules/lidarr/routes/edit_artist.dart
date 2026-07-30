@@ -9,10 +9,10 @@ class ArtistEditRoute extends StatefulWidget {
   final int? artistId;
 
   const ArtistEditRoute({
-    Key? key,
+    super.key,
     required this.data,
     required this.artistId,
-  }) : super(key: key);
+  });
 
   @override
   State<ArtistEditRoute> createState() => _State();

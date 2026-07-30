@@ -55,7 +55,7 @@ class TautulliLineGraphHelper {
           show: true,
           color: LunaColours()
               .byGraphLayer(sIndex)
-              .withOpacity(LunaUI.OPACITY_SPLASH),
+              .withValues(alpha: LunaUI.OPACITY_SPLASH),
         ),
         dotData: FlDotData(
           show: true,
@@ -114,7 +114,7 @@ class TautulliLineGraphHelper {
         (index) => TouchedSpotIndicatorData(
           FlLine(
             strokeWidth: 3.0,
-            color: bar.color!.withOpacity(LunaUI.OPACITY_DISABLED),
+            color: bar.color!.withValues(alpha: LunaUI.OPACITY_DISABLED),
           ),
           FlDotData(
             show: true,

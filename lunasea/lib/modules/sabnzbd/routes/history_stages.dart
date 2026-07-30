@@ -7,9 +7,9 @@ class HistoryStagesRoute extends StatefulWidget {
   final SABnzbdHistoryData? history;
 
   const HistoryStagesRoute({
-    Key? key,
+    super.key,
     required this.history,
-  }) : super(key: key);
+  });
 
   @override
   State<HistoryStagesRoute> createState() => _State();

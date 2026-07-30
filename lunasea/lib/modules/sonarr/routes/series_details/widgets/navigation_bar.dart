@@ -20,9 +20,9 @@ class SonarrSeriesDetailsNavigationBar extends StatelessWidget {
   final PageController? pageController;
 
   const SonarrSeriesDetailsNavigationBar({
-    Key? key,
+    super.key,
     required this.pageController,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

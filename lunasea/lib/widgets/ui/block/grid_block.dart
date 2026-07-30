@@ -32,7 +32,7 @@ class LunaGridBlock extends StatelessWidget {
   final Function? onLongPress;
 
   const LunaGridBlock({
-    Key? key,
+    super.key,
     this.disabled = false,
     required this.title,
     required this.subtitle,
@@ -46,7 +46,7 @@ class LunaGridBlock extends StatelessWidget {
     this.posterIsSquare = false,
     this.onTap,
     this.onLongPress,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

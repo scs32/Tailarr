@@ -4,8 +4,8 @@ import 'package:lunasea/modules/external_modules/routes/external_modules/widgets
 
 class ExternalModulesRoute extends StatefulWidget {
   const ExternalModulesRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<ExternalModulesRoute> createState() => _State();

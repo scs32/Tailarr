@@ -7,10 +7,10 @@ class MediaDetailsRoute extends StatefulWidget {
   final TautulliMediaType mediaType;
 
   const MediaDetailsRoute({
-    Key? key,
+    super.key,
     required this.ratingKey,
     required this.mediaType,
-  }) : super(key: key);
+  });
 
   @override
   State<MediaDetailsRoute> createState() => _State();

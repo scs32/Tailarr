@@ -11,9 +11,9 @@ class LidarrReleasesTile extends StatefulWidget {
   final LidarrReleaseData release;
 
   const LidarrReleasesTile({
-    Key? key,
+    super.key,
     required this.release,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

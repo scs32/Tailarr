@@ -15,8 +15,8 @@ import 'package:lunasea/system/notifications/notifications.dart';
 /// credential entry.
 class ConfigurationNotificationsRoute extends StatefulWidget {
   const ConfigurationNotificationsRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<ConfigurationNotificationsRoute> createState() => _State();

@@ -6,8 +6,8 @@ import 'package:lunasea/modules/settings/core/server_driven_connection.dart';
 
 class ConfigurationNZBGetRoute extends StatefulWidget {
   const ConfigurationNZBGetRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<ConfigurationNZBGetRoute> createState() => _State();

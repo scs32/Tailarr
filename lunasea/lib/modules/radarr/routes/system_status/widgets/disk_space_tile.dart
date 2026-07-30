@@ -6,9 +6,9 @@ class RadarrDiskSpaceTile extends StatelessWidget {
   final RadarrDiskSpace diskSpace;
 
   const RadarrDiskSpaceTile({
-    Key? key,
+    super.key,
     required this.diskSpace,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

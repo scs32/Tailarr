@@ -5,8 +5,8 @@ import 'package:lunasea/modules/sabnzbd.dart';
 
 class ConfigurationSABnzbdDefaultPagesRoute extends StatefulWidget {
   const ConfigurationSABnzbdDefaultPagesRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<ConfigurationSABnzbdDefaultPagesRoute> createState() => _State();

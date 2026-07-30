@@ -8,10 +8,10 @@ class AddMovieDetailsRoute extends StatefulWidget {
   final bool isDiscovery;
 
   const AddMovieDetailsRoute({
-    Key? key,
+    super.key,
     required this.movie,
     required this.isDiscovery,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

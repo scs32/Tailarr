@@ -7,9 +7,9 @@ class SonarrSeriesSearchBarSortButton extends StatefulWidget {
   final ScrollController controller;
 
   const SonarrSeriesSearchBarSortButton({
-    Key? key,
+    super.key,
     required this.controller,
-  }) : super(key: key);
+  });
 
   @override
   State<SonarrSeriesSearchBarSortButton> createState() => _State();

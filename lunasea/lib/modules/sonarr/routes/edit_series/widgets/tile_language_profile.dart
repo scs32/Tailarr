@@ -6,9 +6,9 @@ class SonarrSeriesEditLanguageProfileTile extends StatelessWidget {
   final List<SonarrLanguageProfile?> profiles;
 
   const SonarrSeriesEditLanguageProfileTile({
-    Key? key,
+    super.key,
     required this.profiles,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

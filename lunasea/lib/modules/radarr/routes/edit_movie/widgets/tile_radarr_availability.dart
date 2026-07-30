@@ -4,8 +4,8 @@ import 'package:lunasea/modules/radarr.dart';
 
 class RadarrMoviesEditMinimumAvailabilityTile extends StatelessWidget {
   const RadarrMoviesEditMinimumAvailabilityTile({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {

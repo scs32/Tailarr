@@ -3,7 +3,7 @@ import 'package:lunasea/core.dart';
 
 class LunaNetworkImage extends ClipRRect {
   LunaNetworkImage({
-    Key? key,
+    super.key,
     required BuildContext context,
     required double height,
     required double width,
@@ -11,7 +11,6 @@ class LunaNetworkImage extends ClipRRect {
     IconData? placeholderIcon,
     Map? headers,
   }) : super(
-          key: key,
           child: SizedBox(
             child: Stack(
               alignment: Alignment.center,

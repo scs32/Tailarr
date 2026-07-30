@@ -6,9 +6,9 @@ class SonarrTagsTagTile extends StatefulWidget {
   final SonarrTag tag;
 
   const SonarrTagsTagTile({
-    Key? key,
+    super.key,
     required this.tag,
-  }) : super(key: key);
+  });
 
   @override
   State<SonarrTagsTagTile> createState() => _State();

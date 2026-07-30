@@ -9,11 +9,11 @@ class ReleasesRoute extends StatefulWidget {
   final int? seasonNumber;
 
   const ReleasesRoute({
-    Key? key,
+    super.key,
     this.episodeId,
     this.seriesId,
     this.seasonNumber,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

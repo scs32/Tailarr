@@ -7,9 +7,9 @@ class SABnzbdQueue extends StatefulWidget {
   final GlobalKey<RefreshIndicatorState> refreshIndicatorKey;
 
   const SABnzbdQueue({
-    Key? key,
+    super.key,
     required this.refreshIndicatorKey,
-  }) : super(key: key);
+  });
 
   @override
   State<SABnzbdQueue> createState() => _State();

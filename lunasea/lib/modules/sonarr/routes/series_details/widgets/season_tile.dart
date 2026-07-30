@@ -12,10 +12,10 @@ class SonarrSeriesDetailsSeasonTile extends StatefulWidget {
   final int? seriesId;
 
   const SonarrSeriesDetailsSeasonTile({
-    Key? key,
+    super.key,
     required this.season,
     required this.seriesId,
-  }) : super(key: key);
+  });
 
   @override
   State<SonarrSeriesDetailsSeasonTile> createState() => _State();

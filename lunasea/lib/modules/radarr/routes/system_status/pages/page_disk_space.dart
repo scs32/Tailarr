@@ -6,9 +6,9 @@ class RadarrSystemStatusDiskSpacePage extends StatefulWidget {
   final ScrollController scrollController;
 
   const RadarrSystemStatusDiskSpacePage({
-    Key? key,
+    super.key,
     required this.scrollController,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

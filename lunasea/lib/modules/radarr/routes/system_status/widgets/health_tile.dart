@@ -7,9 +7,9 @@ class RadarrHealthCheckTile extends StatelessWidget {
   final RadarrHealthCheck healthCheck;
 
   const RadarrHealthCheckTile({
-    Key? key,
+    super.key,
     required this.healthCheck,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

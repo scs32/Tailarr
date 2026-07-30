@@ -5,8 +5,8 @@ import 'package:lunasea/router/routes/settings.dart';
 
 class ConfigurationExternalModulesRoute extends StatefulWidget {
   const ConfigurationExternalModulesRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<ConfigurationExternalModulesRoute> createState() => _State();

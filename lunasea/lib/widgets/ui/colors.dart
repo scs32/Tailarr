@@ -58,19 +58,19 @@ class LunaColours {
 
 extension LunaColor on Color {
   Color disabled([bool condition = true]) {
-    if (condition) return this.withOpacity(LunaUI.OPACITY_DISABLED);
+    if (condition) return this.withValues(alpha: LunaUI.OPACITY_DISABLED);
     return this;
   }
 
   Color enabled([bool condition = true]) {
     if (condition) return this;
-    return this.withOpacity(LunaUI.OPACITY_DISABLED);
+    return this.withValues(alpha: LunaUI.OPACITY_DISABLED);
   }
 
   Color selected([bool condition = true]) {
-    if (condition) return this.withOpacity(LunaUI.OPACITY_SELECTED);
+    if (condition) return this.withValues(alpha: LunaUI.OPACITY_SELECTED);
     return this;
   }
 
-  Color dimmed() => this.withOpacity(LunaUI.OPACITY_DIMMED);
+  Color dimmed() => this.withValues(alpha: LunaUI.OPACITY_DIMMED);
 }

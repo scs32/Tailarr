@@ -8,8 +8,8 @@ import 'package:tailscale_embed/tailscale_embed.dart';
 
 class ConfigurationGeneralTailscaleStatusRoute extends StatefulWidget {
   const ConfigurationGeneralTailscaleStatusRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State createState() => _State();

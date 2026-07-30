@@ -4,8 +4,8 @@ import 'package:lunasea/modules/radarr.dart';
 
 class RadarrAddMovieDetailsRootFolderTile extends StatelessWidget {
   const RadarrAddMovieDetailsRootFolderTile({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {

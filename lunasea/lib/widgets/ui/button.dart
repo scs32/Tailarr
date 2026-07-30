@@ -17,7 +17,7 @@ class LunaButton extends Card {
   LunaButton._({
     Key? key,
     required Widget child,
-    EdgeInsets margin = LunaUI.MARGIN_HALF,
+    EdgeInsets super.margin = LunaUI.MARGIN_HALF,
     Color? backgroundColor,
     double height = DEFAULT_HEIGHT,
     Alignment alignment = Alignment.center,
@@ -46,12 +46,11 @@ class LunaButton extends Card {
                   loadingState != LunaLoadingState.ACTIVE) onLongPress();
             },
           ),
-          margin: margin,
           color: backgroundColor != null
-              ? backgroundColor.withOpacity(LunaUI.OPACITY_DIMMED)
+              ? backgroundColor.withValues(alpha: LunaUI.OPACITY_DIMMED)
               : Theme.of(LunaState.context)
                   .canvasColor
-                  .withOpacity(LunaUI.OPACITY_DIMMED),
+                  .withValues(alpha: LunaUI.OPACITY_DIMMED),
           shape:
               backgroundColor != null ? LunaShapeBorder() : LunaUI.shapeBorder,
           elevation: LunaUI.ELEVATION,

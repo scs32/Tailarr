@@ -7,9 +7,9 @@ class RadarrMovieDetailsCastCrewTile extends StatelessWidget {
   final RadarrMovieCredits credits;
 
   const RadarrMovieDetailsCastCrewTile({
-    Key? key,
+    super.key,
     required this.credits,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

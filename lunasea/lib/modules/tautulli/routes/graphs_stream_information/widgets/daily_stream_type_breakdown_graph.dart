@@ -5,8 +5,8 @@ import 'package:lunasea/modules/tautulli.dart';
 
 class TautulliGraphsDailyStreamTypeBreakdownGraph extends StatelessWidget {
   const TautulliGraphsDailyStreamTypeBreakdownGraph({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) =>

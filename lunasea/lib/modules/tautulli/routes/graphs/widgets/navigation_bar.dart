@@ -17,9 +17,9 @@ class TautulliGraphsNavigationBar extends StatelessWidget {
   ];
 
   const TautulliGraphsNavigationBar({
-    Key? key,
+    super.key,
     required this.pageController,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

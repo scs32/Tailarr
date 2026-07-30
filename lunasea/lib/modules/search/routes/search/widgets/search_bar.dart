@@ -7,10 +7,10 @@ class SearchSearchBar extends StatefulWidget implements PreferredSizeWidget {
   final Function(String) submitCallback;
 
   const SearchSearchBar({
-    Key? key,
+    super.key,
     required this.submitCallback,
     required this.scrollController,
-  }) : super(key: key);
+  });
 
   @override
   Size get preferredSize =>

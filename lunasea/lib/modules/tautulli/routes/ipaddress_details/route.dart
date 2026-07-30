@@ -6,9 +6,9 @@ class IPDetailsRoute extends StatefulWidget {
   final String? ipAddress;
 
   const IPDetailsRoute({
-    Key? key,
+    super.key,
     required this.ipAddress,
-  }) : super(key: key);
+  });
 
   @override
   State<IPDetailsRoute> createState() => _State();

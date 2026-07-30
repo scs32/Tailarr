@@ -10,12 +10,12 @@ class SonarrSeriesDetailsOverviewInformationBlock extends StatelessWidget {
   final List<SonarrTag> tags;
 
   const SonarrSeriesDetailsOverviewInformationBlock({
-    Key? key,
+    super.key,
     required this.series,
     required this.qualityProfile,
     required this.languageProfile,
     required this.tags,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

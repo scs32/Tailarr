@@ -9,11 +9,11 @@ class SonarrEpisodeTile extends StatefulWidget {
   final List<SonarrQueueRecord>? queueRecords;
 
   const SonarrEpisodeTile({
-    Key? key,
+    super.key,
     required this.episode,
     this.episodeFile,
     this.queueRecords,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

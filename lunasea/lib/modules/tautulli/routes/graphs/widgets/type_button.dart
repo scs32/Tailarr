@@ -5,8 +5,8 @@ import 'package:lunasea/modules/tautulli.dart';
 
 class TautulliGraphsTypeButton extends StatelessWidget {
   const TautulliGraphsTypeButton({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) =>

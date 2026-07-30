@@ -15,7 +15,7 @@ class LunaIconButton extends StatelessWidget {
   final MouseCursor? mouseCursor;
 
   const LunaIconButton.arrow({
-    Key? key,
+    super.key,
     this.text,
     this.textSize = LunaUI.FONT_SIZE_H5,
     this.icon = LunaIcons.ARROW_RIGHT,
@@ -26,10 +26,10 @@ class LunaIconButton extends StatelessWidget {
     this.onLongPress,
     this.loadingState,
     this.mouseCursor,
-  }) : super(key: key);
+  });
 
   const LunaIconButton.appBar({
-    Key? key,
+    super.key,
     this.text,
     this.textSize = LunaUI.FONT_SIZE_H5,
     this.icon,
@@ -40,10 +40,10 @@ class LunaIconButton extends StatelessWidget {
     this.onLongPress,
     this.loadingState,
     this.mouseCursor,
-  }) : super(key: key);
+  });
 
   const LunaIconButton({
-    Key? key,
+    super.key,
     this.text,
     this.textSize = LunaUI.FONT_SIZE_H5,
     this.icon,
@@ -54,7 +54,7 @@ class LunaIconButton extends StatelessWidget {
     this.onLongPress,
     this.loadingState,
     this.mouseCursor,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

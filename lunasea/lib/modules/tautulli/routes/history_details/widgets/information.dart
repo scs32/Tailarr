@@ -9,10 +9,10 @@ class TautulliHistoryDetailsInformation extends StatelessWidget {
   final ScrollController scrollController;
 
   const TautulliHistoryDetailsInformation({
-    Key? key,
+    super.key,
     required this.history,
     required this.scrollController,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

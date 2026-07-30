@@ -7,9 +7,9 @@ class SettingsSystemLogTile extends StatelessWidget {
   final LunaLog log;
 
   const SettingsSystemLogTile({
-    Key? key,
+    super.key,
     required this.log,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

@@ -9,8 +9,8 @@ import 'package:lunasea/router/routes/tailarr_server.dart';
 
 class UsersRoute extends StatefulWidget {
   const UsersRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<UsersRoute> createState() => _State();

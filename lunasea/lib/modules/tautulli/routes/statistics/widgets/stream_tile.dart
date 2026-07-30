@@ -5,9 +5,9 @@ class TautulliStatisticsStreamTile extends StatefulWidget {
   final Map<String, dynamic> data;
 
   const TautulliStatisticsStreamTile({
-    Key? key,
+    super.key,
     required this.data,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

@@ -7,9 +7,9 @@ class LidarrDetailsEditButton extends StatefulWidget {
   final LidarrCatalogueData? data;
 
   const LidarrDetailsEditButton({
-    Key? key,
+    super.key,
     required this.data,
-  }) : super(key: key);
+  });
 
   @override
   State<LidarrDetailsEditButton> createState() => _State();

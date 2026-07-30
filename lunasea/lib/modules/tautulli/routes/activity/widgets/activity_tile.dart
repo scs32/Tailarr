@@ -9,10 +9,10 @@ class TautulliActivityTile extends StatelessWidget {
   final bool disableOnTap;
 
   const TautulliActivityTile({
-    Key? key,
+    super.key,
     required this.session,
     this.disableOnTap = false,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -102,7 +102,7 @@ class TautulliActivityTile extends StatelessWidget {
         children: [
           LunaLinearPercentIndicator(
             percent: session.lunaTranscodeProgress,
-            progressColor: LunaColours.accent.withOpacity(
+            progressColor: LunaColours.accent.withValues(alpha: 
               LunaUI.OPACITY_SPLASH,
             ),
             backgroundColor: Colors.transparent,
@@ -110,7 +110,7 @@ class TautulliActivityTile extends StatelessWidget {
           LunaLinearPercentIndicator(
             percent: session.lunaProgressPercent,
             progressColor: LunaColours.accent,
-            backgroundColor: LunaColours.grey.withOpacity(
+            backgroundColor: LunaColours.grey.withValues(alpha: 
               LunaUI.OPACITY_SPLASH,
             ),
           ),

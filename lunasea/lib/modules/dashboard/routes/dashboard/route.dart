@@ -11,8 +11,8 @@ import 'package:lunasea/modules/dashboard/routes/dashboard/widgets/navigation_ba
 
 class DashboardRoute extends StatefulWidget {
   const DashboardRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<DashboardRoute> createState() => _State();

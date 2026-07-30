@@ -19,9 +19,9 @@ class CalendarView extends StatefulWidget {
   final Map<DateTime, List<CalendarData>> events;
 
   const CalendarView({
-    Key? key,
+    super.key,
     required this.events,
-  }) : super(key: key);
+  });
 
   @override
   State<CalendarView> createState() => _State();
@@ -151,12 +151,12 @@ class _State extends State<CalendarView> {
                   outsideDaysVisible: false,
                   selectedDecoration: BoxDecoration(
                     color:
-                        LunaColours.accent.withOpacity(LunaUI.OPACITY_SPLASH),
+                        LunaColours.accent.withValues(alpha: LunaUI.OPACITY_SPLASH),
                     shape: BoxShape.circle,
                   ),
                   todayDecoration: BoxDecoration(
                     color: LunaColours.primary
-                        .withOpacity(LunaUI.OPACITY_DISABLED),
+                        .withValues(alpha: LunaUI.OPACITY_DISABLED),
                     shape: BoxShape.circle,
                   ),
                   weekendTextStyle: dayStyle,

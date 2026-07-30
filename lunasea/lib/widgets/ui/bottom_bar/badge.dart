@@ -4,13 +4,12 @@ import 'package:lunasea/core.dart';
 
 class LunaNavigationBarBadge extends badges.Badge {
   LunaNavigationBarBadge({
-    Key? key,
+    super.key,
     required String text,
     required IconData icon,
-    required bool showBadge,
+    required super.showBadge,
     required bool isActive,
   }) : super(
-          key: key,
           badgeStyle: badges.BadgeStyle(
             badgeColor: LunaColours.accent.dimmed(),
             elevation: LunaUI.ELEVATION,
@@ -32,6 +31,5 @@ class LunaNavigationBarBadge extends badges.Badge {
             icon,
             color: isActive ? LunaColours.accent : Colors.white,
           ),
-          showBadge: showBadge,
         );
 }

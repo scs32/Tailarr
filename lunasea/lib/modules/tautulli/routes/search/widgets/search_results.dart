@@ -6,9 +6,9 @@ class TautulliSearchSearchResults extends StatefulWidget {
   final ScrollController scrollController;
 
   const TautulliSearchSearchResults({
-    Key? key,
+    super.key,
     required this.scrollController,
-  }) : super(key: key);
+  });
 
   @override
   State<TautulliSearchSearchResults> createState() => _State();

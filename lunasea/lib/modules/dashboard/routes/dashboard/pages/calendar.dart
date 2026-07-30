@@ -10,7 +10,7 @@ import 'package:lunasea/modules/dashboard/routes/dashboard/widgets/calendar_view
 import 'package:lunasea/modules/dashboard/routes/dashboard/widgets/schedule_view.dart';
 
 class CalendarPage extends StatefulWidget {
-  const CalendarPage({Key? key}) : super(key: key);
+  const CalendarPage({super.key});
 
   @override
   State<CalendarPage> createState() => _State();

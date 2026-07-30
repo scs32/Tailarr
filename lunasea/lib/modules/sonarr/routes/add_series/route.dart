@@ -6,9 +6,9 @@ class AddSeriesRoute extends StatefulWidget {
   final String query;
 
   const AddSeriesRoute({
-    Key? key,
+    super.key,
     required this.query,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

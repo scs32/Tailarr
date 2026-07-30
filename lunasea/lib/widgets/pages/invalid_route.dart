@@ -8,11 +8,11 @@ class InvalidRoutePage extends StatelessWidget {
   final Exception? exception;
 
   InvalidRoutePage({
-    Key? key,
+    super.key,
     this.title,
     this.message,
     this.exception,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

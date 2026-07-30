@@ -17,18 +17,18 @@ class SonarrSeriesTile extends StatefulWidget {
   final _SonarrSeriesTileType type;
 
   const SonarrSeriesTile({
-    Key? key,
+    super.key,
     required this.series,
     required this.profile,
     this.type = _SonarrSeriesTileType.TILE,
-  }) : super(key: key);
+  });
 
   const SonarrSeriesTile.grid({
-    Key? key,
+    super.key,
     required this.series,
     required this.profile,
     this.type = _SonarrSeriesTileType.GRID,
-  }) : super(key: key);
+  });
 
   @override
   State<SonarrSeriesTile> createState() => _State();

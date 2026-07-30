@@ -4,8 +4,8 @@ import 'package:lunasea/modules/sonarr.dart';
 
 class TagsRoute extends StatefulWidget {
   const TagsRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

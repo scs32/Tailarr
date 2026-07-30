@@ -9,8 +9,8 @@ import 'package:lunasea/modules/settings/core/server_driven_connection.dart';
 
 class ConfigurationRadarrConnectionDetailsRoute extends StatefulWidget {
   const ConfigurationRadarrConnectionDetailsRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<ConfigurationRadarrConnectionDetailsRoute> createState() => _State();

@@ -15,7 +15,7 @@ class LunaBanner extends StatelessWidget {
   final List<LunaButton>? buttons;
 
   const LunaBanner({
-    Key? key,
+    super.key,
     this.dismissCallback,
     required this.headerText,
     this.bodyText,
@@ -25,7 +25,7 @@ class LunaBanner extends StatelessWidget {
     this.headerColor = Colors.white,
     this.bodyColor = LunaColours.grey,
     this.buttons,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

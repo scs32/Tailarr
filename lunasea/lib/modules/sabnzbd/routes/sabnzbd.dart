@@ -11,9 +11,9 @@ class SABnzbdRoute extends StatefulWidget {
   final bool showDrawer;
 
   const SABnzbdRoute({
-    Key? key,
+    super.key,
     this.showDrawer = true,
-  }) : super(key: key);
+  });
 
   @override
   State<SABnzbdRoute> createState() => _State();

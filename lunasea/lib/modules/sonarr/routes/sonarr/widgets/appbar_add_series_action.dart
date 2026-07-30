@@ -4,8 +4,8 @@ import 'package:lunasea/widgets/ui.dart';
 
 class SonarrAppBarAddSeriesAction extends StatelessWidget {
   const SonarrAppBarAddSeriesAction({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {

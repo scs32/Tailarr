@@ -10,14 +10,14 @@ class LunaReorderableListView extends StatelessWidget {
   final bool buildDefaultDragHandles;
 
   const LunaReorderableListView({
-    Key? key,
+    super.key,
     required this.children,
     required this.controller,
     required this.onReorder,
     this.padding,
     this.physics = const AlwaysScrollableScrollPhysics(),
     this.buildDefaultDragHandles = false,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

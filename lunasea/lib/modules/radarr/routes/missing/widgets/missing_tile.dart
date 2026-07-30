@@ -12,10 +12,10 @@ class RadarrMissingTile extends StatefulWidget {
   final RadarrQualityProfile? profile;
 
   const RadarrMissingTile({
-    Key? key,
+    super.key,
     required this.movie,
     required this.profile,
-  }) : super(key: key);
+  });
 
   @override
   State<RadarrMissingTile> createState() => _State();

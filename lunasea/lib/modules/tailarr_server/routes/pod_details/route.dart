@@ -9,9 +9,9 @@ class PodDetailsRoute extends StatefulWidget {
   final String pod;
 
   const PodDetailsRoute({
-    Key? key,
+    super.key,
     required this.pod,
-  }) : super(key: key);
+  });
 
   @override
   State<PodDetailsRoute> createState() => _State();

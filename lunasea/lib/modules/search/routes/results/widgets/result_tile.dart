@@ -8,9 +8,9 @@ class SearchResultTile extends StatelessWidget {
   final NewznabResultData data;
 
   const SearchResultTile({
-    Key? key,
+    super.key,
     required this.data,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

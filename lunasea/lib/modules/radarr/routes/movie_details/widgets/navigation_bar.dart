@@ -22,10 +22,10 @@ class RadarrMovieDetailsNavigationBar extends StatefulWidget {
   final RadarrMovie? movie;
 
   const RadarrMovieDetailsNavigationBar({
-    Key? key,
+    super.key,
     required this.pageController,
     required this.movie,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

@@ -6,9 +6,9 @@ class SonarrSeriesEditQualityProfileTile extends StatelessWidget {
   final List<SonarrQualityProfile?> profiles;
 
   const SonarrSeriesEditQualityProfileTile({
-    Key? key,
+    super.key,
     required this.profiles,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

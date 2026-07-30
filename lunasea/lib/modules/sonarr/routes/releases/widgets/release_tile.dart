@@ -9,8 +9,8 @@ class SonarrReleasesTile extends StatefulWidget {
 
   const SonarrReleasesTile({
     required this.release,
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

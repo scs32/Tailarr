@@ -7,9 +7,9 @@ class PodLogsRoute extends StatefulWidget {
   final String pod;
 
   const PodLogsRoute({
-    Key? key,
+    super.key,
     required this.pod,
-  }) : super(key: key);
+  });
 
   @override
   State<PodLogsRoute> createState() => _State();

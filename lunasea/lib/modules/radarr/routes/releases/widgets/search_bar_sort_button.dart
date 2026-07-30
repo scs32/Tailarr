@@ -7,9 +7,9 @@ class RadarrReleasesAppBarSortButton extends StatefulWidget {
   final ScrollController controller;
 
   const RadarrReleasesAppBarSortButton({
-    Key? key,
+    super.key,
     required this.controller,
-  }) : super(key: key);
+  });
 
   @override
   State<RadarrReleasesAppBarSortButton> createState() => _State();

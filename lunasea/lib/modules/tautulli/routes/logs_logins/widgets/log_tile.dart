@@ -7,9 +7,9 @@ class TautulliLogsLoginsLogTile extends StatelessWidget {
   final TautulliUserLoginRecord login;
 
   const TautulliLogsLoginsLogTile({
-    Key? key,
+    super.key,
     required this.login,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

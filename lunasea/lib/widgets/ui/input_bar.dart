@@ -30,7 +30,7 @@ class LunaTextInputBar extends StatefulWidget {
   final EdgeInsets margin;
 
   const LunaTextInputBar({
-    Key? key,
+    super.key,
     required this.controller,
     this.scrollController,
     this.onChanged,
@@ -46,7 +46,7 @@ class LunaTextInputBar extends StatefulWidget {
     this.autofocus = false,
     this.obscureText = false,
     this.isFormField = false,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

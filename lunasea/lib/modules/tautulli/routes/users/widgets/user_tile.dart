@@ -8,9 +8,9 @@ class TautulliUserTile extends StatelessWidget {
   final TautulliTableUser user;
 
   const TautulliUserTile({
-    Key? key,
+    super.key,
     required this.user,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

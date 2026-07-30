@@ -10,11 +10,11 @@ class ArtistAlbumDetailsRoute extends StatefulWidget {
   final bool monitored;
 
   const ArtistAlbumDetailsRoute({
-    Key? key,
+    super.key,
     required this.artistId,
     required this.albumId,
     required this.monitored,
-  }) : super(key: key);
+  });
 
   @override
   State<ArtistAlbumDetailsRoute> createState() => _State();

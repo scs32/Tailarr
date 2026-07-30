@@ -4,8 +4,8 @@ import 'package:lunasea/modules/lidarr.dart';
 
 class ConfigurationLidarrDefaultPagesRoute extends StatefulWidget {
   const ConfigurationLidarrDefaultPagesRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<ConfigurationLidarrDefaultPagesRoute> createState() => _State();

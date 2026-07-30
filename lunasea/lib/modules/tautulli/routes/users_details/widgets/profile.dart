@@ -8,9 +8,9 @@ class TautulliUserDetailsProfile extends StatefulWidget {
   final TautulliTableUser user;
 
   const TautulliUserDetailsProfile({
-    Key? key,
+    super.key,
     required this.user,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

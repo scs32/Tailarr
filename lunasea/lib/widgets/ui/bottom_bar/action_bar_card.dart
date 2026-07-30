@@ -14,7 +14,7 @@ class LunaActionBarCard extends StatelessWidget {
   final void Function(bool?)? checkboxOnChanged;
 
   const LunaActionBarCard({
-    Key? key,
+    super.key,
     required this.title,
     this.subtitle,
     this.onTap,
@@ -24,7 +24,7 @@ class LunaActionBarCard extends StatelessWidget {
     this.icon = LunaIcons.ARROW_RIGHT,
     this.checkboxState,
     this.checkboxOnChanged,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -101,10 +101,10 @@ class LunaActionBarCard extends StatelessWidget {
       ),
       margin: LunaUI.MARGIN_HALF,
       color: backgroundColor != null
-          ? backgroundColor!.withOpacity(LunaUI.OPACITY_DIMMED)
+          ? backgroundColor!.withValues(alpha: LunaUI.OPACITY_DIMMED)
           : LunaTheme.isAMOLEDTheme
-              ? Colors.black.withOpacity(LunaUI.OPACITY_DIMMED)
-              : LunaColours.primary.withOpacity(LunaUI.OPACITY_DIMMED),
+              ? Colors.black.withValues(alpha: LunaUI.OPACITY_DIMMED)
+              : LunaColours.primary.withValues(alpha: LunaUI.OPACITY_DIMMED),
     );
   }
 

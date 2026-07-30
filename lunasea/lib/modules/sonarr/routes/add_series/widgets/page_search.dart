@@ -7,9 +7,9 @@ class SonarrAddSeriesSearchPage extends StatefulWidget {
   final ScrollController scrollController;
 
   const SonarrAddSeriesSearchPage({
-    Key? key,
+    super.key,
     required this.scrollController,
-  }) : super(key: key);
+  });
 
   @override
   State<SonarrAddSeriesSearchPage> createState() => _State();

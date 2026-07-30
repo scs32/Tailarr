@@ -9,12 +9,12 @@ class SonarrSeriesDetailsOverviewPage extends StatefulWidget {
   final List<SonarrTag> tags;
 
   const SonarrSeriesDetailsOverviewPage({
-    Key? key,
+    super.key,
     required this.series,
     required this.qualityProfile,
     required this.languageProfile,
     required this.tags,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

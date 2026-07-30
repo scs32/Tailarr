@@ -9,9 +9,9 @@ class SABnzbdQueueFAB extends StatefulWidget {
   final ScrollController scrollController;
 
   const SABnzbdQueueFAB({
-    Key? key,
+    super.key,
     required this.scrollController,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

@@ -7,9 +7,9 @@ class RadarrManualImportDetailsTile extends StatelessWidget {
   final RadarrManualImport manualImport;
 
   const RadarrManualImportDetailsTile({
-    Key? key,
+    super.key,
     required this.manualImport,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -32,7 +32,7 @@ class RadarrManualImportDetailsTile extends StatelessWidget {
                 .watch<RadarrManualImportDetailsState>()
                 .selectedFiles
                 .contains(manualImport.id)
-            ? LunaColours.accent.withOpacity(LunaUI.OPACITY_SPLASH)
+            ? LunaColours.accent.withValues(alpha: LunaUI.OPACITY_SPLASH)
             : null,
       ),
     );

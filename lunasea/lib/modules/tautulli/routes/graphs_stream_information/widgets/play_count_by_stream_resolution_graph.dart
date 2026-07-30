@@ -5,8 +5,8 @@ import 'package:lunasea/modules/tautulli.dart';
 
 class TautulliGraphsPlayCountByStreamResolutionGraph extends StatelessWidget {
   const TautulliGraphsPlayCountByStreamResolutionGraph({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) =>

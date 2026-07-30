@@ -7,9 +7,9 @@ class TautulliLogsNewsletterLogTile extends StatelessWidget {
   final TautulliNewsletterLogRecord newsletter;
 
   const TautulliLogsNewsletterLogTile({
-    Key? key,
+    super.key,
     required this.newsletter,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

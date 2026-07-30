@@ -8,11 +8,11 @@ class RadarrMovieDetailsOverviewPage extends StatefulWidget {
   final List<RadarrTag> tags;
 
   const RadarrMovieDetailsOverviewPage({
-    Key? key,
+    super.key,
     required this.movie,
     required this.qualityProfile,
     required this.tags,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

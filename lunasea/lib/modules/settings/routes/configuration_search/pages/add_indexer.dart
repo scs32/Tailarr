@@ -5,8 +5,8 @@ import 'package:lunasea/router/routes/settings.dart';
 
 class ConfigurationSearchAddIndexerRoute extends StatefulWidget {
   const ConfigurationSearchAddIndexerRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<ConfigurationSearchAddIndexerRoute> createState() => _State();

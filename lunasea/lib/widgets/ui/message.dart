@@ -13,13 +13,13 @@ class LunaMessage extends StatelessWidget {
   final bool useSafeArea;
 
   const LunaMessage({
-    Key? key,
+    super.key,
     required this.text,
     this.textColor = Colors.white,
     this.buttonText,
     this.onTap,
     this.useSafeArea = true,
-  }) : super(key: key);
+  });
 
   /// Return a message that is meant to be shown within a [ListView].
   factory LunaMessage.inList({

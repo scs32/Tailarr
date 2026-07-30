@@ -6,9 +6,9 @@ class RadarrMoviesEditQualityProfileTile extends StatelessWidget {
   final List<RadarrQualityProfile?>? profiles;
 
   const RadarrMoviesEditQualityProfileTile({
-    Key? key,
+    super.key,
     required this.profiles,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

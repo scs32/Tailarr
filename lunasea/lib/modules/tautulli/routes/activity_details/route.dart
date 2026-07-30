@@ -7,9 +7,9 @@ class ActivityDetailsRoute extends StatefulWidget {
   final int sessionKey;
 
   const ActivityDetailsRoute({
-    Key? key,
+    super.key,
     required this.sessionKey,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

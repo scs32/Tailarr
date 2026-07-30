@@ -6,8 +6,8 @@ import 'package:lunasea/router/routes/settings.dart';
 
 class ConfigurationSearchRoute extends StatefulWidget {
   const ConfigurationSearchRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<ConfigurationSearchRoute> createState() => _State();

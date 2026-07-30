@@ -6,8 +6,8 @@ import 'package:lunasea/types/list_view_option.dart';
 
 class ConfigurationSonarrDefaultOptionsRoute extends StatefulWidget {
   const ConfigurationSonarrDefaultOptionsRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<ConfigurationSonarrDefaultOptionsRoute> createState() => _State();

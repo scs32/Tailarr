@@ -9,11 +9,11 @@ class LidarrDetailsAlbumTile extends StatefulWidget {
   final Function refreshState;
 
   const LidarrDetailsAlbumTile({
-    Key? key,
+    super.key,
     required this.data,
     required this.artistId,
     required this.refreshState,
-  }) : super(key: key);
+  });
 
   @override
   State<LidarrDetailsAlbumTile> createState() => _State();

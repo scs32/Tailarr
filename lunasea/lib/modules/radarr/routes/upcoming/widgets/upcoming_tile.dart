@@ -12,10 +12,10 @@ class RadarrUpcomingTile extends StatefulWidget {
   final RadarrQualityProfile? profile;
 
   const RadarrUpcomingTile({
-    Key? key,
+    super.key,
     required this.movie,
     required this.profile,
-  }) : super(key: key);
+  });
 
   @override
   State<RadarrUpcomingTile> createState() => _State();

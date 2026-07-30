@@ -8,10 +8,10 @@ class SonarrSeasonHeader extends StatelessWidget {
   final int? seasonNumber;
 
   const SonarrSeasonHeader({
-    Key? key,
+    super.key,
     required this.seriesId,
     required this.seasonNumber,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

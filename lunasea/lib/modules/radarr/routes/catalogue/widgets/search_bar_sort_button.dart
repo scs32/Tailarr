@@ -7,9 +7,9 @@ class RadarrCatalogueSearchBarSortButton extends StatefulWidget {
   final ScrollController controller;
 
   const RadarrCatalogueSearchBarSortButton({
-    Key? key,
+    super.key,
     required this.controller,
-  }) : super(key: key);
+  });
 
   @override
   State<RadarrCatalogueSearchBarSortButton> createState() => _State();

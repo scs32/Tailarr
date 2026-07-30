@@ -8,9 +8,9 @@ class TautulliActivityDetailsUserAction extends StatelessWidget {
   final int sessionKey;
 
   const TautulliActivityDetailsUserAction({
-    Key? key,
+    super.key,
     required this.sessionKey,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

@@ -3,8 +3,8 @@ import 'package:lunasea/core.dart';
 
 class ConfigurationDrawerRoute extends StatefulWidget {
   const ConfigurationDrawerRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<ConfigurationDrawerRoute> createState() => _State();

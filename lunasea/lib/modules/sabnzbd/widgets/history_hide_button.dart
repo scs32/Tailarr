@@ -6,9 +6,9 @@ class SABnzbdHistoryHideButton extends StatefulWidget {
   final ScrollController controller;
 
   const SABnzbdHistoryHideButton({
-    Key? key,
+    super.key,
     required this.controller,
-  }) : super(key: key);
+  });
 
   @override
   State<SABnzbdHistoryHideButton> createState() => _State();

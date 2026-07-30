@@ -7,9 +7,9 @@ class RadarrAppBarMovieSettingsAction extends StatelessWidget {
   final int movieId;
 
   const RadarrAppBarMovieSettingsAction({
-    Key? key,
+    super.key,
     required this.movieId,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

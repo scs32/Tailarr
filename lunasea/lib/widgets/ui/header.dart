@@ -6,10 +6,10 @@ class LunaHeader extends StatelessWidget {
   final String? subtitle;
 
   const LunaHeader({
-    Key? key,
+    super.key,
     required this.text,
     this.subtitle,
-  }) : super(key: key);
+  });
 
   Widget _headerText() {
     return Text(

@@ -7,9 +7,9 @@ class TautulliLogsNotificationLogTile extends StatelessWidget {
   final TautulliNotificationLogRecord notification;
 
   const TautulliLogsNotificationLogTile({
-    Key? key,
+    super.key,
     required this.notification,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

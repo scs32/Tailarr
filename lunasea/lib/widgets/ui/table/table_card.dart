@@ -7,11 +7,11 @@ class LunaTableCard extends StatelessWidget {
   final List<LunaButton>? buttons;
 
   const LunaTableCard({
-    Key? key,
+    super.key,
     this.content,
     this.buttons,
     this.title,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

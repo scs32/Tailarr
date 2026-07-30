@@ -6,9 +6,9 @@ class SonarrAppBarSeriesSettingsAction extends StatelessWidget {
   final int seriesId;
 
   const SonarrAppBarSeriesSettingsAction({
-    Key? key,
+    super.key,
     required this.seriesId,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

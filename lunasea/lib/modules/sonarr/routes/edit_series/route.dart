@@ -7,9 +7,9 @@ class SeriesEditRoute extends StatefulWidget {
   final int seriesId;
 
   const SeriesEditRoute({
-    Key? key,
+    super.key,
     required this.seriesId,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

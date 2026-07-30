@@ -6,9 +6,9 @@ class TautulliActivityDetailsStreamBlock extends StatelessWidget {
   final TautulliSession session;
 
   const TautulliActivityDetailsStreamBlock({
-    Key? key,
+    super.key,
     required this.session,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

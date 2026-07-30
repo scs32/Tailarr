@@ -6,9 +6,9 @@ class TautulliLogsPlexMediaServerLogTile extends StatelessWidget {
   final TautulliPlexLog log;
 
   const TautulliLogsPlexMediaServerLogTile({
-    Key? key,
+    super.key,
     required this.log,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

@@ -4,8 +4,8 @@ import 'package:lunasea/modules/tautulli.dart';
 
 class ConfigurationTautulliDefaultPagesRoute extends StatefulWidget {
   const ConfigurationTautulliDefaultPagesRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<ConfigurationTautulliDefaultPagesRoute> createState() => _State();

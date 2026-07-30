@@ -7,9 +7,9 @@ class PodBackupsRoute extends StatefulWidget {
   final String pod;
 
   const PodBackupsRoute({
-    Key? key,
+    super.key,
     required this.pod,
-  }) : super(key: key);
+  });
 
   @override
   State<PodBackupsRoute> createState() => _State();

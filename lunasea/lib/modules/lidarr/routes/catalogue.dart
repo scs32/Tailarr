@@ -8,10 +8,10 @@ class LidarrCatalogue extends StatefulWidget {
   final Function refreshAllPages;
 
   const LidarrCatalogue({
-    Key? key,
+    super.key,
     required this.refreshIndicatorKey,
     required this.refreshAllPages,
-  }) : super(key: key);
+  });
 
   @override
   State<LidarrCatalogue> createState() => _State();

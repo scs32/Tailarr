@@ -6,9 +6,9 @@ class RadarrTagsTagTile extends StatefulWidget {
   final RadarrTag tag;
 
   const RadarrTagsTagTile({
-    Key? key,
+    super.key,
     required this.tag,
-  }) : super(key: key);
+  });
 
   @override
   State<RadarrTagsTagTile> createState() => _State();

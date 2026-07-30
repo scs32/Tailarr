@@ -6,9 +6,9 @@ class TautulliActivityDetailsMetadataBlock extends StatelessWidget {
   final TautulliSession session;
 
   const TautulliActivityDetailsMetadataBlock({
-    Key? key,
+    super.key,
     required this.session,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

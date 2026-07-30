@@ -9,8 +9,8 @@ import 'package:lunasea/modules/settings/core/server_driven_connection.dart';
 
 class ConfigurationTautulliConnectionDetailsRoute extends StatefulWidget {
   const ConfigurationTautulliConnectionDetailsRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<ConfigurationTautulliConnectionDetailsRoute> createState() => _State();

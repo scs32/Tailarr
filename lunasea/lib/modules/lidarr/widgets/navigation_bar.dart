@@ -19,9 +19,9 @@ class LidarrNavigationBar extends StatelessWidget {
       ];
 
   const LidarrNavigationBar({
-    Key? key,
+    super.key,
     required this.pageController,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

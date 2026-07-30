@@ -12,7 +12,7 @@ import 'package:lunasea/system/gateway/gateway_host.dart';
 /// entered — Quick Connect authorizes logins, and the app is only the
 /// authorizer; playback stays in the official Jellyfin client.
 class JellyfinRoute extends StatefulWidget {
-  const JellyfinRoute({Key? key}) : super(key: key);
+  const JellyfinRoute({super.key});
 
   @override
   State<JellyfinRoute> createState() => _State();

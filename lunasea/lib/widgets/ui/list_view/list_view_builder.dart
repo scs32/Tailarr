@@ -10,14 +10,14 @@ class LunaListViewBuilder extends StatelessWidget {
   final ScrollController controller;
 
   const LunaListViewBuilder({
-    Key? key,
+    super.key,
     required this.itemCount,
     required this.itemBuilder,
     this.itemExtent,
     required this.controller,
     this.padding,
     this.physics = const AlwaysScrollableScrollPhysics(),
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

@@ -9,11 +9,11 @@ class HistoryDetailsRoute extends StatefulWidget {
   final int? referenceId;
 
   const HistoryDetailsRoute({
-    Key? key,
+    super.key,
     required this.ratingKey,
     this.sessionKey,
     this.referenceId,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

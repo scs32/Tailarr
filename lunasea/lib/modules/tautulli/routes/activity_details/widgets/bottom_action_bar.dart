@@ -7,9 +7,9 @@ class TautulliActivityDetailsBottomActionBar extends StatelessWidget {
   final int sessionKey;
 
   const TautulliActivityDetailsBottomActionBar({
-    Key? key,
+    super.key,
     required this.sessionKey,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

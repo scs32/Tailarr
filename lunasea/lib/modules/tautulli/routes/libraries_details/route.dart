@@ -7,9 +7,9 @@ class LibrariesDetailsRoute extends StatefulWidget {
   final int? sectionId;
 
   const LibrariesDetailsRoute({
-    Key? key,
+    super.key,
     required this.sectionId,
-  }) : super(key: key);
+  });
 
   @override
   State<LibrariesDetailsRoute> createState() => _State();

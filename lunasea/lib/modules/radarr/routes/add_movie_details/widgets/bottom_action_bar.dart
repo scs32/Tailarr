@@ -6,8 +6,8 @@ import 'package:lunasea/router/routes/radarr.dart';
 
 class RadarrAddMovieDetailsActionBar extends StatelessWidget {
   const RadarrAddMovieDetailsActionBar({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {

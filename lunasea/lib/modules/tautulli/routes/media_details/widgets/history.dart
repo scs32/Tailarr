@@ -10,8 +10,8 @@ class TautulliMediaDetailsHistory extends StatefulWidget {
   const TautulliMediaDetailsHistory({
     required this.type,
     required this.ratingKey,
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

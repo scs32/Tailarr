@@ -18,12 +18,12 @@ class SonarrSeriesAddSearchResultTile extends StatefulWidget {
   final bool isExcluded;
 
   const SonarrSeriesAddSearchResultTile({
-    Key? key,
+    super.key,
     required this.series,
     required this.exists,
     required this.isExcluded,
     this.onTapShowOverview = false,
-  }) : super(key: key);
+  });
 
   @override
   State<SonarrSeriesAddSearchResultTile> createState() => _State();

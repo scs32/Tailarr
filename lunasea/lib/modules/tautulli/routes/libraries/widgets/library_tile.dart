@@ -10,9 +10,9 @@ class TautulliLibrariesLibraryTile extends StatelessWidget {
   final TautulliTableLibrary library;
 
   const TautulliLibrariesLibraryTile({
-    Key? key,
+    super.key,
     required this.library,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

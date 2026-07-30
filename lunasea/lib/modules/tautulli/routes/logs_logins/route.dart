@@ -4,8 +4,8 @@ import 'package:lunasea/modules/tautulli.dart';
 
 class LogsLoginsRoute extends StatefulWidget {
   const LogsLoginsRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

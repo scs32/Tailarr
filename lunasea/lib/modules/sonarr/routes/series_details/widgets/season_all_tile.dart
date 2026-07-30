@@ -8,9 +8,9 @@ class SonarrSeriesDetailsSeasonAllTile extends StatelessWidget {
   final SonarrSeries? series;
 
   const SonarrSeriesDetailsSeasonAllTile({
-    Key? key,
+    super.key,
     required this.series,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

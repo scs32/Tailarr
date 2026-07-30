@@ -8,9 +8,9 @@ class UserDetailsRoute extends StatefulWidget {
   final int? userId;
 
   const UserDetailsRoute({
-    Key? key,
+    super.key,
     required this.userId,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

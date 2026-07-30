@@ -4,8 +4,8 @@ import 'package:lunasea/modules/search.dart';
 
 class SearchRoute extends StatefulWidget {
   const SearchRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<SearchRoute> createState() => _State();

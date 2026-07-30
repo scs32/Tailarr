@@ -9,9 +9,9 @@ class ConfigurationSearchEditIndexerRoute extends StatefulWidget {
   final int id;
 
   const ConfigurationSearchEditIndexerRoute({
-    Key? key,
+    super.key,
     required this.id,
-  }) : super(key: key);
+  });
 
   @override
   State<ConfigurationSearchEditIndexerRoute> createState() => _State();

@@ -5,8 +5,8 @@ import 'package:lunasea/router/routes/search.dart';
 
 class SearchSubcategoryAllTile extends StatelessWidget {
   const SearchSubcategoryAllTile({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {

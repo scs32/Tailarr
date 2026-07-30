@@ -4,8 +4,8 @@ import 'package:lunasea/modules/tautulli.dart';
 
 class TautulliAppBarGlobalSettingsAction extends StatelessWidget {
   const TautulliAppBarGlobalSettingsAction({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {

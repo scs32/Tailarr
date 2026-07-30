@@ -4,8 +4,8 @@ import 'package:lunasea/modules/nzbget.dart';
 
 class StatisticsRoute extends StatefulWidget {
   const StatisticsRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<StatisticsRoute> createState() => _State();

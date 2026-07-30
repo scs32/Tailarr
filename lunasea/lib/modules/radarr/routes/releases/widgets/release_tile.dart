@@ -9,8 +9,8 @@ class RadarrReleasesTile extends StatefulWidget {
 
   const RadarrReleasesTile({
     required this.release,
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

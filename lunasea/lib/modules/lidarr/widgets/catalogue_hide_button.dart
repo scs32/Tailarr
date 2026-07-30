@@ -6,9 +6,9 @@ class LidarrCatalogueHideButton extends StatefulWidget {
   final ScrollController controller;
 
   const LidarrCatalogueHideButton({
-    Key? key,
+    super.key,
     required this.controller,
-  }) : super(key: key);
+  });
 
   @override
   State<LidarrCatalogueHideButton> createState() => _State();

@@ -7,9 +7,9 @@ class TautulliLibrariesDetailsInformationDetails extends StatelessWidget {
   final TautulliTableLibrary library;
 
   const TautulliLibrariesDetailsInformationDetails({
-    Key? key,
+    super.key,
     required this.library,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

@@ -6,9 +6,9 @@ class TautulliMediaDetailsMetadataHeaderTile extends StatelessWidget {
   final TautulliMetadata? metadata;
 
   const TautulliMediaDetailsMetadataHeaderTile({
-    Key? key,
+    super.key,
     required this.metadata,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

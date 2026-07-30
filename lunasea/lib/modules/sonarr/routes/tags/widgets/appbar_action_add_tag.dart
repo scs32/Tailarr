@@ -6,9 +6,9 @@ class SonarrTagsAppBarActionAddTag extends StatelessWidget {
   final bool asDialogButton;
 
   const SonarrTagsAppBarActionAddTag({
-    Key? key,
+    super.key,
     this.asDialogButton = false,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

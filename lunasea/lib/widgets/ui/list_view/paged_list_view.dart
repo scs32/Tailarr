@@ -13,7 +13,7 @@ class LunaPagedListView<T> extends StatefulWidget {
   final Function? onRefresh;
 
   const LunaPagedListView({
-    Key? key,
+    super.key,
     required this.refreshKey,
     required this.pagingController,
     required this.listener,
@@ -23,7 +23,7 @@ class LunaPagedListView<T> extends StatefulWidget {
     this.onRefresh,
     this.itemExtent,
     this.padding,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State<T>();

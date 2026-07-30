@@ -7,9 +7,9 @@ class ExternalModulesModuleTile extends StatelessWidget {
   final LunaExternalModule? module;
 
   const ExternalModulesModuleTile({
-    Key? key,
+    super.key,
     required this.module,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

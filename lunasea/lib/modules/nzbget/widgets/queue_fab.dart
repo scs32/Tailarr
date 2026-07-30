@@ -9,9 +9,9 @@ class NZBGetQueueFAB extends StatefulWidget {
   final ScrollController scrollController;
 
   const NZBGetQueueFAB({
-    Key? key,
+    super.key,
     required this.scrollController,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

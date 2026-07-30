@@ -5,8 +5,8 @@ import 'package:lunasea/modules/sonarr.dart';
 
 class SonarrSeriesEditSeriesTypeTile extends StatelessWidget {
   const SonarrSeriesEditSeriesTypeTile({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {

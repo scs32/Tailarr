@@ -10,10 +10,10 @@ class RadarrAddMovieDiscoveryResultTile extends StatefulWidget {
   final bool onTapShowOverview;
 
   const RadarrAddMovieDiscoveryResultTile({
-    Key? key,
+    super.key,
     required this.movie,
     this.onTapShowOverview = false,
-  }) : super(key: key);
+  });
 
   @override
   State<RadarrAddMovieDiscoveryResultTile> createState() => _State();

@@ -13,8 +13,8 @@ class SABnzbdQueueTile extends StatefulWidget {
     required this.index,
     required this.queueContext,
     required this.refresh,
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

@@ -4,8 +4,8 @@ import 'package:lunasea/modules/settings.dart';
 
 class ConfigurationLidarrConnectionDetailsHeadersRoute extends StatelessWidget {
   const ConfigurationLidarrConnectionDetailsHeadersRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {

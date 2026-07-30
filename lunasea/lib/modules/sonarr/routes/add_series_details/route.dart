@@ -7,9 +7,9 @@ class AddSeriesDetailsRoute extends StatefulWidget {
   final SonarrSeries? series;
 
   const AddSeriesDetailsRoute({
-    Key? key,
+    super.key,
     required this.series,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

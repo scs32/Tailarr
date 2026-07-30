@@ -4,7 +4,7 @@ import 'package:lunasea/core.dart';
 @Deprecated("Use LunaBlock instead")
 class LunaListTile extends Card {
   LunaListTile({
-    Key? key,
+    super.key,
     required BuildContext context,
     required Widget title,
     required double height,
@@ -16,9 +16,8 @@ class LunaListTile extends Card {
     Function? onTap,
     Function? onLongPress,
     bool drawBorder = true,
-    EdgeInsets margin = LunaUI.MARGIN_H_DEFAULT_V_HALF,
+    EdgeInsets super.margin = LunaUI.MARGIN_H_DEFAULT_V_HALF,
   }) : super(
-          key: key,
           child: Container(
             height: height,
             child: InkWell(
@@ -71,7 +70,6 @@ class LunaListTile extends Card {
             ),
             decoration: decoration,
           ),
-          margin: margin,
           elevation: LunaUI.ELEVATION,
           shape: drawBorder ? LunaUI.shapeBorder : LunaShapeBorder(),
           color: color ?? Theme.of(context).primaryColor,

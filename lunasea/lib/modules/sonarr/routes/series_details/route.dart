@@ -10,9 +10,9 @@ class SeriesDetailsRoute extends StatefulWidget {
   final int seriesId;
 
   const SeriesDetailsRoute({
-    Key? key,
+    super.key,
     required this.seriesId,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

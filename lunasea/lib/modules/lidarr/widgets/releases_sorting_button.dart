@@ -7,9 +7,9 @@ class LidarrReleasesSortButton extends StatefulWidget {
   final ScrollController controller;
 
   const LidarrReleasesSortButton({
-    Key? key,
+    super.key,
     required this.controller,
-  }) : super(key: key);
+  });
 
   @override
   State<LidarrReleasesSortButton> createState() => _State();

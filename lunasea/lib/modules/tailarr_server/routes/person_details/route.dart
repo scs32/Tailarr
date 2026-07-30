@@ -12,9 +12,9 @@ class PersonDetailsRoute extends StatefulWidget {
   final String id;
 
   const PersonDetailsRoute({
-    Key? key,
+    super.key,
     required this.id,
-  }) : super(key: key);
+  });
 
   @override
   State<PersonDetailsRoute> createState() => _State();

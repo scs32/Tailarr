@@ -6,9 +6,9 @@ class TautulliUserDetailsHistory extends StatefulWidget {
   final TautulliTableUser user;
 
   const TautulliUserDetailsHistory({
-    Key? key,
+    super.key,
     required this.user,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

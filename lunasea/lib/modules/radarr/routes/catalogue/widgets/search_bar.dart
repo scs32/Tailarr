@@ -7,9 +7,9 @@ class RadarrCatalogueSearchBar extends StatefulWidget
   final ScrollController scrollController;
 
   const RadarrCatalogueSearchBar({
-    Key? key,
+    super.key,
     required this.scrollController,
-  }) : super(key: key);
+  });
 
   @override
   Size get preferredSize =>

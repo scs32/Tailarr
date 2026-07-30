@@ -4,8 +4,8 @@ import 'package:lunasea/modules/tautulli.dart';
 
 class LogsPlexMediaServerRoute extends StatefulWidget {
   const LogsPlexMediaServerRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

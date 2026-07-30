@@ -6,9 +6,9 @@ class RadarrMovieDetailsHistoryPage extends StatefulWidget {
   final RadarrMovie? movie;
 
   const RadarrMovieDetailsHistoryPage({
-    Key? key,
+    super.key,
     required this.movie,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

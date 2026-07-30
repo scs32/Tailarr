@@ -13,8 +13,8 @@ import 'package:lunasea/utils/profile_tools.dart';
 
 class ConfigurationGeneralRoute extends StatefulWidget {
   const ConfigurationGeneralRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State createState() => _State();

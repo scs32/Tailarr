@@ -10,14 +10,14 @@ class LidarrDescriptionBlock extends StatefulWidget {
   final Function? onLongPress;
 
   const LidarrDescriptionBlock({
-    Key? key,
+    super.key,
     required this.description,
     required this.title,
     required this.uri,
     required this.headers,
     this.squareImage = false,
     this.onLongPress,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

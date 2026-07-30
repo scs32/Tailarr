@@ -6,9 +6,9 @@ class RadarrManualImportParentDirectoryTile extends StatefulWidget {
   final RadarrFileSystem? fileSystem;
 
   const RadarrManualImportParentDirectoryTile({
-    Key? key,
+    super.key,
     required this.fileSystem,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

@@ -6,9 +6,9 @@ class LidarrDetailsOverview extends StatefulWidget {
   final LidarrCatalogueData data;
 
   const LidarrDetailsOverview({
-    Key? key,
+    super.key,
     required this.data,
-  }) : super(key: key);
+  });
 
   @override
   State<LidarrDetailsOverview> createState() => _State();

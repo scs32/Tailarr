@@ -10,14 +10,14 @@ class LunaFloatingActionButton extends StatelessWidget {
   final Object? heroTag;
 
   const LunaFloatingActionButton({
-    Key? key,
+    super.key,
     required this.icon,
     this.label,
     required this.onPressed,
     this.backgroundColor = LunaColours.accent,
     this.color = Colors.white,
     this.heroTag,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

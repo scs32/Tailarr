@@ -5,8 +5,8 @@ import 'package:lunasea/modules/radarr.dart';
 
 class TagsRoute extends StatefulWidget {
   const TagsRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

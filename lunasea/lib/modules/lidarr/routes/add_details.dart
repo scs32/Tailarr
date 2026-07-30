@@ -10,9 +10,9 @@ class AddArtistDetailsRoute extends StatefulWidget {
   final LidarrSearchData? data;
 
   const AddArtistDetailsRoute({
-    Key? key,
+    super.key,
     required this.data,
-  }) : super(key: key);
+  });
 
   @override
   State<AddArtistDetailsRoute> createState() => _State();

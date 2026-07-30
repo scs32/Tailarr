@@ -10,11 +10,11 @@ class TautulliHistoryDetailsUser extends StatelessWidget {
   final int? referenceId;
 
   const TautulliHistoryDetailsUser({
-    Key? key,
+    super.key,
     required this.ratingKey,
     this.sessionKey,
     this.referenceId,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) => FutureBuilder(

@@ -9,9 +9,9 @@ class TautulliUserDetailsIPAddresses extends StatefulWidget {
   final TautulliTableUser user;
 
   const TautulliUserDetailsIPAddresses({
-    Key? key,
+    super.key,
     required this.user,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

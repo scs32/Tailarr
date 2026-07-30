@@ -9,7 +9,7 @@ import 'package:lunasea/modules/dashboard/core/api/data/sonarr.dart';
 
 class ContentBlock extends StatelessWidget {
   final CalendarData data;
-  const ContentBlock(this.data, {Key? key}) : super(key: key);
+  const ContentBlock(this.data, {super.key});
 
   @override
   Widget build(BuildContext context) {

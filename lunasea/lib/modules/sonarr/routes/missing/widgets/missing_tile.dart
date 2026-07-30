@@ -12,10 +12,10 @@ class SonarrMissingTile extends StatefulWidget {
   final SonarrSeries? series;
 
   const SonarrMissingTile({
-    Key? key,
+    super.key,
     required this.record,
     this.series,
-  }) : super(key: key);
+  });
 
   @override
   State<SonarrMissingTile> createState() => _State();

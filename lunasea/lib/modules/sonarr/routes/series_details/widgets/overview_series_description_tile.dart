@@ -6,9 +6,9 @@ class SonarrSeriesDetailsOverviewDescriptionTile extends StatelessWidget {
   final SonarrSeries? series;
 
   const SonarrSeriesDetailsOverviewDescriptionTile({
-    Key? key,
+    super.key,
     required this.series,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

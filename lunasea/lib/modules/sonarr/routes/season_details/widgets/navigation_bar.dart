@@ -21,11 +21,11 @@ class SonarrSeasonDetailsNavigationBar extends StatefulWidget {
   final int seasonNumber;
 
   const SonarrSeasonDetailsNavigationBar({
-    Key? key,
+    super.key,
     required this.pageController,
     required this.seriesId,
     required this.seasonNumber,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

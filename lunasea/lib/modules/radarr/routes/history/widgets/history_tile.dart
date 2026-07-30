@@ -12,11 +12,11 @@ class RadarrHistoryTile extends StatelessWidget {
 
   /// If [movieHistory] is false (default), you must supply a title or else a dash will be shown.
   const RadarrHistoryTile({
-    Key? key,
+    super.key,
     required this.history,
     this.movieHistory = false,
     this.title = LunaUI.TEXT_EMDASH,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

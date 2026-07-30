@@ -7,9 +7,9 @@ class TautulliLibrariesDetailsInformationGlobalStats extends StatelessWidget {
   final List<TautulliLibraryWatchTimeStats> watchtime;
 
   const TautulliLibrariesDetailsInformationGlobalStats({
-    Key? key,
+    super.key,
     required this.watchtime,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

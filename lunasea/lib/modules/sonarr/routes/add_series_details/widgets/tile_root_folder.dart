@@ -4,8 +4,8 @@ import 'package:lunasea/modules/sonarr.dart';
 
 class SonarrSeriesAddDetailsRootFolderTile extends StatelessWidget {
   const SonarrSeriesAddDetailsRootFolderTile({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {

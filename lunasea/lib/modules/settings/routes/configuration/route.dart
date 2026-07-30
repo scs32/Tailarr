@@ -7,8 +7,8 @@ import 'package:lunasea/utils/profile_tools.dart';
 
 class ConfigurationRoute extends StatefulWidget {
   const ConfigurationRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<ConfigurationRoute> createState() => _State();

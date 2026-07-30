@@ -5,8 +5,8 @@ import 'package:lunasea/widgets/sheets/download_client/button.dart';
 
 class SearchIndexerRoute extends StatefulWidget {
   const SearchIndexerRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

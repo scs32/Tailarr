@@ -14,8 +14,8 @@ import 'package:lunasea/system/flavor.dart';
 
 class SystemRoute extends StatefulWidget {
   const SystemRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<SystemRoute> createState() => _State();

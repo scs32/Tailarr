@@ -7,9 +7,9 @@ class RadarrManualImportPathBar extends StatefulWidget
   final ScrollController scrollController;
 
   const RadarrManualImportPathBar({
-    Key? key,
+    super.key,
     required this.scrollController,
-  }) : super(key: key);
+  });
 
   @override
   Size get preferredSize =>

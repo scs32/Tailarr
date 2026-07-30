@@ -12,8 +12,8 @@ import 'package:lunasea/modules/settings/core/dialogs.dart';
 
 class ConfigurationDashboardCalendarRoute extends StatefulWidget {
   const ConfigurationDashboardCalendarRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<ConfigurationDashboardCalendarRoute> createState() => _State();

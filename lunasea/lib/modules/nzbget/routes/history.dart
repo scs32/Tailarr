@@ -7,9 +7,9 @@ class NZBGetHistory extends StatefulWidget {
   final GlobalKey<RefreshIndicatorState> refreshIndicatorKey;
 
   const NZBGetHistory({
-    Key? key,
+    super.key,
     required this.refreshIndicatorKey,
-  }) : super(key: key);
+  });
 
   @override
   State<NZBGetHistory> createState() => _State();

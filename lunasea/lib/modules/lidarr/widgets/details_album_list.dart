@@ -6,9 +6,9 @@ class LidarrDetailsAlbumList extends StatefulWidget {
   final int artistID;
 
   const LidarrDetailsAlbumList({
-    Key? key,
+    super.key,
     required this.artistID,
-  }) : super(key: key);
+  });
 
   @override
   State<LidarrDetailsAlbumList> createState() => _State();

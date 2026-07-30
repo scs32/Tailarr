@@ -15,7 +15,7 @@ class LunaBottomNavigationBar extends StatefulWidget {
   final List<Widget?>? leadingOnTab;
 
   LunaBottomNavigationBar({
-    Key? key,
+    super.key,
     required this.pageController,
     required this.icons,
     required this.titles,
@@ -23,7 +23,7 @@ class LunaBottomNavigationBar extends StatefulWidget {
     this.onTabChange,
     this.leadingOnTab,
     this.scrollControllers,
-  }) : super(key: key) {
+  }) {
     assert(
       icons.length == titles.length,
       'An unequal amount of titles and icons were passed to LunaNavigationBar.',

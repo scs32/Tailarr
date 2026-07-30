@@ -4,8 +4,8 @@ import 'package:lunasea/modules/tailarr_server.dart';
 
 class UpdatesRoute extends StatefulWidget {
   const UpdatesRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<UpdatesRoute> createState() => _State();

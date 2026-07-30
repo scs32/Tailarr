@@ -8,10 +8,10 @@ class LidarrMissing extends StatefulWidget {
   final Function refreshAllPages;
 
   const LidarrMissing({
-    Key? key,
+    super.key,
     required this.refreshIndicatorKey,
     required this.refreshAllPages,
-  }) : super(key: key);
+  });
 
   @override
   State<LidarrMissing> createState() => _State();

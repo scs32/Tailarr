@@ -5,8 +5,8 @@ import 'package:lunasea/router/routes/radarr.dart';
 
 class RadarrMoreRoute extends StatefulWidget {
   const RadarrMoreRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<RadarrMoreRoute> createState() => _State();

@@ -9,7 +9,7 @@ import 'package:lunasea/modules/tailarr_server/core/state.dart';
 /// pairing port — no token typed, no admin console. Self-config ("Connect this
 /// device") is a separate action added once the token path is verified.
 class TailarrServerPairRoute extends StatefulWidget {
-  const TailarrServerPairRoute({Key? key}) : super(key: key);
+  const TailarrServerPairRoute({super.key});
 
   @override
   State<TailarrServerPairRoute> createState() => _State();

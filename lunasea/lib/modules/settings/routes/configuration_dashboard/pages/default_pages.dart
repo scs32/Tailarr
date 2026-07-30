@@ -7,8 +7,8 @@ import 'package:lunasea/modules/dashboard/routes/dashboard/widgets/navigation_ba
 
 class ConfigurationDashboardDefaultPagesRoute extends StatefulWidget {
   const ConfigurationDashboardDefaultPagesRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<ConfigurationDashboardDefaultPagesRoute> createState() => _State();

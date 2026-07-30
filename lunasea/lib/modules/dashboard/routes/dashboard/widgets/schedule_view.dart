@@ -12,9 +12,9 @@ class ScheduleView extends StatefulWidget {
   final Map<DateTime, List<CalendarData>> events;
 
   const ScheduleView({
-    Key? key,
+    super.key,
     required this.events,
-  }) : super(key: key);
+  });
 
   @override
   State<ScheduleView> createState() => _State();

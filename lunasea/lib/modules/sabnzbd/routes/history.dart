@@ -6,9 +6,9 @@ class SABnzbdHistory extends StatefulWidget {
   final GlobalKey<RefreshIndicatorState> refreshIndicatorKey;
 
   const SABnzbdHistory({
-    Key? key,
+    super.key,
     required this.refreshIndicatorKey,
-  }) : super(key: key);
+  });
 
   @override
   State<SABnzbdHistory> createState() => _State();

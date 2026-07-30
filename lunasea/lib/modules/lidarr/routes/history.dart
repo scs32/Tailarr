@@ -8,10 +8,10 @@ class LidarrHistory extends StatefulWidget {
   final Function refreshAllPages;
 
   const LidarrHistory({
-    Key? key,
+    super.key,
     required this.refreshIndicatorKey,
     required this.refreshAllPages,
-  }) : super(key: key);
+  });
 
   @override
   State<LidarrHistory> createState() => _State();

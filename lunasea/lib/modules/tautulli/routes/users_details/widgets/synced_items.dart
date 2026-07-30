@@ -6,9 +6,9 @@ class TautulliUserDetailsSyncedItems extends StatefulWidget {
   final TautulliTableUser user;
 
   const TautulliUserDetailsSyncedItems({
-    Key? key,
+    super.key,
     required this.user,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

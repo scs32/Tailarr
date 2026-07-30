@@ -5,8 +5,8 @@ import 'package:lunasea/modules/radarr.dart';
 
 class RadarrUpcomingRoute extends StatefulWidget {
   const RadarrUpcomingRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

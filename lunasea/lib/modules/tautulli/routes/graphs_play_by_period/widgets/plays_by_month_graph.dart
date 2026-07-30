@@ -5,8 +5,8 @@ import 'package:lunasea/modules/tautulli.dart';
 
 class TautulliGraphsPlaysByMonthGraph extends StatelessWidget {
   const TautulliGraphsPlaysByMonthGraph({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) =>

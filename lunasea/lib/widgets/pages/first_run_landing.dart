@@ -11,7 +11,7 @@ import 'package:lunasea/utils/profile_tools.dart';
 class FirstRunLandingRoute extends StatefulWidget {
   static const String path = '/landing';
 
-  const FirstRunLandingRoute({Key? key}) : super(key: key);
+  const FirstRunLandingRoute({super.key});
 
   @override
   State<FirstRunLandingRoute> createState() => _State();
@@ -58,7 +58,7 @@ class _State extends State<FirstRunLandingRoute> {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 15,
-                  color: Colors.white.withOpacity(0.70),
+                  color: Colors.white.withValues(alpha: 0.70),
                 ),
               ),
               const SizedBox(height: 40),
@@ -83,7 +83,7 @@ class _State extends State<FirstRunLandingRoute> {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,
-                  color: Colors.white.withOpacity(0.45),
+                  color: Colors.white.withValues(alpha: 0.45),
                 ),
               ),
             ],

@@ -4,8 +4,8 @@ import 'package:lunasea/modules/sonarr.dart';
 
 class SonarrRoute extends StatefulWidget {
   const SonarrRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<SonarrRoute> createState() => _State();

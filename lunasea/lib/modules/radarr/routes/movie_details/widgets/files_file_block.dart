@@ -7,9 +7,9 @@ class RadarrMovieDetailsFilesFileBlock extends StatefulWidget {
   final RadarrMovieFile file;
 
   const RadarrMovieDetailsFilesFileBlock({
-    Key? key,
+    super.key,
     required this.file,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

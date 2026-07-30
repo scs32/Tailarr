@@ -5,8 +5,8 @@ import 'package:lunasea/modules/tautulli.dart';
 
 class TautulliGraphsPlayCountByDayOfWeekGraph extends StatelessWidget {
   const TautulliGraphsPlayCountByDayOfWeekGraph({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) =>

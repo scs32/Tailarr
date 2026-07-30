@@ -8,9 +8,9 @@ class SearchIndexerTile extends StatelessWidget {
   final LunaIndexer? indexer;
 
   const SearchIndexerTile({
-    Key? key,
+    super.key,
     required this.indexer,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

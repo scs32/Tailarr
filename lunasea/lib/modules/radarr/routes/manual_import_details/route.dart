@@ -7,9 +7,9 @@ class ManualImportDetailsRoute extends StatefulWidget {
   final String? path;
 
   const ManualImportDetailsRoute({
-    Key? key,
+    super.key,
     required this.path,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

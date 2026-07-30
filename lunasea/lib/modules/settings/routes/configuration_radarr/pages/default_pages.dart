@@ -4,8 +4,8 @@ import 'package:lunasea/modules/radarr.dart';
 
 class ConfigurationRadarrDefaultPagesRoute extends StatefulWidget {
   const ConfigurationRadarrDefaultPagesRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<ConfigurationRadarrDefaultPagesRoute> createState() => _State();

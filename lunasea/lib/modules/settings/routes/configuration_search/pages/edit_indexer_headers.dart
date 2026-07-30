@@ -8,9 +8,9 @@ class ConfigurationSearchEditIndexerHeadersRoute extends StatefulWidget {
   final int id;
 
   const ConfigurationSearchEditIndexerHeadersRoute({
-    Key? key,
+    super.key,
     required this.id,
-  }) : super(key: key);
+  });
 
   @override
   State<ConfigurationSearchEditIndexerHeadersRoute> createState() => _State();

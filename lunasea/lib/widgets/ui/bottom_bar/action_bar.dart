@@ -17,8 +17,8 @@ class LunaBottomActionBar extends StatelessWidget {
     this.actionsPerRow = 2,
     this.useSafeArea = true,
     this.backgroundColor,
-    Key? key,
-  }) : super(key: key) {
+    super.key,
+  }) {
     assert(actions?.isNotEmpty ?? false);
   }
 

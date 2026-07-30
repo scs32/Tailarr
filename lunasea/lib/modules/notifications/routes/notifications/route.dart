@@ -10,8 +10,8 @@ import 'package:lunasea/system/notifications/notifications.dart';
 
 class NotificationsRoute extends StatefulWidget {
   const NotificationsRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<NotificationsRoute> createState() => _State();

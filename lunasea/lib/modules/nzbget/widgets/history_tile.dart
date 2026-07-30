@@ -8,10 +8,10 @@ class NZBGetHistoryTile extends StatefulWidget {
   final Function() refresh;
 
   const NZBGetHistoryTile({
-    Key? key,
+    super.key,
     required this.data,
     required this.refresh,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

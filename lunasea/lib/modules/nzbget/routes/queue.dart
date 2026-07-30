@@ -7,9 +7,9 @@ class NZBGetQueue extends StatefulWidget {
   final GlobalKey<RefreshIndicatorState> refreshIndicatorKey;
 
   const NZBGetQueue({
-    Key? key,
+    super.key,
     required this.refreshIndicatorKey,
-  }) : super(key: key);
+  });
 
   @override
   State<NZBGetQueue> createState() => _State();

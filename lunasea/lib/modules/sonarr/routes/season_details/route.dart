@@ -7,10 +7,10 @@ class SeriesSeasonDetailsRoute extends StatefulWidget {
   final int seasonNumber;
 
   const SeriesSeasonDetailsRoute({
-    Key? key,
+    super.key,
     required this.seriesId,
     required this.seasonNumber,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

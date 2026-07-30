@@ -28,9 +28,9 @@ class ImportConfigurationRoute extends StatefulWidget {
   final String encoded;
 
   const ImportConfigurationRoute({
-    Key? key,
+    super.key,
     required this.encoded,
-  }) : super(key: key);
+  });
 
   @override
   State<ImportConfigurationRoute> createState() => _State();

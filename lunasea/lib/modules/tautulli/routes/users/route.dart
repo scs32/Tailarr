@@ -4,8 +4,8 @@ import 'package:lunasea/modules/tautulli.dart';
 
 class TautulliUsersRoute extends StatefulWidget {
   const TautulliUsersRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<TautulliUsersRoute> createState() => _State();

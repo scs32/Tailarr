@@ -9,9 +9,9 @@ class TautulliSyncedItemTile extends StatelessWidget {
   final TautulliSyncedItem syncedItem;
 
   const TautulliSyncedItemTile({
-    Key? key,
+    super.key,
     required this.syncedItem,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

@@ -6,9 +6,9 @@ class TautulliCheckForUpdatesTautulliTile extends StatelessWidget {
   final TautulliUpdateCheck update;
 
   const TautulliCheckForUpdatesTautulliTile({
-    Key? key,
+    super.key,
     required this.update,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

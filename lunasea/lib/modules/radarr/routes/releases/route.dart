@@ -8,9 +8,9 @@ class MovieReleasesRoute extends StatefulWidget {
   final int movieId;
 
   const MovieReleasesRoute({
-    Key? key,
+    super.key,
     required this.movieId,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

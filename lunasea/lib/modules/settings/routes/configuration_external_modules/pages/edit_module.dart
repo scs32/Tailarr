@@ -8,9 +8,9 @@ class ConfigurationExternalModulesEditRoute extends StatefulWidget {
   final int moduleId;
 
   const ConfigurationExternalModulesEditRoute({
-    Key? key,
+    super.key,
     required this.moduleId,
-  }) : super(key: key);
+  });
 
   @override
   State<ConfigurationExternalModulesEditRoute> createState() => _State();

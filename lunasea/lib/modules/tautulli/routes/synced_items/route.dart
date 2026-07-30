@@ -4,8 +4,8 @@ import 'package:lunasea/modules/tautulli.dart';
 
 class SyncedItemsRoute extends StatefulWidget {
   const SyncedItemsRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<SyncedItemsRoute> createState() => _State();

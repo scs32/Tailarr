@@ -141,7 +141,7 @@ abstract class LunaDialog {
           ),
           enabledBorder: UnderlineInputBorder(
             borderSide: BorderSide(
-                color: LunaColours.accent.withOpacity(LunaUI.OPACITY_SPLASH)),
+                color: LunaColours.accent.withValues(alpha: LunaUI.OPACITY_SPLASH)),
           ),
         ),
         style: const TextStyle(
@@ -179,7 +179,7 @@ abstract class LunaDialog {
           ),
           enabledBorder: UnderlineInputBorder(
             borderSide: BorderSide(
-                color: LunaColours.accent.withOpacity(LunaUI.OPACITY_SPLASH)),
+                color: LunaColours.accent.withValues(alpha: LunaUI.OPACITY_SPLASH)),
           ),
         ),
         style: const TextStyle(

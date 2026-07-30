@@ -7,8 +7,8 @@ class TautulliActivityStatus extends StatelessWidget {
 
   const TautulliActivityStatus({
     required this.activity,
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {

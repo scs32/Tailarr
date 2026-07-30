@@ -20,9 +20,9 @@ class HomeNavigationBar extends StatelessWidget {
   ];
 
   const HomeNavigationBar({
-    Key? key,
+    super.key,
     required this.pageController,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

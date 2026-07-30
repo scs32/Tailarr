@@ -6,9 +6,9 @@ class LunaDrawer extends StatelessWidget {
   final String page;
 
   const LunaDrawer({
-    Key? key,
+    super.key,
     required this.page,
-  }) : super(key: key);
+  });
 
   static List<LunaModule> moduleAlphabeticalList() {
     return LunaModule.active

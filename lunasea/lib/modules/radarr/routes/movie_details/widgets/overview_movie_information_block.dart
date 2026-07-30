@@ -8,11 +8,11 @@ class RadarrMovieDetailsOverviewInformationBlock extends StatelessWidget {
   final List<RadarrTag> tags;
 
   const RadarrMovieDetailsOverviewInformationBlock({
-    Key? key,
+    super.key,
     required this.movie,
     required this.qualityProfile,
     required this.tags,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

@@ -4,8 +4,8 @@ import 'package:lunasea/modules/tautulli.dart';
 
 class TautulliGraphsStreamInformationRoute extends StatefulWidget {
   const TautulliGraphsStreamInformationRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<TautulliGraphsStreamInformationRoute> createState() => _State();

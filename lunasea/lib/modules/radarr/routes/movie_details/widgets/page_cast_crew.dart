@@ -6,9 +6,9 @@ class RadarrMovieDetailsCastCrewPage extends StatefulWidget {
   final RadarrMovie? movie;
 
   const RadarrMovieDetailsCastCrewPage({
-    Key? key,
+    super.key,
     required this.movie,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

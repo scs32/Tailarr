@@ -6,9 +6,9 @@ class AddMovieRoute extends StatefulWidget {
   final String query;
 
   const AddMovieRoute({
-    Key? key,
+    super.key,
     required this.query,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

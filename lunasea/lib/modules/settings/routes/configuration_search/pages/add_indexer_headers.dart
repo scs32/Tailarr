@@ -8,9 +8,9 @@ class ConfigurationSearchAddIndexerHeadersRoute extends StatefulWidget {
   final LunaIndexer? indexer;
 
   const ConfigurationSearchAddIndexerHeadersRoute({
-    Key? key,
+    super.key,
     required this.indexer,
-  }) : super(key: key);
+  });
 
   @override
   State<ConfigurationSearchAddIndexerHeadersRoute> createState() => _State();

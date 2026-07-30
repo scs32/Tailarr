@@ -4,8 +4,8 @@ import 'package:lunasea/modules/settings.dart';
 
 class ConfigurationWakeOnLANRoute extends StatefulWidget {
   const ConfigurationWakeOnLANRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<ConfigurationWakeOnLANRoute> createState() => _State();

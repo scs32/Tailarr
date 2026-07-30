@@ -7,8 +7,8 @@ import 'package:lunasea/types/list_view_option.dart';
 
 class RadarrCatalogueRoute extends StatefulWidget {
   const RadarrCatalogueRoute({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

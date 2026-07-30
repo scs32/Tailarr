@@ -7,8 +7,8 @@ import 'package:lunasea/modules/nzbget.dart';
 
 class NZBGetAppBarStats extends StatelessWidget {
   const NZBGetAppBarStats({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) =>

@@ -7,9 +7,9 @@ class SonarrReleasesAppBarSortButton extends StatefulWidget {
   final ScrollController controller;
 
   const SonarrReleasesAppBarSortButton({
-    Key? key,
+    super.key,
     required this.controller,
-  }) : super(key: key);
+  });
 
   @override
   State<SonarrReleasesAppBarSortButton> createState() => _State();

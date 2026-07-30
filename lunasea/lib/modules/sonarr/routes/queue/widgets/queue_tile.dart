@@ -15,10 +15,10 @@ class SonarrQueueTile extends StatefulWidget {
   final SonarrQueueTileType type;
 
   const SonarrQueueTile({
-    Key? key,
+    super.key,
     required this.queueRecord,
     required this.type,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

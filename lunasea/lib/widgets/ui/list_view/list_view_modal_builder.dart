@@ -16,14 +16,14 @@ class LunaListViewModalBuilder extends StatelessWidget {
   final double? itemExtent;
 
   const LunaListViewModalBuilder({
-    Key? key,
+    super.key,
     required this.itemCount,
     required this.itemBuilder,
     this.appBar,
     this.appBarHeight,
     this.actionBar,
     this.itemExtent,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

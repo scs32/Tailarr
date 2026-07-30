@@ -8,9 +8,9 @@ class TautulliStatisticsRecentlyWatchedTile extends StatefulWidget {
   final Map<String, dynamic> data;
 
   const TautulliStatisticsRecentlyWatchedTile({
-    Key? key,
+    super.key,
     required this.data,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

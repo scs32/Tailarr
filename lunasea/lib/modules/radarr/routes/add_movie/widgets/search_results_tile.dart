@@ -12,12 +12,12 @@ class RadarrAddMovieSearchResultTile extends StatefulWidget {
   final bool isExcluded;
 
   const RadarrAddMovieSearchResultTile({
-    Key? key,
+    super.key,
     required this.movie,
     required this.exists,
     required this.isExcluded,
     this.onTapShowOverview = false,
-  }) : super(key: key);
+  });
 
   @override
   State<RadarrAddMovieSearchResultTile> createState() => _State();

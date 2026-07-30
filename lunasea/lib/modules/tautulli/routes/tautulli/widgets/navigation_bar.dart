@@ -22,9 +22,9 @@ class TautulliNavigationBar extends StatefulWidget {
       ];
 
   const TautulliNavigationBar({
-    Key? key,
+    super.key,
     required this.pageController,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

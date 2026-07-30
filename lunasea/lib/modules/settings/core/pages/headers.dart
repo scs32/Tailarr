@@ -11,9 +11,9 @@ class SettingsHeaderRoute extends StatefulWidget {
   final LunaModule module;
 
   const SettingsHeaderRoute({
-    Key? key,
+    super.key,
     required this.module,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

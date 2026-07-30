@@ -12,9 +12,9 @@ class NZBGetRoute extends StatefulWidget {
   final bool showDrawer;
 
   const NZBGetRoute({
-    Key? key,
+    super.key,
     this.showDrawer = true,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

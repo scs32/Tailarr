@@ -8,9 +8,9 @@ class TautulliMediaDetailsMetadataMetadata extends StatelessWidget {
   final TautulliMetadata? metadata;
 
   const TautulliMediaDetailsMetadataMetadata({
-    Key? key,
+    super.key,
     required this.metadata,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

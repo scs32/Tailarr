@@ -6,9 +6,9 @@ class TautulliLibrariesDetailsUserStats extends StatefulWidget {
   final int sectionId;
 
   const TautulliLibrariesDetailsUserStats({
-    Key? key,
+    super.key,
     required this.sectionId,
-  }) : super(key: key);
+  });
 
   @override
   State<TautulliLibrariesDetailsUserStats> createState() => _State();

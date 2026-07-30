@@ -6,9 +6,9 @@ class ErrorRoutePage extends StatelessWidget {
   final Exception? exception;
 
   ErrorRoutePage({
-    Key? key,
+    super.key,
     this.exception,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

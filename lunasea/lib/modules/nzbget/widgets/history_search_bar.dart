@@ -6,9 +6,9 @@ class NZBGetHistorySearchBar extends StatefulWidget {
   final ScrollController scrollController;
 
   const NZBGetHistorySearchBar({
-    Key? key,
+    super.key,
     required this.scrollController,
-  }) : super(key: key);
+  });
 
   @override
   State<NZBGetHistorySearchBar> createState() => _State();

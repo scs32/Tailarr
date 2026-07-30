@@ -6,9 +6,9 @@ class LidarrReleasesHideButton extends StatefulWidget {
   final ScrollController controller;
 
   const LidarrReleasesHideButton({
-    Key? key,
+    super.key,
     required this.controller,
-  }) : super(key: key);
+  });
 
   @override
   State<LidarrReleasesHideButton> createState() => _State();

@@ -8,9 +8,9 @@ class SystemLogsDetailsRoute extends StatefulWidget {
   final LunaLogType? type;
 
   const SystemLogsDetailsRoute({
-    Key? key,
+    super.key,
     required this.type,
-  }) : super(key: key);
+  });
 
   @override
   State<SystemLogsDetailsRoute> createState() => _State();

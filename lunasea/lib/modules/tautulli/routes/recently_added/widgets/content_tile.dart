@@ -9,9 +9,9 @@ class TautulliRecentlyAddedContentTile extends StatefulWidget {
   final TautulliRecentlyAdded recentlyAdded;
 
   const TautulliRecentlyAddedContentTile({
-    Key? key,
+    super.key,
     required this.recentlyAdded,
-  }) : super(key: key);
+  });
 
   @override
   State<StatefulWidget> createState() => _State();

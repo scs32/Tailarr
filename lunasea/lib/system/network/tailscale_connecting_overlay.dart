@@ -10,8 +10,8 @@ class TailscaleConnectingOverlay extends StatefulWidget {
   static const delay = Duration(milliseconds: 400);
 
   const TailscaleConnectingOverlay({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<TailscaleConnectingOverlay> createState() => _State();
@@ -41,7 +41,7 @@ class _State extends State<TailscaleConnectingOverlay> {
       opacity: _visible ? 1 : 0,
       duration: const Duration(milliseconds: 200),
       child: Material(
-        color: Colors.black.withOpacity(0.65),
+        color: Colors.black.withValues(alpha: 0.65),
         child: const Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -67,10 +67,10 @@ class TailscaleStuckNotice extends StatelessWidget {
   final VoidCallback onDismiss;
 
   const TailscaleStuckNotice({
-    Key? key,
+    super.key,
     required this.onRetry,
     required this.onDismiss,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

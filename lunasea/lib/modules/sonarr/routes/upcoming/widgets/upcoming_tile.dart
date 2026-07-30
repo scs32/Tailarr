@@ -9,10 +9,10 @@ class SonarrUpcomingTile extends StatefulWidget {
   final SonarrSeries? series;
 
   const SonarrUpcomingTile({
-    Key? key,
+    super.key,
     required this.record,
     this.series,
-  }) : super(key: key);
+  });
 
   @override
   State<SonarrUpcomingTile> createState() => _State();

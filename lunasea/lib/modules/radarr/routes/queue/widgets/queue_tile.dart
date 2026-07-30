@@ -11,10 +11,10 @@ class RadarrQueueTile extends StatelessWidget {
   final RadarrMovie? movie;
 
   const RadarrQueueTile({
-    Key? key,
+    super.key,
     required this.record,
     required this.movie,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

@@ -6,9 +6,9 @@ class TautulliLogsTautulliLogTile extends StatelessWidget {
   final TautulliLog log;
 
   const TautulliLogsTautulliLogTile({
-    Key? key,
+    super.key,
     required this.log,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

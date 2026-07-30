@@ -8,10 +8,10 @@ class LidarrDetailsSettingsButton extends StatefulWidget {
   final Function(bool) remove;
 
   const LidarrDetailsSettingsButton({
-    Key? key,
+    super.key,
     required this.data,
     required this.remove,
-  }) : super(key: key);
+  });
 
   @override
   State<LidarrDetailsSettingsButton> createState() => _State();

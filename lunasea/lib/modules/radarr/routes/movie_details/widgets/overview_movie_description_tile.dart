@@ -6,9 +6,9 @@ class RadarrMovieDetailsOverviewDescriptionTile extends StatelessWidget {
   final RadarrMovie? movie;
 
   const RadarrMovieDetailsOverviewDescriptionTile({
-    Key? key,
+    super.key,
     required this.movie,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

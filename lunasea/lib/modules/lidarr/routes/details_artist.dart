@@ -12,8 +12,8 @@ class ArtistDetailsRoute extends StatefulWidget {
   const ArtistDetailsRoute({
     required this.data,
     required this.artistId,
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<ArtistDetailsRoute> createState() => _State();

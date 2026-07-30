@@ -10,11 +10,11 @@ class LidarrHistoryTile extends StatefulWidget {
   final Function refresh;
 
   const LidarrHistoryTile({
-    Key? key,
+    super.key,
     required this.entry,
     required this.scaffoldKey,
     required this.refresh,
-  }) : super(key: key);
+  });
 
   @override
   State<LidarrHistoryTile> createState() => _State();

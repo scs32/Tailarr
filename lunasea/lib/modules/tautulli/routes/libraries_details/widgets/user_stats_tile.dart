@@ -7,9 +7,9 @@ class TautulliLibrariesDetailsUserStatsTile extends StatelessWidget {
   final TautulliLibraryUserStats user;
 
   const TautulliLibrariesDetailsUserStatsTile({
-    Key? key,
+    super.key,
     required this.user,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
