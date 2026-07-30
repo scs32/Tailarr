@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A1 — Android cleartext policy.
+
+  Cleartext stays PERMITTED by default, and this is deliberate. Tailarr dials
+  its OWN services over plain http:// to tailnet targets addressed two ways:
+
+    * by MagicDNS name — the pairing transport is http://<controller>.ts.net:8089
+      and the hidden gateway is http://tailarr-gate.<magicdns-suffix> (ntfy /
+      services / notifications self-config). These ride cleartext INSIDE the
+      WireGuard-encrypted tailnet tunnel, so they are safe, and they MUST keep
+      working — a ts.net cleartext ban breaks pairing and gateway sync entirely.
+    * by raw IP — non-HTTPS pods resolve to http://<tailnet-ip>:<port>
+      (100.64.0.0/10 CGNAT) and hand-entered LAN services to http://192.168.x.x
+      / http://10.x. Real Sonarr/Radarr/etc. live here.
+
+  Android's static network-security-config can match domains but CANNOT
+  range-match IPs, so a default cleartext ban (base cleartextTrafficPermitted=
+  "false") would break every IP-addressed tailnet pod AND every hand-entered LAN
+  service, not just untrusted public hosts. That is the "blanket ban" the A1
+  finding explicitly forbids. A true public-only cleartext ban becomes possible
+  in the tailnet-only tier (tracker note), where every service URL is
+  https://*.ts.net and no IP-literal cleartext path remains — at that point the
+  base flips to cleartextTrafficPermitted="false".
+
+  This file replaces the deprecated android:usesCleartextTraffic manifest
+  attribute with the modern, per-domain-capable mechanism so the tightening
+  above is a one-line change when that tier ships.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

@@ -112,6 +112,22 @@ class GatewayServicesReconciler {
 
         // Empty url = service stopped: keep the stored value.
         if (service.url.isNotEmpty) {
+          // APP-1: a server-driven address change must not silently reuse the
+          // admin bearer against a NEW controller identity. A hijacked gateway
+          // handing a fresh URL would otherwise receive the real admin token.
+          // When the controller's HOST changes (the tailnet MagicDNS name is
+          // the stable identity anchor), drop the stored token so the next
+          // call re-verifies the server via Quick Connect (the identity-proven
+          // pairing handshake) before a token is minted again — matching the
+          // existing "dropped on a stale 401 and re-minted" policy.
+          if (service.type == 'tailarr' &&
+              profile.serverAdminToken.isNotEmpty) {
+            final previous = _host(profile, service.type);
+            if (previous.isNotEmpty &&
+                !_sameServerHost(previous, service.url)) {
+              profile.serverAdminToken = '';
+            }
+          }
           _setHost(profile, service.type, service.url);
         }
         // auth: null = keep the module, keep any stored credential, and
@@ -214,6 +230,31 @@ class GatewayServicesReconciler {
         return profile.tailarrServerHost;
     }
     return '';
+  }
+
+  /// Whether two controller URLs point at the SAME server identity. The tailnet
+  /// MagicDNS host is the stable anchor: a scheme/port/path change on the same
+  /// host is the same box, while a different host is a different (possibly
+  /// hijacked) controller. Unparseable input is treated as a change (fail safe
+  /// — drop the token rather than risk leaking it). Used by APP-1.
+  static bool _sameServerHost(String a, String b) {
+    final ha = _hostOf(a);
+    final hb = _hostOf(b);
+    if (ha == null || hb == null) return false;
+    return ha == hb;
+  }
+
+  /// The lowercased host of [url], tolerating a bare `host` / `host:port` with
+  /// no scheme. Null when no host can be resolved.
+  static String? _hostOf(String url) {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return null;
+    var uri = Uri.tryParse(trimmed);
+    if (uri == null || uri.host.isEmpty) {
+      uri = Uri.tryParse('http://$trimmed');
+    }
+    final host = uri?.host.toLowerCase();
+    return (host == null || host.isEmpty) ? null : host;
   }
 
   static void _setHost(LunaProfile profile, String type, String host) {
