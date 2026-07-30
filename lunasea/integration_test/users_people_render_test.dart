@@ -5,7 +5,6 @@
 // or fallback detection were too strict, this renders the empty legacy list
 // the bug report describes.
 //   flutter test integration_test/users_people_render_test.dart -d <sim>
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';

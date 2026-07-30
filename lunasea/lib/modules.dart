@@ -15,7 +15,6 @@ import 'package:lunasea/modules/sabnzbd.dart';
 import 'package:lunasea/modules/nzbget.dart';
 import 'package:lunasea/modules/tautulli.dart';
 import 'package:lunasea/modules/tailarr_server.dart';
-import 'package:lunasea/database/tables/notifications.dart';
 import 'package:lunasea/modules/dashboard/core/state.dart';
 import 'package:lunasea/api/wake_on_lan/wake_on_lan.dart';
 
