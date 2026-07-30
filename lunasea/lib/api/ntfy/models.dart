@@ -214,6 +214,15 @@ class GatewayServicesResponse {
   final String serverName;
   final int? statusCode;
 
+  /// The gateway's authoritative "roster temporarily unavailable — retry"
+  /// signal (server v0.144.0+): the person's `.people.json` exists but could
+  /// not be read/parsed right now (corrupt / locked / mid-restore / I/O). The
+  /// server answers `503 {"unavailable": true}`. This is a TRANSIENT hiccup,
+  /// NOT a deletion — the device already proved it carries the person's tag —
+  /// so it must NEVER be mistaken for [isAccountGone]. See
+  /// tailarr-ops/handoff/people-load-fail-closed-contract.md.
+  final bool unavailable;
+
   const GatewayServicesResponse({
     required this.ok,
     required this.error,
@@ -222,6 +231,7 @@ class GatewayServicesResponse {
     this.ui = GatewayUiPolicy.full,
     this.serverName = '',
     this.statusCode,
+    this.unavailable = false,
   });
 
   /// The contract's version-skew check: consume only when the response is
@@ -248,8 +258,20 @@ class GatewayServicesResponse {
   /// means the bound account is gone and the session can only recover via a
   /// fresh invite. The app uses this to drop a server-owned profile back to the
   /// safe no-server demo preview instead of a broken/stale session.
+  ///
+  /// Fail-closed against a TRANSIENT roster read (server v0.144.0+): the drop is
+  /// destructive and irreversible, so it fires ONLY on the authoritative
+  /// account-gone signal — a `400 {"error": "Unknown user."}` with no
+  /// `unavailable` flag. A `503 {"unavailable": true}` ("roster temporarily
+  /// unavailable — retry") is a server hiccup, never a deletion, and is
+  /// excluded here belt-and-suspenders (canonical `unavailable` flag first, then
+  /// the 503 status) so a read blip can never trigger the demo-drop. See
+  /// tailarr-ops/handoff/people-load-fail-closed-contract.md.
   bool get isAccountGone =>
-      !ok && (error ?? '').toLowerCase().contains('unknown user');
+      !ok &&
+      !unavailable &&
+      statusCode != 503 &&
+      (error ?? '').toLowerCase().contains('unknown user');
 
   factory GatewayServicesResponse.fromJson(
     Map<String, dynamic> json, {
@@ -260,6 +282,7 @@ class GatewayServicesResponse {
     return GatewayServicesResponse(
       ok: json['ok'] == true,
       statusCode: statusCode,
+      unavailable: json['unavailable'] == true,
       error: error == null ? null : error.toString(),
       kind: (json['kind'] as String? ?? '').trim(),
       services: services is List
