@@ -184,6 +184,74 @@ void main() {
       expect(result.missingAuth, isEmpty);
     });
 
+    group('APP-1: admin token vs. server-driven address change', () {
+      String tailarrPayload(String url) => '''
+{
+  "ok": true, "error": null, "kind": "services",
+  "services": [ {"type": "tailarr", "name": "server", "url": "$url", "auth": null} ]
+}
+''';
+
+      test('drops the admin token when the controller host is swapped', () {
+        // A hijacked gateway handing a NEW controller address must not receive
+        // the real admin bearer — the token is dropped so the next call
+        // re-verifies identity via Quick Connect.
+        final profile = LunaProfile(
+          tailarrServerEnabled: true,
+          tailarrServerHost: 'https://tailarr.tailXXXX.ts.net',
+          serverAdminToken: 'secret-admin-token',
+        );
+        reconcile(
+          profile: profile,
+          externals: [],
+          response: parse(tailarrPayload('https://evil.attacker.ts.net')),
+        );
+        expect(profile.tailarrServerHost, 'https://evil.attacker.ts.net');
+        expect(profile.serverAdminToken, isEmpty);
+      });
+
+      test('keeps the token when the host is unchanged', () {
+        final profile = LunaProfile(
+          tailarrServerEnabled: true,
+          tailarrServerHost: 'https://tailarr.tailXXXX.ts.net',
+          serverAdminToken: 'secret-admin-token',
+        );
+        reconcile(
+          profile: profile,
+          externals: [],
+          response: parse(tailarrPayload('https://tailarr.tailXXXX.ts.net')),
+        );
+        expect(profile.serverAdminToken, 'secret-admin-token');
+      });
+
+      test('keeps the token across a scheme/port/path-only change (same host)',
+          () {
+        final profile = LunaProfile(
+          tailarrServerEnabled: true,
+          tailarrServerHost: 'https://tailarr.tailXXXX.ts.net',
+          serverAdminToken: 'secret-admin-token',
+        );
+        reconcile(
+          profile: profile,
+          externals: [],
+          response: parse(tailarrPayload('https://tailarr.tailXXXX.ts.net:8443/')),
+        );
+        expect(profile.serverAdminToken, 'secret-admin-token');
+      });
+
+      test('does not touch the token on first configuration (no prior host)',
+          () {
+        final profile = LunaProfile(serverAdminToken: 'pre-existing');
+        reconcile(
+          profile: profile,
+          externals: [],
+          response: parse(tailarrPayload('https://tailarr.tailXXXX.ts.net')),
+        );
+        // previous host was empty → not a "swap", token untouched.
+        expect(profile.serverAdminToken, 'pre-existing');
+      });
+    });
+
     test('a server-granted service overrides hand-entered config', () {
       // Server-owned means server-owned: a suite server that grants Sonarr
       // takes over even a previously hand-entered config, and locks it.
