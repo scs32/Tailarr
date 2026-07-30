@@ -108,6 +108,51 @@ void main() {
       expect(response.isUnavailable, isFalse);
     });
 
+    test('APP-7: "Unknown user." refusal is account-gone, not unassigned', () {
+      final response = parse('{"ok": false, "error": "Unknown user."}');
+      expect(response.isAccountGone, isTrue);
+      // Distinct from an unassigned/not-yet-assigned device (recoverable) and
+      // never a version-skew "unavailable".
+      expect(response.isUnassigned, isFalse);
+      expect(response.isUnavailable, isTrue); // no services payload
+    });
+
+    test('APP-7: an unassigned device is NOT account-gone', () {
+      final response = parse(
+        '{"ok": false, "error": "this device is not assigned to a user"}',
+      );
+      expect(response.isAccountGone, isFalse);
+      expect(response.isUnassigned, isTrue);
+    });
+
+    test('APP-7: a healthy services payload is never account-gone', () {
+      final response = parse(CONTRACT_FIXTURE);
+      expect(response.isAccountGone, isFalse);
+    });
+
+    test(
+        'APP-7: a transient 503 "roster unavailable" is NOT account-gone '
+        '(fail-closed — must never trigger the destructive demo-drop)', () {
+      final response = parse(
+        '{"ok": false, "error": "Roster temporarily unavailable — retry.", '
+        '"unavailable": true}',
+        statusCode: 503,
+      );
+      expect(response.unavailable, isTrue);
+      expect(response.isAccountGone, isFalse);
+      expect(response.isUnassigned, isFalse);
+    });
+
+    test(
+        'APP-7: even a 503 that echoes "unknown user" stays transient '
+        '(unavailable flag / 503 status wins over the error string)', () {
+      final response = parse(
+        '{"ok": false, "error": "Unknown user.", "unavailable": true}',
+        statusCode: 503,
+      );
+      expect(response.isAccountGone, isFalse);
+    });
+
     test('no ui object → full experience (default people, older servers)', () {
       final response = parse(CONTRACT_FIXTURE);
       expect(response.ui.basic, isFalse);
