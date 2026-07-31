@@ -59,6 +59,8 @@
 		</dict>
 		<key>NSLocationWhenInUseUsageDescription</key>
 		<string>Tailarr would like to access your location for determining local-remote host switching</string>
+		<key>NSMicrophoneUsageDescription</key>
+		<string>Tailarr uses the microphone so you can talk to the voice assistant about your media server</string>
 		<key>NSPhotoLibraryAddUsageDescription</key>
 		<string>Tailarr would like to save photos from the app to your gallery</string>
 		<key>NSPhotoLibraryUsageDescription</key>

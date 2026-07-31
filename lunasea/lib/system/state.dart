@@ -11,6 +11,7 @@ import 'package:lunasea/modules/sabnzbd/core/state.dart';
 import 'package:lunasea/modules/nzbget/core/state.dart';
 import 'package:lunasea/modules/tailarr_server/core/state.dart';
 import 'package:lunasea/modules/tautulli/core/state.dart';
+import 'package:lunasea/modules/voice/core/state.dart';
 import 'package:lunasea/modules.dart';
 import 'package:lunasea/router/router.dart';
 
@@ -38,6 +39,7 @@ class LunaState {
         ChangeNotifierProvider(create: (_) => SABnzbdState()),
         ChangeNotifierProvider(create: (_) => TailarrServerState()),
         ChangeNotifierProvider(create: (_) => TautulliState()),
+        ChangeNotifierProvider(create: (_) => VoiceAssistantState()),
       ],
       child: child,
     );

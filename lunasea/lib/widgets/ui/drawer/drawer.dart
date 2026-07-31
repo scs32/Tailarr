@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:lunasea/core.dart';
 import 'package:lunasea/api/wake_on_lan/wake_on_lan.dart';
+import 'package:lunasea/router/router.dart';
+import 'package:lunasea/modules/voice/routes/voice/route.dart';
 
 class LunaDrawer extends StatelessWidget {
   final String page;
@@ -86,7 +88,43 @@ class LunaDrawer extends StatelessWidget {
         }
         return const SizedBox(height: 0.0);
       }),
+      _voiceEntry(context),
     ];
+  }
+
+  /// Phase-1 entry point for the in-app Gemini Live voice assistant. Not a full
+  /// LunaModule yet (avoids Hive-enum churn during the prototype); a plain
+  /// drawer row that pushes the voice route.
+  Widget _voiceEntry(BuildContext context) {
+    final bool currentPage = page == 'voice_assistant';
+    return SizedBox(
+      height: LunaTextInputBar.defaultAppBarHeight,
+      child: InkWell(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Padding(
+              child: Icon(
+                Icons.assistant_rounded,
+                color: currentPage ? LunaColours.accent : LunaColours.white,
+              ),
+              padding: LunaUI.MARGIN_DEFAULT_HORIZONTAL * 1.5,
+            ),
+            Text(
+              'Voice Assistant',
+              style: TextStyle(
+                color: currentPage ? LunaColours.accent : LunaColours.white,
+                fontWeight: LunaUI.FONT_WEIGHT_BOLD,
+              ),
+            ),
+          ],
+        ),
+        onTap: () {
+          Navigator.of(context).pop();
+          if (!currentPage) LunaRouter.router.push(VoiceRoute.path);
+        },
+      ),
+    );
   }
 
   Widget _buildEntry({
