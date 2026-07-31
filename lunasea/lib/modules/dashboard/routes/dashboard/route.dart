@@ -4,8 +4,8 @@ import 'package:lunasea/modules.dart';
 import 'package:lunasea/database/tables/dashboard.dart';
 import 'package:lunasea/database/tables/lunasea.dart';
 import 'package:lunasea/widgets/ui.dart';
+import 'package:lunasea/modules/dashboard/routes/dashboard/pages/assistant.dart';
 import 'package:lunasea/modules/dashboard/routes/dashboard/pages/calendar.dart';
-import 'package:lunasea/modules/dashboard/routes/dashboard/pages/modules.dart';
 import 'package:lunasea/modules/dashboard/routes/dashboard/widgets/switch_view_action.dart';
 import 'package:lunasea/modules/dashboard/routes/dashboard/widgets/navigation_bar.dart';
 
@@ -57,7 +57,9 @@ class _State extends State<DashboardRoute> {
       builder: (context, _) => LunaPageView(
         controller: _pageController,
         children: [
-          ModulesPage(key: ValueKey(LunaSeaDatabase.ENABLED_PROFILE.read())),
+          // Tab 0 is now the voice-assistant orb (the dashboard IS the orb you
+          // talk to). The module launcher moved to the drawer; Calendar stays.
+          AssistantPage(key: ValueKey(LunaSeaDatabase.ENABLED_PROFILE.read())),
           CalendarPage(key: ValueKey(LunaSeaDatabase.ENABLED_PROFILE.read())),
         ],
       ),
