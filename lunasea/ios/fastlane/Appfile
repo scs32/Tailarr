@@ -1,4 +1,5 @@
-app_identifier("app.lunasea.lunasea")
-apple_id(ENV["APPLE_ID"])
-itc_team_id(ENV["APPLE_ITC_TEAM_ID"])
-team_id(ENV["APPLE_TEAM_ID"])
+# Tailarr, not the inherited LunaSea identifiers.
+# No apple_id / itc_team_id: every lane authenticates with the App Store
+# Connect API key (see Fastfile#tailarr_api_key), never an Apple ID session.
+app_identifier("com.stephenspeicher.tailarr")
+team_id("857ZZSY5ZQ")

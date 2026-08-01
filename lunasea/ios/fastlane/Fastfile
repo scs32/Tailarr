@@ -1,89 +1,85 @@
 default_platform(:ios)
 
+# Tailarr iOS signing.
+#
+# THE PROBLEM THIS SOLVES
+# CI used to archive with `CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates`.
+# That mints a brand-new "Created via API" DEVELOPMENT certificate on every
+# build. Apple caps development certificates at ~11 per account, and once the
+# cap is full Archive fails outright — which is exactly what killed build 45
+# (`certs total=11, development=11`). Revoking the oldest orphan each release
+# was a treadmill, not a fix.
+#
+# THE FIX
+# fastlane match keeps ONE shared Apple *Distribution* certificate plus the two
+# App Store provisioning profiles in a private, encrypted git repo
+# (scs32/tailarr-fastlane-match — see Matchfile). CI fetches them read-only and
+# signs manually. Distribution certificates live in a different pool from
+# development ones, and nothing is minted per build, so the cap stops filling.
+#
+# LANES
+#   signing_bootstrap — CREATES/renews the shared assets and pushes them to
+#                       storage. Run manually (match-bootstrap.yml), rarely:
+#                       once at setup, then again when the cert expires.
+#   ci_signing        — read-only fetch + switch both targets to manual signing.
+#                       Runs on every TestFlight build. Never mints anything.
+#
+# The mini has no full Xcode (mini-setup-plan §3), and `fastlane match` refuses
+# to run without it, so BOTH lanes are driven from GitHub CI runners.
+
+TEAM_ID    = "857ZZSY5ZQ"
+APP_BUNDLE = "com.stephenspeicher.tailarr"
+NSE_BUNDLE = "com.stephenspeicher.tailarr.NotificationService"
+XCODEPROJ  = "Runner.xcodeproj"
+
+def tailarr_api_key
+  app_store_connect_api_key(
+    key_id: ENV.fetch("ASC_KEY_ID"),
+    issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+    key_filepath: ENV.fetch("ASC_KEY_P8_PATH"),
+    in_house: false,
+  )
+end
+
 platform :ios do
-  desc "Create the LunaSea Keychain"
-  lane :keychain_create do
-    create_keychain(
-      name: ENV["MATCH_KEYCHAIN_NAME"],
-      password: ENV["MATCH_KEYCHAIN_PASSWORD"],
-      default_keychain: is_ci,
-      unlock: true,
-      timeout: 3600,
-      lock_when_sleeps: false
-    )
-  end
-
-  desc "Delete the LunaSea Keychain"
-  lane :keychain_delete do
-    delete_keychain(name: ENV["MATCH_KEYCHAIN_NAME"])
-  end
-
-  desc "Setup the Keychain"
-  lane :keychain_setup do
-    # Development
-    match(
-      type: "development",
-      readonly: is_ci,
-      keychain_name: ENV['MATCH_KEYCHAIN_NAME'],
-      keychain_password: ENV["MATCH_KEYCHAIN_PASSWORD"],
-    )
-
-    # App Store
+  desc "One-time/renewal: create the shared App Store cert + profiles, push to match storage"
+  lane :signing_bootstrap do
+    setup_ci
     match(
       type: "appstore",
-      readonly: is_ci,
-      keychain_name: ENV['MATCH_KEYCHAIN_NAME'],
-      keychain_password: ENV["MATCH_KEYCHAIN_PASSWORD"],
+      readonly: false,
+      api_key: tailarr_api_key,
+      app_identifier: [APP_BUNDLE, NSE_BUNDLE],
+      team_id: TEAM_ID,
     )
+    UI.success("match storage now holds the App Store certificate + both profiles")
   end
 
-  desc "Connect to App Store Connect"
-  lane :connect_appstore_connect do
-    app_store_connect_api_key(
-      key_id: ENV["APPLE_STORE_CONNECT_KEY_ID"],
-      issuer_id: ENV["APPLE_STORE_CONNECT_ISSUER_ID"],
-      key_filepath: ENV["APPLE_STORE_CONNECT_KEY_FILEPATH"],
+  desc "Every build: fetch signing assets read-only and switch both targets to manual signing"
+  lane :ci_signing do
+    setup_ci
+    match(
+      type: "appstore",
+      readonly: true,
+      api_key: tailarr_api_key,
+      app_identifier: [APP_BUNDLE, NSE_BUNDLE],
+      team_id: TEAM_ID,
     )
-  end
 
-  desc "Build App Package for App Store"
-  lane :build_appstore do |options|
-    keychain_create
-    keychain_setup
-
-    sh(
-      "flutter", "build", "ios",
-      "--release",
-      "--no-codesign",
-      "--build-number=#{options[:build_number]}",
-    )
-    build_ios_app(
-      scheme: "Runner",
-      workspace: "Runner.xcworkspace",
-      export_method: "app-store",
-      codesigning_identity: ENV["IOS_CODESIGNING_IDENTITY"],
-      export_options: {
-        provisioningProfiles: {
-          "app.lunasea.lunasea" => "match AppStore app.lunasea.lunasea"
-        }
-      }
-    )
-    sh("mkdir", "-p", "../../output")
-    sh("mv", "../../ios/Runner.ipa", "../../output/lunasea-ios.ipa")
-
-    keychain_delete
-  end
-
-  desc "Deploy to App Store Connect"
-  lane :deploy_appstore do |options|
-    connect_appstore_connect
-
-    upload_to_testflight(
-      changelog: File.read("./changelog.txt"),
-      distribute_external: true,
-      groups: options[:groups],
-      ipa: options[:ipa],
-      notify_external_testers: true,
-    )
+    # Both targets ship in one archive but carry DIFFERENT bundle ids, so each
+    # needs its own profile. A global xcodebuild PROVISIONING_PROFILE_SPECIFIER
+    # override cannot express that — hence per-target project edits. These
+    # mutate only the CI checkout; nothing is committed.
+    [[["Runner"], APP_BUNDLE], [["NotificationService"], NSE_BUNDLE]].each do |targets, bundle|
+      update_code_signing_settings(
+        path: XCODEPROJ,
+        targets: targets,
+        use_automatic_signing: false,
+        team_id: TEAM_ID,
+        code_sign_identity: "Apple Distribution",
+        profile_name: "match AppStore #{bundle}",
+        build_configurations: ["Release"],
+      )
+    end
   end
 end

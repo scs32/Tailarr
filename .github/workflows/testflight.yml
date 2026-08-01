@@ -1,17 +1,32 @@
 name: TestFlight
 
-# Builds the iOS app and uploads it to
-# TestFlight, signed with Apple cloud-managed certificates via an App Store
-# Connect API key. No fastlane match / certificate repo required.
+# Builds the iOS app and uploads it to TestFlight.
+#
+# SIGNING: fastlane match, manual signing. The archive uses ONE shared Apple
+# Distribution certificate and two App Store provisioning profiles held
+# encrypted in scs32/tailarr-fastlane-match, fetched READ-ONLY here. This build
+# never creates signing assets.
+#
+# It used to: `CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates` minted a
+# fresh "Created via API" DEVELOPMENT certificate on every run, Apple caps those
+# at ~11, and build 45 died when the cap filled (`development=11`). The old
+# workaround — revoking the oldest orphan after each release
+# (scripts/revoke_oldest_cert.py) — is no longer needed for new builds.
+#
+# To create or renew the shared assets, run the "Signing bootstrap (match)"
+# workflow. Nothing here can mint a certificate.
+#
 # The Tailscale tsnet xcframework ships prebuilt inside the tailscale_embed
 # plugin (github.com/scs32/tailscale_embed), so no Go toolchain is needed.
 #
 # Required repository secrets:
-#   ASC_KEY_ID      - App Store Connect API key ID
-#   ASC_ISSUER_ID   - App Store Connect issuer ID
-#   ASC_KEY_P8      - base64 of the .p8 private key file
-#                     (create the key at App Store Connect > Users and Access
-#                      > Integrations, role: App Manager)
+#   ASC_KEY_ID       - App Store Connect API key ID
+#   ASC_ISSUER_ID    - App Store Connect issuer ID
+#   ASC_KEY_P8       - base64 of the .p8 private key file
+#                      (create the key at App Store Connect > Users and Access
+#                       > Integrations, role: App Manager)
+#   MATCH_PASSWORD   - passphrase decrypting the match storage repo
+#   MATCH_DEPLOY_KEY - SSH private key with read access to the match storage repo
 #
 # Prerequisite (one time): an app record in App Store Connect with bundle ID
 # com.stephenspeicher.tailarr.
@@ -80,11 +95,35 @@ jobs:
         working-directory: lunasea
         run: flutter build ios --release --no-codesign --build-number=${{ github.run_number }}
 
-      - name: Archive
+      # Must run AFTER pod install and the Flutter build: both can rewrite
+      # Runner.xcodeproj, which would undo the per-target manual-signing edits.
+      - name: Install signing assets (fastlane match, read-only)
         working-directory: lunasea/ios
         env:
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_DEPLOY_KEY: ${{ secrets.MATCH_DEPLOY_KEY }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          FASTLANE_SKIP_UPDATE_CHECK: '1'
+          FASTLANE_DISABLE_ANIMATION: '1'
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$MATCH_DEPLOY_KEY" > ~/.ssh/tailarr_match_ed25519
+          chmod 600 ~/.ssh/tailarr_match_ed25519
+          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          cat >> ~/.ssh/config <<'EOF'
+          Host github-match
+            HostName github.com
+            User git
+            IdentityFile ~/.ssh/tailarr_match_ed25519
+            IdentitiesOnly yes
+          EOF
+          chmod 600 ~/.ssh/config
+          export ASC_KEY_P8_PATH="$HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          fastlane ios ci_signing
+
+      - name: Archive
+        working-directory: lunasea/ios
         run: |
           xcodebuild \
             -workspace Runner.xcworkspace \
@@ -93,13 +132,8 @@ jobs:
             -destination generic/platform=iOS \
             -archivePath build/Runner.xcarchive \
             archive \
-            -allowProvisioningUpdates \
-            -allowProvisioningDeviceRegistration \
-            -authenticationKeyPath ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            CODE_SIGN_STYLE=Automatic
+            CODE_SIGN_STYLE=Manual
 
       - name: Export & upload to TestFlight
         working-directory: lunasea/ios
@@ -117,9 +151,18 @@ jobs:
             <key>destination</key>
             <string>upload</string>
             <key>signingStyle</key>
-            <string>automatic</string>
+            <string>manual</string>
             <key>teamID</key>
             <string>${APPLE_TEAM_ID}</string>
+            <!-- One profile per bundle id: the app extension cannot share the
+                 host app's profile. Names are match's convention. -->
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.stephenspeicher.tailarr</key>
+              <string>match AppStore com.stephenspeicher.tailarr</string>
+              <key>com.stephenspeicher.tailarr.NotificationService</key>
+              <string>match AppStore com.stephenspeicher.tailarr.NotificationService</string>
+            </dict>
             <!-- Must be false: when true, Xcode re-manages the build number at
                  export time and can silently drop the upload as a duplicate, so
                  the build never appears in TestFlight even though the job is
@@ -135,7 +178,6 @@ jobs:
             -archivePath build/Runner.xcarchive \
             -exportOptionsPlist ExportOptions.plist \
             -exportPath build/export \
-            -allowProvisioningUpdates \
             -authenticationKeyPath ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"

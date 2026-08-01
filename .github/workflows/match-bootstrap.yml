@@ -1,0 +1,93 @@
+name: Signing bootstrap (match)
+
+# Creates (or renews) the ONE shared Apple Distribution certificate and the two
+# App Store provisioning profiles, and pushes them encrypted to
+# scs32/tailarr-fastlane-match. Every TestFlight build then consumes those
+# read-only, so no build ever mints a certificate again.
+#
+# Run this manually, and rarely:
+#   * once, to populate empty storage
+#   * again when the distribution certificate approaches expiry (~1 year)
+#
+# It is deliberately NOT automatic: it mutates the Apple developer account and
+# the storage repo, so it requires typing `bootstrap` into the confirm input.
+#
+# It cannot be run from the Mac mini — `fastlane match` refuses to start without
+# a full Xcode, and the mini has Command Line Tools only (mini-setup-plan §3).
+#
+# Required repository secrets: MATCH_PASSWORD, MATCH_DEPLOY_KEY,
+# ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "bootstrap" to confirm creating/renewing signing assets'
+        required: true
+        default: ''
+
+env:
+  APPLE_TEAM_ID: 857ZZSY5ZQ
+
+jobs:
+  bootstrap:
+    name: Create shared signing assets
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - name: Check confirmation
+        if: inputs.confirm != 'bootstrap'
+        run: |
+          echo "::error::Refusing to run: type 'bootstrap' in the confirm input."
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select latest Xcode
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)/Contents/Developer"
+          xcodebuild -version
+
+      - name: Configure match storage access
+        env:
+          MATCH_DEPLOY_KEY: ${{ secrets.MATCH_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$MATCH_DEPLOY_KEY" > ~/.ssh/tailarr_match_ed25519
+          chmod 600 ~/.ssh/tailarr_match_ed25519
+          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          cat >> ~/.ssh/config <<'EOF'
+          Host github-match
+            HostName github.com
+            User git
+            IdentityFile ~/.ssh/tailarr_match_ed25519
+            IdentitiesOnly yes
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - name: Write App Store Connect API key
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          mkdir -p ~/private_keys
+          echo -n "$ASC_KEY_P8" | base64 -d > ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          chmod 600 ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
+
+      - name: fastlane match (create + push)
+        working-directory: lunasea/ios
+        env:
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          FASTLANE_SKIP_UPDATE_CHECK: '1'
+          FASTLANE_DISABLE_ANIMATION: '1'
+        run: |
+          export ASC_KEY_P8_PATH="$HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          fastlane ios signing_bootstrap
+
+      - name: Summarise stored assets
+        run: |
+          echo "Distribution certificate + App Store profiles are now in" \
+               "scs32/tailarr-fastlane-match. TestFlight builds consume them read-only."
