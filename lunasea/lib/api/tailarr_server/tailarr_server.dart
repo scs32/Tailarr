@@ -9,9 +9,15 @@
 /// so screens can offer "Connect this device".
 library tailarr_server;
 
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:lunasea/system/network/tailscale_retry.dart';
 import 'package:lunasea/api/tailarr_server/models.dart';
+// ignore: always_use_package_imports
+import 'package:lunasea/system/network/platform/fresh_connection_stub.dart'
+    if (dart.library.io) 'package:lunasea/system/network/platform/fresh_connection_io.dart'
+    if (dart.library.html) 'package:lunasea/system/network/platform/fresh_connection_html.dart';
 
 /// Thrown (via a Dio interceptor) when the controller rejects a call for lack
 /// of a valid admin bearer — the cue to run Quick Connect self-config.
@@ -31,6 +37,12 @@ class TailarrServerAPI {
   static const _longOperation = Duration(minutes: 12);
 
   final Dio httpClient;
+
+  /// Serializes + dedupes the module's idempotent GET reads (B26). See
+  /// [_GetGate] — keeps a startup burst (pods+network+users+ai+updates) from
+  /// hammering `tailscale serve` all at once, so one poisoned connection can't
+  /// 401-storm the entire refresh.
+  final _GetGate _gate = _GetGate();
 
   TailarrServerAPI._internal({required this.httpClient});
 
@@ -58,40 +70,45 @@ class TailarrServerAPI {
     return TailarrServerAPI._internal(httpClient: dio);
   }
 
-  Future<TailarrServerInfo> getInfo() async {
-    final response = await httpClient.get('api/info');
-    return TailarrServerInfo.fromJson(response.data);
-  }
+  Future<TailarrServerInfo> getInfo() =>
+      _gate.run('GET api/info', () async {
+        final response = await httpClient.get('api/info');
+        return TailarrServerInfo.fromJson(response.data);
+      });
 
-  Future<List<TailarrServerPod>> getPods() async {
-    final response = await httpClient.get('api/pods');
-    return (response.data['pods'] as List? ?? [])
-        .whereType<Map<String, dynamic>>()
-        .map(TailarrServerPod.fromJson)
-        .toList();
-  }
+  Future<List<TailarrServerPod>> getPods() =>
+      _gate.run('GET api/pods', () async {
+        final response = await httpClient.get('api/pods');
+        return (response.data['pods'] as List? ?? [])
+            .whereType<Map<String, dynamic>>()
+            .map(TailarrServerPod.fromJson)
+            .toList();
+      });
 
-  Future<List<TailarrServerNetworkEntry>> getNetwork() async {
-    final response = await httpClient.get('api/network');
-    return (response.data['network'] as List? ?? [])
-        .whereType<Map<String, dynamic>>()
-        .map(TailarrServerNetworkEntry.fromJson)
-        .toList();
-  }
+  Future<List<TailarrServerNetworkEntry>> getNetwork() =>
+      _gate.run('GET api/network', () async {
+        final response = await httpClient.get('api/network');
+        return (response.data['network'] as List? ?? [])
+            .whereType<Map<String, dynamic>>()
+            .map(TailarrServerNetworkEntry.fromJson)
+            .toList();
+      });
 
   /// The last 100 log lines are in `result.output`.
-  Future<TailarrServerActionResult> getLogs(String pod) async {
-    final response = await httpClient.get('api/pods/$pod/logs');
-    return TailarrServerActionResult.fromJson(response.data);
-  }
+  Future<TailarrServerActionResult> getLogs(String pod) =>
+      _gate.run('GET api/pods/$pod/logs', () async {
+        final response = await httpClient.get('api/pods/$pod/logs');
+        return TailarrServerActionResult.fromJson(response.data);
+      });
 
-  Future<List<TailarrServerBackup>> getBackups(String pod) async {
-    final response = await httpClient.get('api/pods/$pod/backups');
-    return (response.data['backups'] as List? ?? [])
-        .whereType<Map<String, dynamic>>()
-        .map(TailarrServerBackup.fromJson)
-        .toList();
-  }
+  Future<List<TailarrServerBackup>> getBackups(String pod) =>
+      _gate.run('GET api/pods/$pod/backups', () async {
+        final response = await httpClient.get('api/pods/$pod/backups');
+        return (response.data['backups'] as List? ?? [])
+            .whereType<Map<String, dynamic>>()
+            .map(TailarrServerBackup.fromJson)
+            .toList();
+      });
 
   /// `action` is one of: start, stop, update, remove.
   Future<TailarrServerActionResult> podAction(
@@ -141,10 +158,11 @@ class TailarrServerAPI {
     return TailarrServerActionResult.fromJson(response.data);
   }
 
-  Future<TailarrServerUpdates> getUpdates() async {
-    final response = await httpClient.get('api/updates');
-    return TailarrServerUpdates.fromJson(response.data);
-  }
+  Future<TailarrServerUpdates> getUpdates() =>
+      _gate.run('GET api/updates', () async {
+        final response = await httpClient.get('api/updates');
+        return TailarrServerUpdates.fromJson(response.data);
+      });
 
   Future<void> refreshUpdates() async {
     await httpClient.post('api/updates/refresh');
@@ -154,10 +172,11 @@ class TailarrServerAPI {
   /// USERS ///
   ////////////
 
-  Future<TailarrServerUsers> getUsers() async {
-    final response = await httpClient.get('api/users');
-    return TailarrServerUsers.fromJson(response.data);
-  }
+  Future<TailarrServerUsers> getUsers() =>
+      _gate.run('GET api/users', () async {
+        final response = await httpClient.get('api/users');
+        return TailarrServerUsers.fromJson(response.data);
+      });
 
   /// Mint a single-use, preauthorized, 24h enrollment key tagged
   /// `tag:tailarr-user`.
@@ -313,10 +332,11 @@ class TailarrServerAPI {
   /// Current AI-provider config. NEVER carries the raw key — only whether one
   /// is set. A 401/403 surfaces as [ServerAuthRequiredException] (not admin /
   /// not connected), same as every other `/api/*` read.
-  Future<TailarrServerAIConfig> getAIConfig() async {
-    final response = await httpClient.get('api/ai');
-    return TailarrServerAIConfig.fromJson(response.data);
-  }
+  Future<TailarrServerAIConfig> getAIConfig() =>
+      _gate.run('GET api/ai', () async {
+        final response = await httpClient.get('api/ai');
+        return TailarrServerAIConfig.fromJson(response.data);
+      });
 
   /// Set the AI provider + raw key (stored 0600 server-side, never echoed). The
   /// key is sent write-only and is not retained in the app.
@@ -368,26 +388,46 @@ class TailarrServerAPI {
 /// enrollment gate AND minted a duplicate admin token on the reconnect — a pile
 /// of them accumulated in the server's `.tokens.json`.
 ///
-/// So a 401/403 on an idempotent GET is retried a small, bounded number of times
-/// with short backoff. Only a SUSTAINED failure — N consecutive definitive 401s
-/// — or a 401 on a mutating POST surfaces as [ServerAuthRequiredException], so
-/// the genuinely-unenrolled / revoked path still shows "Connect This Device".
+/// So a 401/403 on an idempotent GET is retried a bounded number of times with
+/// exponential backoff, and CRUCIALLY each retry is fetched over a BRAND-NEW
+/// connection ([freshConnectionFetch] — a throwaway Dio with its own pool +
+/// `persistentConnection = false` + `Connection: close`). Re-fetching through
+/// the module's shared client would just grab the same poisoned pooled socket
+/// again — the connection-pool poisoning that made a whole request burst 401 at
+/// once (B26). The wider budget (default 5 tries, up to ~6s) rides a multi-second
+/// serve settling storm without reverting.
+///
+/// Only a SUSTAINED failure — the retry budget exhausted on definitive 401s — or
+/// a 401 on a mutating POST surfaces as [ServerAuthRequiredException], so the
+/// genuinely-unenrolled / revoked path still shows "Connect This Device".
 class TailarrServerAuthInterceptor extends Interceptor {
   TailarrServerAuthInterceptor(
-    this._dio, {
-    this.maxRetries = 3,
+    Dio dio, {
+    this.maxRetries = 5,
     this.backoff = const Duration(milliseconds: 300),
+    this.maxBackoff = const Duration(seconds: 2),
     Future<void> Function(Duration)? sleep,
-  }) : _sleep = sleep ?? Future<void>.delayed;
+    Future<Response<dynamic>> Function(RequestOptions)? freshFetch,
+  })  : _sleep = sleep ?? Future<void>.delayed,
+        _freshFetch = freshFetch ?? freshConnectionFetch;
 
-  final Dio _dio;
   final int maxRetries;
   final Duration backoff;
+  final Duration maxBackoff;
   final Future<void> Function(Duration) _sleep;
+  final Future<Response<dynamic>> Function(RequestOptions) _freshFetch;
 
-  /// Per-request retry counter, carried on the request's own extras so the
-  /// re-dispatch through the interceptor chain can't loop forever.
+  /// Per-request retry counter, carried on the request's own extras (diagnostic
+  /// + a belt-and-braces loop guard).
   static const _extraKey = 'tailarr_auth_retries';
+  static const _connectionHeader = 'Connection';
+
+  /// Exponential backoff, capped at [maxBackoff]: 300ms, 600, 1200, 2000, 2000…
+  Duration _delayFor(int attempt) {
+    final ms = backoff.inMilliseconds * (1 << attempt);
+    final capped = ms > maxBackoff.inMilliseconds ? maxBackoff.inMilliseconds : ms;
+    return Duration(milliseconds: capped);
+  }
 
   @override
   Future<void> onResponse(
@@ -398,29 +438,99 @@ class TailarrServerAuthInterceptor extends Interceptor {
     if (code != 401 && code != 403) return handler.next(response);
 
     final options = response.requestOptions;
-    final isGet = options.method.toUpperCase() == 'GET';
-    final attempts = (options.extra[_extraKey] as int?) ?? 0;
-
-    if (isGet && attempts < maxRetries) {
-      await _sleep(backoff * (attempts + 1));
-      options.extra[_extraKey] = attempts + 1;
-      try {
-        return handler.resolve(await _dio.fetch(options));
-      } on DioException catch (e) {
-        // The retry itself failed (another transient 401 exhausted the budget,
-        // or a genuine network error) — propagate that outcome unchanged.
-        return handler.reject(e, true);
-      }
+    // Only idempotent GETs are safe to replay; a 401 on a mutating POST is
+    // surfaced immediately.
+    if (options.method.toUpperCase() != 'GET') {
+      return handler.reject(_authError(options, response));
     }
 
-    // Definitive: no bearer, or a genuinely revoked/stale one.
-    return handler.reject(
+    // Never reuse the poisoned pooled connection: mark this request so every
+    // retry dials fresh and the socket is dropped, not kept.
+    options.persistentConnection = false;
+    options.headers[_connectionHeader] = 'close';
+
+    var current = response;
+    for (var attempt = 0; attempt < maxRetries; attempt++) {
+      await _sleep(_delayFor(attempt));
+      options.extra[_extraKey] = attempt + 1;
+      try {
+        current = await _freshFetch(options);
+      } on DioException catch (e) {
+        // A genuine network error on the retry — propagate unchanged.
+        return handler.reject(e, true);
+      }
+      final c = current.statusCode;
+      if (c != 401 && c != 403) return handler.resolve(current);
+    }
+
+    // Budget exhausted on definitive 401/403s: no bearer, or a revoked/stale one.
+    return handler.reject(_authError(options, current));
+  }
+
+  DioException _authError(RequestOptions options, Response response) =>
       DioException(
         requestOptions: options,
         response: response,
         type: DioExceptionType.badResponse,
         error: const ServerAuthRequiredException(),
-      ),
-    );
+      );
+}
+
+/// Serializes + dedupes the Tailarr Server module's idempotent GET reads (B26).
+///
+/// The module opens by firing pods+network+updates (and, on their screens,
+/// users+ai) — a simultaneous burst through the embedded `tailscale serve`
+/// proxy. Under that burst the proxy intermittently poisons a connection
+/// (dropping the bearer), and because the whole set fired at once a single
+/// poisoned connection could 401-storm the ENTIRE refresh, blowing the retry
+/// budget and reverting the module to its enrollment gate (re-pairing, minting
+/// duplicate admin tokens).
+///
+/// This gate caps concurrent GETs ([maxConcurrent], default 2 — enough to keep
+/// the slow `getNetwork` off the critical `getPods` path, few enough that a
+/// burst can't all hit serve at once) and shares an already-in-flight GET for
+/// the same key instead of re-issuing it. Mutating POSTs never go through here.
+class _GetGate {
+  /// Enough to keep the slow `getNetwork` off the critical `getPods` path, few
+  /// enough that a startup burst can't all hit serve at once (B26).
+  static const maxConcurrent = 2;
+
+  int _active = 0;
+  final _waiters = <Completer<void>>[];
+  final _inFlight = <String, Future<dynamic>>{};
+
+  Future<T> run<T>(String key, Future<T> Function() op) {
+    final existing = _inFlight[key];
+    if (existing != null) return existing.then((v) => v as T);
+    late final Future<T> future;
+    future = _guarded(op).whenComplete(() {
+      if (identical(_inFlight[key], future)) _inFlight.remove(key);
+    });
+    _inFlight[key] = future;
+    return future;
+  }
+
+  Future<T> _guarded<T>(Future<T> Function() op) async {
+    await _acquire();
+    try {
+      return await op();
+    } finally {
+      _release();
+    }
+  }
+
+  Future<void> _acquire() {
+    if (_active < maxConcurrent) {
+      _active++;
+      return Future.value();
+    }
+    final waiter = Completer<void>();
+    _waiters.add(waiter);
+    return waiter.future.then((_) => _active++);
+  }
+
+  void _release() {
+    _active--;
+    if (_waiters.isNotEmpty) _waiters.removeAt(0).complete();
   }
 }

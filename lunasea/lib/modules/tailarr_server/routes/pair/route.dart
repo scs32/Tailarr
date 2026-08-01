@@ -172,13 +172,27 @@ class _State extends State<TailarrServerPairRoute>
       _connecting = true;
       _connectMsg = null;
     });
+    final state = context.read<TailarrServerState>();
     final result = await QuickConnect.selfConfigure(
       LunaProfile.current,
       deviceLabel: 'Tailarr app',
+      // B26: don't mint a duplicate admin token when the stored bearer still
+      // works — a manual "Connect" over a valid token should be inert, not
+      // additive (duplicate tokens were piling up in the server's .tokens.json).
+      verifyExistingToken: () async {
+        final api = state.api;
+        if (api == null) return false;
+        try {
+          await api.getPods();
+          return true;
+        } catch (_) {
+          return false;
+        }
+      },
     );
     if (!mounted) return;
     // Rebuild the Server API with the new bearer.
-    context.read<TailarrServerState>().resetProfile();
+    state.resetProfile();
     setState(() {
       _connecting = false;
       _connectOk = result.ok;
