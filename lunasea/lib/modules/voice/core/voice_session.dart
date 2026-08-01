@@ -65,6 +65,11 @@ class VoiceSession {
   Stream<String> get inputTranscript => _client!.inputTranscript;
   Stream<Uint8List> get audio => _client!.audio;
   Stream<void> get turnComplete => _client!.turnComplete;
+
+  /// Fires when the user barges in over the model's spoken answer — the audio
+  /// player must flush its queued output.
+  Stream<void> get interrupted => _client!.interrupted;
+
   Stream<Object> get errors => _client!.errors;
 
   List<String> get exposedTools => [for (final t in _tools) t.name];
