@@ -63,6 +63,7 @@ class PcmPlaybackQueue {
     int? frameBytes,
     int? maxBufferedBytes,
     this.maxPreRoll = const Duration(milliseconds: 400),
+    this.feedRetryDelay = const Duration(milliseconds: 200),
     this.onDrained,
     this.onOverflow,
     this.onFeedError,
@@ -92,6 +93,11 @@ class PcmPlaybackQueue {
   /// Target size of each frame handed to [feed] (default ~100ms). Kept even so a
   /// frame boundary never falls in the middle of a 16-bit sample.
   final int frameBytes;
+
+  /// How long to wait before re-kicking the drain after a genuine [feed] failure,
+  /// so the turn's LAST frame (which has no later add() to re-kick it) still
+  /// plays instead of leaving the tail stuck.
+  final Duration feedRetryDelay;
 
   /// Hard upper bound on retained-but-unfed audio (default ~10s). Safety net for
   /// a stalled device feed; excess incoming audio is dropped, not buffered.
@@ -137,6 +143,7 @@ class PcmPlaybackQueue {
   Completer<void> _cancel = Completer<void>();
 
   Timer? _preRollTimer;
+  Timer? _retryTimer;
 
   /// Bytes currently buffered in Dart (not yet handed to the device). Test seam.
   int get bufferedBytes => _bufferedBytes;
@@ -187,6 +194,7 @@ class PcmPlaybackQueue {
     _epoch++;
     _signalCancel();
     _cancelPreRollTimer();
+    _cancelRetryTimer();
     _chunks.clear();
     _bufferedBytes = 0;
     _flowing = false;
@@ -199,6 +207,7 @@ class PcmPlaybackQueue {
     _epoch++;
     _signalCancel();
     _cancelPreRollTimer();
+    _cancelRetryTimer();
     _chunks.clear();
     _bufferedBytes = 0;
     _flowing = false;
@@ -225,6 +234,24 @@ class PcmPlaybackQueue {
   void _cancelPreRollTimer() {
     _preRollTimer?.cancel();
     _preRollTimer = null;
+  }
+
+  /// Re-kick the drain shortly after a feed failure (epoch-guarded) so the turn's
+  /// last frame is retried even when no further add() is coming.
+  void _scheduleRetry(int forEpoch) {
+    _retryTimer?.cancel();
+    _retryTimer = Timer(feedRetryDelay, () {
+      _retryTimer = null;
+      if (_closed || _epoch != forEpoch) return;
+      if (_bufferedBytes > 0 && (_flowing || _flushBytes > 0)) {
+        unawaited(_drain());
+      }
+    });
+  }
+
+  void _cancelRetryTimer() {
+    _retryTimer?.cancel();
+    _retryTimer = null;
   }
 
   Future<void> _drain() async {
@@ -262,11 +289,15 @@ class PcmPlaybackQueue {
           await Future.any<void>([f, cancel.future]);
         } catch (_) {
           // A genuine feed failure (NOT teardown/barge-in): preserve the frame
-          // so the tail is not silently dropped, then stop — the next add()
-          // re-kicks the drain. Only reachable when the epoch is unchanged.
+          // so the tail is not silently dropped, then stop. Only reachable when
+          // the epoch is unchanged.
           if (!_closed && _epoch == myEpoch) {
             _requeueFront(frame);
             onFeedError?.call();
+            // A later add() would normally re-kick the drain, but the turn's LAST
+            // frame (post-endTurn) has no more adds coming — schedule an
+            // epoch-guarded retry so the tail still plays and onDrained fires.
+            _scheduleRetry(myEpoch);
           }
           return;
         }
@@ -324,6 +355,11 @@ class PcmPlaybackQueue {
         _chunks.clear();
         _bufferedBytes = 0;
       }
+      // Zero the flush allowance too: an ODD-total turn leaves a lone carry-byte
+      // whose bookkeeping would otherwise keep _flushBytes == 1 forever, so the
+      // NEXT turn would be silent-until-turnComplete until its own endTurn healed
+      // it. Clearing here keeps the boundary clean for the next turn's pre-roll.
+      _flushBytes = 0;
       _turnEndPending = false;
       onDrained?.call();
     }

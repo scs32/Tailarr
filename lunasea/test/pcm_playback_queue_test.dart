@@ -37,6 +37,7 @@ void main() {
     int? frameBytes,
     int? maxBufferedBytes,
     Duration maxPreRoll = const Duration(minutes: 10), // effectively off
+    Duration feedRetryDelay = const Duration(minutes: 10), // effectively off
     void Function()? onDrained,
     void Function(int)? onOverflow,
     void Function()? onFeedError,
@@ -47,6 +48,7 @@ void main() {
       frameBytes: frameBytes,
       maxBufferedBytes: maxBufferedBytes,
       maxPreRoll: maxPreRoll,
+      feedRetryDelay: feedRetryDelay,
       onDrained: onDrained,
       onOverflow: onOverflow,
       onFeedError: onFeedError,
@@ -278,6 +280,70 @@ void main() {
       q.add(ramp(0, 20)); // below pre-roll again
       await pump();
       expect(fed, isEmpty);
+    });
+  });
+
+  group('NEW-1 — odd-total turn does not leak the flush boundary', () {
+    test('the next turn still pre-rolls normally after an odd-total turn',
+        () async {
+      final fed = <Uint8List>[];
+      var drained = 0;
+      final q = make(
+        feed: (f) async => fed.add(f),
+        preRollBytes: 100, // turn N stays below this -> flushed by endTurn
+        frameBytes: 10,
+        onDrained: () => drained++,
+      );
+
+      // Turn N: an ODD total (31 bytes) -> a lone carry-byte is left over.
+      q.add(ramp(0, 31));
+      await pump();
+      q.endTurn();
+      await pump();
+      expect(drained, 1);
+      expect(concat(fed), equals(ramp(0, 30)),
+          reason: 'even prefix played; the odd carry-byte is dropped as drained');
+      fed.clear();
+
+      // Turn N+1: enough to meet the pre-roll. If _flushBytes leaked (==1), the
+      // pre-roll branch would be skipped forever and this would stay silent.
+      q.add(ramp(100, 200));
+      await pump();
+      expect(q.isFlowing, isTrue, reason: 'boundary was not leaked');
+      expect(concat(fed), equals(ramp(100, 200)));
+    });
+  });
+
+  group('NEW-2 — feed error on the LAST frame is retried', () {
+    test('a throwing final frame still plays and signals drained (no new add)',
+        () async {
+      final fed = <Uint8List>[];
+      var calls = 0;
+      var drained = 0;
+      final q = make(
+        feed: (f) async {
+          calls++;
+          if (calls == 2) throw StateError('device busy'); // the final frame
+          fed.add(f);
+        },
+        preRollBytes: 1000, // never flows on its own -> endTurn flushes
+        frameBytes: 10,
+        feedRetryDelay: const Duration(milliseconds: 20),
+        onDrained: () => drained++,
+      );
+
+      q.add(ramp(0, 20)); // two 10-byte frames
+      await pump();
+      q.endTurn(); // no further add() will come to re-kick the drain
+      await pump();
+      expect(fed.length, 1, reason: 'first frame played; the last one threw');
+      expect(drained, 0);
+
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      await pump();
+      expect(concat(fed), equals(ramp(0, 20)),
+          reason: 'the retry replayed the failed last frame');
+      expect(drained, 1, reason: 'drained fires after the retry succeeds');
     });
   });
 
