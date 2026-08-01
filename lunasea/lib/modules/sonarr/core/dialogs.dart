@@ -3,8 +3,22 @@ import 'package:lunasea/core.dart';
 import 'package:lunasea/extensions/int/bytes.dart';
 import 'package:lunasea/extensions/string/string.dart';
 import 'package:lunasea/modules/sonarr.dart';
+import 'package:lunasea/modules/settings/core/server_driven_connection.dart';
 
 class SonarrDialogs {
+  /// The global-settings menu entries, filtered for the caller's badge state.
+  /// "View Web GUI" is a raw admin affordance (opens the service's own web
+  /// login) — hide it for a server-driven auto-config member with no server
+  /// badge; they hold no web credentials and the page is a dead end for them.
+  /// Pure so the badge-conditional list is directly unit-testable.
+  static List<SonarrGlobalSettingsType> globalSettingsOptions({
+    required bool hidesRawServiceAdmin,
+  }) =>
+      SonarrGlobalSettingsType.values
+          .where((t) =>
+              t != SonarrGlobalSettingsType.WEB_GUI || !hidesRawServiceAdmin)
+          .toList();
+
   Future<Tuple2<bool, SonarrGlobalSettingsType?>> globalSettings(
     BuildContext context,
   ) async {
@@ -17,16 +31,20 @@ class SonarrDialogs {
       Navigator.of(context, rootNavigator: true).pop();
     }
 
+    final List<SonarrGlobalSettingsType> _options = globalSettingsOptions(
+      hidesRawServiceAdmin: ServerDrivenConnection.hidesRawServiceAdmin(),
+    );
+
     await LunaDialog.dialog(
       context: context,
       title: 'lunasea.Settings'.tr(),
       content: List.generate(
-        SonarrGlobalSettingsType.values.length,
+        _options.length,
         (index) => LunaDialog.tile(
-          text: SonarrGlobalSettingsType.values[index].name,
-          icon: SonarrGlobalSettingsType.values[index].icon,
+          text: _options[index].name,
+          icon: _options[index].icon,
           iconColor: LunaColours().byListIndex(index),
-          onTap: () => _setValues(true, SonarrGlobalSettingsType.values[index]),
+          onTap: () => _setValues(true, _options[index]),
         ),
       ),
       contentPadding: LunaDialog.listDialogContentPadding(),

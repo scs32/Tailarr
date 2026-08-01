@@ -2,8 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:lunasea/core.dart';
 import 'package:lunasea/extensions/int/bytes.dart';
 import 'package:lunasea/modules/radarr.dart';
+import 'package:lunasea/modules/settings/core/server_driven_connection.dart';
 
 class RadarrDialogs {
+  /// The global-settings menu entries, filtered for the caller's badge state.
+  /// "View Web GUI" is a raw admin affordance (opens the service's own web
+  /// login) — hide it for a server-driven auto-config member with no server
+  /// badge; they hold no web credentials and the page is a dead end for them.
+  /// Pure so the badge-conditional list is directly unit-testable.
+  static List<RadarrGlobalSettingsType> globalSettingsOptions({
+    required bool hidesRawServiceAdmin,
+  }) =>
+      RadarrGlobalSettingsType.values
+          .where((t) =>
+              t != RadarrGlobalSettingsType.WEB_GUI || !hidesRawServiceAdmin)
+          .toList();
+
   Future<Tuple2<bool, RadarrGlobalSettingsType?>> globalSettings(
     BuildContext context,
   ) async {
@@ -16,16 +30,20 @@ class RadarrDialogs {
       Navigator.of(context, rootNavigator: true).pop();
     }
 
+    final List<RadarrGlobalSettingsType> _options = globalSettingsOptions(
+      hidesRawServiceAdmin: ServerDrivenConnection.hidesRawServiceAdmin(),
+    );
+
     await LunaDialog.dialog(
       context: context,
       title: 'lunasea.Settings'.tr(),
       content: List.generate(
-        RadarrGlobalSettingsType.values.length,
+        _options.length,
         (index) => LunaDialog.tile(
-          text: RadarrGlobalSettingsType.values[index].name,
-          icon: RadarrGlobalSettingsType.values[index].icon,
+          text: _options[index].name,
+          icon: _options[index].icon,
           iconColor: LunaColours().byListIndex(index),
-          onTap: () => _setValues(true, RadarrGlobalSettingsType.values[index]),
+          onTap: () => _setValues(true, _options[index]),
         ),
       ),
       contentPadding: LunaDialog.listDialogContentPadding(),
