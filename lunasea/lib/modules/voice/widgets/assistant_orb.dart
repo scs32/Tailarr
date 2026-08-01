@@ -5,17 +5,25 @@ import 'package:flutter/material.dart';
 
 import 'package:lunasea/core.dart';
 
-/// A fun, mesh-decorated pulsing orb — the idle/listening face of the Tailarr
-/// voice-assistant dashboard.
+/// The idle/listening/speaking face of the Tailarr voice-assistant dashboard:
+/// a sphere **woven from a soft fabric-like mesh that gently undulates**, a
+/// playful reference to the tailnet mesh the app runs on.
 ///
-/// Pure Flutter, no shader assets: an animated stack of additively-blended
-/// radial "mesh" blobs drifting inside a breathing core, wrapped by a soft
-/// glow ring. It is deliberately alive (it reads as intentional, not as a
-/// loading spinner) and cheap (single [AnimationController], a [RepaintBoundary],
-/// all painting in one [CustomPainter]).
+/// Rendering is a procedural **fragment shader** (`shaders/orb_mesh.frag`): a
+/// lit sphere whose surface is an interlaced warp/weft lattice displaced by
+/// layered value-noise (fbm) for the cloth-in-a-breeze drift. The shader is
+/// loaded asynchronously and, if it is unavailable (e.g. an environment without
+/// Impeller such as the widget-test harness), the widget falls back to a cheap
+/// CPU lat/long mesh painted with [Canvas] — so it always renders an animated
+/// mesh orb, never a blank box or a spinner.
 ///
-/// This is the increment-1 placeholder visual. A later increment can swap the
-/// painter body for a fragment shader without touching callers.
+/// Cost-capped for the always-visible home surface: a single
+/// [AnimationController], one [RepaintBoundary], all painting in one painter.
+///
+/// Public API is intentionally stable (the voice audio lane drives it): the
+/// [intensity] input maps the session state machine — idle (0.0, slow
+/// breathing) → listening/thinking → speaking (1.0, faster, brighter, wider
+/// undulation) — onto the animation. Extend additively only.
 class AssistantOrb extends StatefulWidget {
   const AssistantOrb({
     super.key,
@@ -27,8 +35,8 @@ class AssistantOrb extends StatefulWidget {
   /// Diameter of the orb in logical pixels.
   final double size;
 
-  /// 0 = calm idle breathing, 1 = actively listening/thinking (faster, wider
-  /// blob motion + brighter glow). Values in-between interpolate.
+  /// 0 = calm idle breathing, 1 = actively listening/speaking (faster, wider
+  /// mesh undulation + brighter). Values in-between interpolate.
   final double intensity;
 
   /// Optional caption rendered under the orb (e.g. "Thinking…").
@@ -42,17 +50,40 @@ class _AssistantOrbState extends State<AssistantOrb>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
+  /// Loaded lazily; null until (and unless) the shader compiles. When it stays
+  /// null we render the CPU mesh fallback.
+  ui.FragmentShader? _shader;
+
+  /// Monotonic seconds for continuous (non-looping) noise. The controller loops
+  /// 0..1 over a long period so `value * _period` is elapsed seconds with only a
+  /// single, unnoticeable wrap every few minutes.
+  static const double _period = 600.0;
+  double get _seconds => _controller.value * _period;
+
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 7),
+      duration: const Duration(seconds: 600), // == _period
     )..repeat();
+    _loadShader();
+  }
+
+  Future<void> _loadShader() async {
+    try {
+      final program =
+          await ui.FragmentProgram.fromAsset('shaders/orb_mesh.frag');
+      if (!mounted) return;
+      setState(() => _shader = program.fragmentShader());
+    } catch (_) {
+      // No Impeller/shader support (e.g. widget tests) — keep the CPU fallback.
+    }
   }
 
   @override
   void dispose() {
+    _shader?.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -68,7 +99,16 @@ class _AssistantOrbState extends State<AssistantOrb>
             animation: _controller,
             builder: (context, _) => CustomPaint(
               size: Size.square(widget.size),
-              painter: _OrbPainter(t: _controller.value, intensity: intensity),
+              painter: _shader != null
+                  ? _MeshShaderPainter(
+                      shader: _shader!,
+                      seconds: _seconds,
+                      intensity: intensity,
+                    )
+                  : _MeshFallbackPainter(
+                      t: _controller.value,
+                      intensity: intensity,
+                    ),
             ),
           ),
         ),
@@ -89,118 +129,157 @@ class _AssistantOrbState extends State<AssistantOrb>
   }
 }
 
-class _Blob {
-  const _Blob({
-    required this.color,
-    required this.phase,
-    required this.orbit,
-    required this.radius,
+/// Primary renderer: draws the full canvas through the fabric-mesh fragment
+/// shader (which masks itself to the sphere + glow).
+class _MeshShaderPainter extends CustomPainter {
+  _MeshShaderPainter({
+    required this.shader,
+    required this.seconds,
+    required this.intensity,
   });
 
-  /// Blob tint.
-  final Color color;
+  final ui.FragmentShader shader;
+  final double seconds;
+  final double intensity;
 
-  /// Starting angle offset in turns (0..1) so the blobs don't move in lockstep.
-  final double phase;
+  @override
+  void paint(Canvas canvas, Size size) {
+    shader
+      ..setFloat(0, size.width)
+      ..setFloat(1, size.height)
+      ..setFloat(2, seconds)
+      ..setFloat(3, intensity);
+    canvas.drawRect(Offset.zero & size, Paint()..shader = shader);
+  }
 
-  /// Orbit radius as a fraction of the orb radius.
-  final double orbit;
-
-  /// Blob radius as a fraction of the orb radius.
-  final double radius;
+  @override
+  bool shouldRepaint(covariant _MeshShaderPainter old) =>
+      old.seconds != seconds || old.intensity != intensity;
 }
 
-class _OrbPainter extends CustomPainter {
-  _OrbPainter({required this.t, required this.intensity});
+/// CPU fallback: a lat/long wireframe sphere whose vertices wobble with cheap
+/// pseudo-noise, drawn as soft mint strokes over a breathing dark core. Reads
+/// as an undulating mesh (not a spinner) wherever the shader can't run.
+class _MeshFallbackPainter extends CustomPainter {
+  _MeshFallbackPainter({required this.t, required this.intensity});
 
   /// Looping animation value 0..1.
   final double t;
   final double intensity;
 
   static const double _tau = 2 * math.pi;
+  static const int _lats = 7; // latitude rings
+  static const int _lons = 12; // longitude meridians
+  static const int _seg = 24; // samples per line
 
-  static const List<_Blob> _blobs = <_Blob>[
-    _Blob(color: LunaColours.accent, phase: 0.00, orbit: 0.20, radius: 0.55),
-    _Blob(color: LunaColours.blue, phase: 0.33, orbit: 0.24, radius: 0.50),
-    _Blob(color: LunaColours.purple, phase: 0.66, orbit: 0.18, radius: 0.60),
-    _Blob(color: LunaColours.accent, phase: 0.50, orbit: 0.22, radius: 0.42),
-  ];
+  // Cheap value-noise-ish wobble so threads don't move in lockstep.
+  double _wave(double a, double b, double phase) =>
+      math.sin(a * 1.7 + phase) * math.cos(b * 2.3 - phase * 0.7);
 
   @override
   void paint(Canvas canvas, Size size) {
     final Offset center = size.center(Offset.zero);
     final double r = size.width / 2;
-    // Breathing pulse — a touch faster/wider when active.
-    final double pulse = 1.0 + (0.04 + 0.03 * intensity) * math.sin(t * _tau);
-    final double orbR = r * 0.72;
-    final double drift = 0.55 + 0.6 * intensity;
+    final double breath = 1.0 + (0.02 + 0.03 * intensity) * math.sin(t * _tau);
+    final double orbR = r * 0.82 * breath;
+    final double phase = t * _tau;
+    final double amp = orbR * (0.02 + 0.05 * intensity);
 
-    // --- Soft outer glow (unclipped, breathing) ---
-    final double glow = orbR * (1.08 + 0.10 * math.sin(t * _tau));
+    // Breathing dark core so the mesh reads against a body, not the page.
+    canvas.drawCircle(
+      center,
+      orbR,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [
+            LunaColours.accent.withValues(alpha: 0.22),
+            LunaColours.primary,
+          ],
+        ).createShader(Rect.fromCircle(center: center, radius: orbR)),
+    );
+
+    // Soft outer glow.
+    final double glow = orbR * 1.18;
     canvas.drawCircle(
       center,
       glow,
       Paint()
         ..shader = RadialGradient(
           colors: [
-            LunaColours.accent.withValues(alpha: 0.14 + 0.10 * intensity),
+            LunaColours.accent.withValues(alpha: 0.12 + 0.10 * intensity),
             LunaColours.accent.withValues(alpha: 0.0),
           ],
-          stops: const [0.55, 1.0],
+          stops: const [0.6, 1.0],
         ).createShader(Rect.fromCircle(center: center, radius: glow)),
     );
 
-    // --- Orb body: clip so the mesh blobs stay inside the sphere ---
-    canvas.save();
-    canvas.clipPath(
-      ui.Path()..addOval(Rect.fromCircle(center: center, radius: orbR * pulse)),
-    );
-
-    // Base fill so blob edges blend into the dark sphere, not the page.
-    canvas.drawCircle(
-      center,
-      orbR * pulse,
-      Paint()
-        ..shader = RadialGradient(
-          colors: [
-            LunaColours.accent.withValues(alpha: 0.30),
-            LunaColours.primary,
-          ],
-        ).createShader(
-          Rect.fromCircle(center: center, radius: orbR * pulse),
-        ),
-    );
-
-    // Additive mesh blobs — drifting radial gradients that read as a living
-    // mesh-gradient sphere.
-    for (final _Blob b in _blobs) {
-      final double angle = (t + b.phase) * _tau;
-      final Offset pos = center +
-          Offset(
-            math.cos(angle) * r * b.orbit * drift,
-            math.sin(angle * 1.3) * r * b.orbit * drift,
-          );
-      final double br = r * b.radius;
-      canvas.drawCircle(
-        pos,
-        br,
-        Paint()
-          ..blendMode = BlendMode.plus
-          ..shader = RadialGradient(
-            colors: [
-              b.color.withValues(alpha: 0.45 + 0.30 * intensity),
-              b.color.withValues(alpha: 0.0),
-            ],
-          ).createShader(Rect.fromCircle(center: pos, radius: br))
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, br * 0.22),
-      );
+    // Project a sphere point (lat, lon in radians) to 2D, with noise wobble,
+    // dropping back-facing points for a light "front hemisphere" weave.
+    Offset? project(double lat, double lon) {
+      final double wob = 1.0 +
+          amp / orbR * _wave(lat * 3.0, lon * 3.0, phase);
+      final double x = math.cos(lat) * math.sin(lon);
+      final double y = math.sin(lat);
+      final double z = math.cos(lat) * math.cos(lon);
+      if (z < -0.15) return null; // cull far back face
+      return center + Offset(x, -y) * orbR * wob;
     }
-    canvas.restore();
 
-    // --- Rim highlight ---
+    final Paint stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1
+      ..strokeCap = StrokeCap.round
+      ..color = LunaColours.accent.withValues(alpha: 0.34 + 0.30 * intensity)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 0.6);
+
+    // Latitude rings.
+    for (int i = 1; i < _lats; i++) {
+      final double lat = -math.pi / 2 + math.pi * i / _lats;
+      final ui.Path path = ui.Path();
+      bool started = false;
+      for (int s = 0; s <= _seg; s++) {
+        final double lon = -math.pi + _tau * s / _seg;
+        final Offset? p = project(lat, lon);
+        if (p == null) {
+          started = false;
+          continue;
+        }
+        if (!started) {
+          path.moveTo(p.dx, p.dy);
+          started = true;
+        } else {
+          path.lineTo(p.dx, p.dy);
+        }
+      }
+      canvas.drawPath(path, stroke);
+    }
+
+    // Longitude meridians.
+    for (int j = 0; j < _lons; j++) {
+      final double lon = -math.pi + _tau * j / _lons;
+      final ui.Path path = ui.Path();
+      bool started = false;
+      for (int s = 0; s <= _seg; s++) {
+        final double lat = -math.pi / 2 + math.pi * s / _seg;
+        final Offset? p = project(lat, lon);
+        if (p == null) {
+          started = false;
+          continue;
+        }
+        if (!started) {
+          path.moveTo(p.dx, p.dy);
+          started = true;
+        } else {
+          path.lineTo(p.dx, p.dy);
+        }
+      }
+      canvas.drawPath(path, stroke);
+    }
+
+    // Rim highlight.
     canvas.drawCircle(
       center,
-      orbR * pulse,
+      orbR,
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.5
@@ -209,6 +288,6 @@ class _OrbPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _OrbPainter old) =>
+  bool shouldRepaint(covariant _MeshFallbackPainter old) =>
       old.t != t || old.intensity != intensity;
 }

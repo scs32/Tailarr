@@ -3,9 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:lunasea/modules/voice/widgets/assistant_orb.dart';
 
-/// The assistant dashboard's face is a deliberate, animated mesh orb — NOT a
-/// loading spinner. These guard that it renders and animates without throwing,
-/// and that it is a painted surface rather than a progress indicator.
+/// The assistant dashboard's face is a deliberate, animated fabric-mesh sphere
+/// — NOT a loading spinner. It renders through a fragment shader on device and
+/// a CPU lat/long mesh fallback where Impeller is unavailable (as in this test
+/// harness). These guard that, either way, it renders and animates without
+/// throwing, and that it is a painted surface rather than a progress indicator.
 void main() {
   Widget host(Widget child) => MaterialApp(
         home: Scaffold(body: Center(child: child)),

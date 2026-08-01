@@ -91,6 +91,8 @@ flutter:
     - family: LunaBrandIcons
       fonts:
         - asset: assets/LunaBrandIcons.ttf
+  shaders:
+    - shaders/orb_mesh.frag
 flutter_icons:
   android: true
   ios: true
