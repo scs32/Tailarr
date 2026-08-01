@@ -90,6 +90,7 @@ class GeminiLiveClient {
   final _inputTranscript = StreamController<String>.broadcast();
   final _audio = StreamController<Uint8List>.broadcast();
   final _turnComplete = StreamController<void>.broadcast();
+  final _interrupted = StreamController<void>.broadcast();
   final _errors = StreamController<Object>.broadcast();
 
   /// Text of what Gemini is speaking (streamed in fragments).
@@ -103,6 +104,12 @@ class GeminiLiveClient {
 
   /// Fires when Gemini finishes a turn.
   Stream<void> get turnComplete => _turnComplete.stream;
+
+  /// Fires when the model's turn was interrupted by the user speaking over it
+  /// (barge-in). The player must immediately DROP any already-buffered output
+  /// audio for the abandoned turn.
+  Stream<void> get interrupted => _interrupted.stream;
+
   Stream<Object> get errors => _errors.stream;
 
   Uri get _uri {
@@ -120,7 +127,38 @@ class GeminiLiveClient {
   }
 
   /// Open the socket, send `setup`, and complete once `setupComplete` arrives.
-  Future<void> connect({Duration timeout = const Duration(seconds: 20)}) async {
+  ///
+  /// The Gemini Live endpoint (and, in Phase 2, the tsnet cold-start path) can
+  /// answer the WebSocket upgrade with a transient **502** while a backend spins
+  /// up. Those are retried with backoff; a bad key / 4xx is surfaced immediately.
+  Future<void> connect({
+    Duration timeout = const Duration(seconds: 20),
+    int maxRetries = 3,
+  }) async {
+    var attempt = 0;
+    while (true) {
+      try {
+        return await _connectOnce(timeout);
+      } catch (e) {
+        attempt += 1;
+        if (attempt > maxRetries || !isRetryableConnectError(e)) rethrow;
+        await Future<void>.delayed(Duration(milliseconds: 400 * attempt));
+      }
+    }
+  }
+
+  /// A cold-start 502 (or a dropped upgrade) is worth retrying; a 4xx (bad key,
+  /// forbidden) is not. Public so the retry policy is unit-testable.
+  static bool isRetryableConnectError(Object e) {
+    final s = e.toString();
+    return s.contains('502') ||
+        s.contains('503') ||
+        s.contains('504') ||
+        e is SocketException ||
+        (e is WebSocketException && !s.contains('40'));
+  }
+
+  Future<void> _connectOnce(Duration timeout) async {
     final ws = await WebSocket.connect(_uri.toString()).timeout(timeout);
     _ws = ws;
     ws.listen(_onFrame, onError: _errors.add, onDone: _onDone, cancelOnError: false);
@@ -189,6 +227,13 @@ class GeminiLiveClient {
     ws.add(jsonEncode(msg));
   }
 
+  /// Testing hook: feed a raw server frame (String JSON or bytes) through the
+  /// exact production parser so the protocol handling — including barge-in and
+  /// audio decode — is unit-testable without opening a socket. NOT for
+  /// production callers. (Kept as a plain method, not `@visibleForTesting`, so
+  /// this file stays pure `dart:io` and still runs under `dart run`.)
+  Future<void> ingestFrameForTest(Object frame) => _onFrame(frame);
+
   Future<void> _onFrame(dynamic frame) async {
     final Map<String, dynamic> msg;
     try {
@@ -213,6 +258,11 @@ class GeminiLiveClient {
     final sc = msg['serverContent'];
     if (sc is Map) {
       final content = sc.cast<String, dynamic>();
+      // Barge-in: the user spoke over the model. Gemini abandons the current
+      // output turn; the player must drop everything still buffered.
+      if (content['interrupted'] == true) {
+        _interrupted.add(null);
+      }
       final inputT = content['inputTranscription'];
       if (inputT is Map && inputT['text'] is String) {
         _inputTranscript.add(inputT['text'] as String);
@@ -285,6 +335,7 @@ class GeminiLiveClient {
     await _inputTranscript.close();
     await _audio.close();
     await _turnComplete.close();
+    await _interrupted.close();
     await _errors.close();
   }
 }

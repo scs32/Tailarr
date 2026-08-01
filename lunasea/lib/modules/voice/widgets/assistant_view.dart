@@ -89,6 +89,21 @@ class _AssistantViewState extends State<AssistantView> {
   }
 
   double _intensityFor(VoiceAssistantState state) {
+    // Live-voice lane drives the orb through its idle->listening->thinking->
+    // speaking states (public [AssistantOrb.intensity] API only — the mesh
+    // worker owns the paint).
+    if (state.voiceActive) {
+      switch (state.activity) {
+        case VoiceActivity.speaking:
+          return 1.0;
+        case VoiceActivity.thinking:
+          return 0.9;
+        case VoiceActivity.listening:
+          return 0.7;
+        case VoiceActivity.idle:
+          return 0.4;
+      }
+    }
     if (state.turnInProgress) return 1.0;
     switch (state.status) {
       case VoiceConnectionStatus.connecting:
@@ -102,6 +117,18 @@ class _AssistantViewState extends State<AssistantView> {
   }
 
   String _labelFor(VoiceAssistantState state) {
+    if (state.voiceActive) {
+      switch (state.activity) {
+        case VoiceActivity.speaking:
+          return 'Speaking…';
+        case VoiceActivity.thinking:
+          return 'Thinking…';
+        case VoiceActivity.listening:
+          return 'Listening…';
+        case VoiceActivity.idle:
+          return 'Starting…';
+      }
+    }
     if (state.turnInProgress) return 'Thinking…';
     switch (state.status) {
       case VoiceConnectionStatus.connecting:
@@ -212,24 +239,18 @@ class _AssistantViewState extends State<AssistantView> {
               ),
             ),
             const SizedBox(width: 8.0),
-            // Scaffolded mic button — a later increment wires mic PCM -> Live ->
-            // speaker. Text lane is the increment-1 path.
+            // Live-voice toggle: opens the mic + speaker duplex loop (16kHz in /
+            // 24kHz out) to Gemini Live. Tap again to stop.
             LunaIconButton(
-              icon: Icons.mic_none_rounded,
-              color: LunaColours.grey,
-              onPressed: _showMicNotYet,
+              icon: state.voiceActive
+                  ? Icons.stop_circle_rounded
+                  : Icons.mic_none_rounded,
+              color: state.voiceActive ? LunaColours.accent : LunaColours.grey,
+              onPressed: () => context.read<VoiceAssistantState>().toggleVoice(),
             ),
           ],
         ),
       ),
-    );
-  }
-
-  void _showMicNotYet() {
-    showLunaSnackBar(
-      title: 'Voice capture coming soon',
-      message: 'Type to talk for now — live mic + speaker land next.',
-      type: LunaSnackbarType.INFO,
     );
   }
 }
