@@ -52,13 +52,25 @@ class QuickConnect {
   /// legs run against the same identity-proven device — start → approve → poll
   /// status for the once-token (§5 A: the token lives on status, not approve).
   /// [client] is injectable for tests. Never throws — returns a typed result.
+  ///
+  /// [verifyExistingToken] short-circuits the mint: if the profile already
+  /// carries a bearer and this probe confirms it still works, reuse it instead
+  /// of minting a fresh one. Repeated self-config was piling up duplicate admin
+  /// tokens in the server's `.tokens.json` (B26) — an intentional reconnect with
+  /// a still-valid token should be inert, not additive. Injectable for tests.
   static Future<QuickConnectResult> selfConfigure(
     LunaProfile profile, {
     required String deviceLabel,
     PairingClient? client,
     int pollAttempts = 15,
     Duration pollDelay = const Duration(seconds: 1),
+    Future<bool> Function()? verifyExistingToken,
   }) async {
+    if (verifyExistingToken != null &&
+        profile.serverAdminToken.trim().isNotEmpty &&
+        await verifyExistingToken()) {
+      return const QuickConnectResult(QuickConnectStatus.ok);
+    }
     final c = client ?? clientFor(profile);
     if (c == null) return const QuickConnectResult(QuickConnectStatus.noBadge);
     try {
