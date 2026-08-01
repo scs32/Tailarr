@@ -22,6 +22,26 @@ import 'package:lunasea/system/logger.dart';
 import 'package:lunasea/system/notifications/ntfy_hive_migration.dart';
 import 'package:lunasea/system/notifications/platform/ntfy_shared_state.dart';
 
+/// How a single gateway auto-config handshake resolved — drives the bounded
+/// retry policy in [LunaNtfy.runAutoConfigureRetry].
+enum NtfyAutoConfigOutcome {
+  /// A complete, usable handout was applied — stop, the device is configured.
+  configured,
+
+  /// A definitive refusal a retry cannot fix (device not assigned to a person,
+  /// or nothing to do) — stop and leave the "not set up" state.
+  terminal,
+
+  /// The gateway answered but the handout was partial (ok=false for a
+  /// non-terminal reason, or ok=true with an unusable subscription) — the gate
+  /// is most likely still settling after cold start, so retry (bounded).
+  incompleteHandout,
+
+  /// The request never reached a usable answer (host-lookup / dial / timeout /
+  /// 5xx) — the embedded node likely isn't up yet, so retry (bounded).
+  transientError,
+}
+
 /// Entry point for the ntfy notification pipeline: foreground stream while
 /// the app is active, one-shot polls for pull-to-refresh, and an
 /// opportunistic background-refresh task that posts local notifications.
@@ -66,24 +86,88 @@ class LunaNtfy {
     if (now - last < const Duration(minutes: 2).inMilliseconds) return;
 
     // The gateway is a bare MagicDNS short name routed through the embedded
-    // Tailscale node, which comes up a few seconds AFTER launch. A single
-    // immediate attempt loses that race ("Failed host lookup: tailarr-gate")
-    // and the hourly throttle then leaves it stuck. Retry across the startup
-    // window: stop on success or a definitive refusal (device unassigned /
-    // server too old); keep retrying only transport/routing failures.
-    for (var attempt = 0; attempt < 6; attempt++) {
+    // Tailscale node, which comes up a few seconds AFTER launch — and the gate
+    // itself keeps settling for a beat after that (whois/roster warm-up), so an
+    // early call can come back as a partial "incomplete handout" even once the
+    // dial succeeds. A single immediate attempt loses BOTH races ("Failed host
+    // lookup: tailarr-gate" OR an incomplete handout) and lands terminal "not
+    // set up". Retry across the settling window with backoff: stop on a
+    // complete handout or a definitive refusal (device unassigned), but keep
+    // retrying transport/routing failures AND incomplete handouts (B27). A
+    // sustained failure still lands "not set up" — the last attempt persisted
+    // it — and self-recovers on the next foreground (the 2-minute cooldown
+    // above bounds re-attempts, so this is never a tight loop).
+    await runAutoConfigureRetry(
+      () async => classifyAutoConfigure(await autoConfigure()),
+    );
+  }
+
+  /// Bounded, backed-off retry policy for the unconfigured-device gateway
+  /// handshake — the resilient core of Automatic Setup (B27). Pure and
+  /// injectable (no Hive, no network, no real clock) so the policy is
+  /// unit-testable in isolation. [attempt] runs one handshake and returns its
+  /// classification; a THROWN error is treated as a transient transport failure
+  /// (the embedded node isn't up yet). BOTH transient transport failures AND
+  /// incomplete handouts are retried — a gate still settling after cold start
+  /// produces either — stopping early only on a complete handout
+  /// ([NtfyAutoConfigOutcome.configured]) or a definitive refusal
+  /// ([NtfyAutoConfigOutcome.terminal], e.g. the device isn't assigned to a
+  /// person). Returns the final outcome; after [maxAttempts] a still-unresolved
+  /// handshake resolves to its last transient/incomplete outcome, which
+  /// [autoConfigure] has already persisted as "not set up / tap to retry".
+  @visibleForTesting
+  static Future<NtfyAutoConfigOutcome> runAutoConfigureRetry(
+    Future<NtfyAutoConfigOutcome> Function() attempt, {
+    int maxAttempts = 6,
+    Duration initialBackoff = const Duration(seconds: 2),
+    Duration maxBackoff = const Duration(seconds: 20),
+    Future<void> Function(Duration)? sleep,
+  }) async {
+    final delay = sleep ?? (Duration d) => Future<void>.delayed(d);
+    var backoff = initialBackoff;
+    var outcome = NtfyAutoConfigOutcome.transientError;
+    for (var i = 0; i < maxAttempts; i++) {
       try {
-        final creds = await autoConfigure();
-        if (creds == null || creds.ok || creds.isUnassigned) return;
-        // A parsed-but-incomplete handout isn't going to fix itself by
-        // retrying — stop and leave the recorded failure.
-        return;
+        outcome = await attempt();
       } catch (_) {
-        // Transport/routing error — the node likely isn't up yet. Wait and
-        // retry through the connect window.
-        await Future.delayed(const Duration(seconds: 5));
+        // Transport/routing error — the node likely isn't up yet.
+        outcome = NtfyAutoConfigOutcome.transientError;
+      }
+      if (outcome == NtfyAutoConfigOutcome.configured ||
+          outcome == NtfyAutoConfigOutcome.terminal) {
+        return outcome;
+      }
+      // Back off before the next attempt (never after the last one).
+      if (i < maxAttempts - 1) {
+        await delay(backoff);
+        final next = backoff * 2;
+        backoff = next > maxBackoff ? maxBackoff : next;
       }
     }
+    return outcome;
+  }
+
+  /// Classifies the credentials a single [autoConfigure] returned, deciding
+  /// whether the bounded retry loop should stop or keep trying. Pure.
+  ///
+  /// - A complete, usable handout → [NtfyAutoConfigOutcome.configured] (stop).
+  /// - The gateway's definitive "this device isn't assigned to a person"
+  ///   refusal (or a null result) → [NtfyAutoConfigOutcome.terminal] (stop; a
+  ///   retry can't fix it — it needs an admin action).
+  /// - Anything else the gateway answered — ok=false for another reason, or
+  ///   ok=true with an unusable subscription (missing url/topics) → an
+  ///   [NtfyAutoConfigOutcome.incompleteHandout] (retry; the gate is most
+  ///   likely still settling right after cold start).
+  @visibleForTesting
+  static NtfyAutoConfigOutcome classifyAutoConfigure(
+    NtfyGatewayCredentials? creds,
+  ) {
+    if (creds == null) return NtfyAutoConfigOutcome.terminal;
+    if (creds.ok && creds.subscription.isValid) {
+      return NtfyAutoConfigOutcome.configured;
+    }
+    if (creds.isUnassigned) return NtfyAutoConfigOutcome.terminal;
+    return NtfyAutoConfigOutcome.incompleteHandout;
   }
 
   Future<int> syncInbox() => NtfySync.syncInbox();
