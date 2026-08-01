@@ -97,6 +97,13 @@ class _State extends State<TailarrServerRoute>
           icon: Icons.people_alt_rounded,
           onPressed: TailarrServerRoutes.USERS.go,
         ),
+        // Admin-only voice-AI provider config — shown only for identities with
+        // the server grant (the same gate that lets a device self-configure).
+        if (QuickConnect.canApprove(LunaProfile.current))
+          LunaIconButton(
+            icon: Icons.auto_awesome_rounded,
+            onPressed: TailarrServerRoutes.AI_CONFIG.go,
+          ),
         LunaIconButton(
           icon: Icons.system_update_alt_rounded,
           onPressed: TailarrServerRoutes.UPDATES.go,

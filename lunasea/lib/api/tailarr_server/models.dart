@@ -438,6 +438,82 @@ class TailarrServerActionResult {
   }
 }
 
+/// `GET /api/ai` — the voice-AI provider config card. The server NEVER returns
+/// the raw api_key (parity with the MCP secret): only [keySet] reports whether
+/// one is stored. This model deliberately has NO api_key field, so a raw key can
+/// never be surfaced in the app even if the server contract regressed.
+class TailarrServerAIConfig {
+  final bool ok;
+  final String? error;
+
+  /// True when BOTH a provider and a key are set (server-side `configured`).
+  final bool configured;
+  final String provider;
+  final String model;
+
+  /// Whether an API key is stored on the server — the ONLY key signal the app
+  /// ever gets. The key itself is write-only and never returned.
+  final bool keySet;
+
+  /// Supported provider ids (server `AI_PROVIDERS`) — drives the picker so it
+  /// stays provider-abstracted. Falls back to `['gemini']` when absent.
+  final List<String> providers;
+
+  const TailarrServerAIConfig({
+    required this.ok,
+    required this.error,
+    required this.configured,
+    required this.provider,
+    required this.model,
+    required this.keySet,
+    required this.providers,
+  });
+
+  factory TailarrServerAIConfig.fromJson(Map<String, dynamic> json) {
+    final error = json['error'];
+    final providers = (json['providers'] as List? ?? [])
+        .map((e) => e.toString())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    return TailarrServerAIConfig(
+      ok: json.containsKey('ok') ? _bool(json['ok']) : true,
+      error: error == null ? null : error.toString(),
+      configured: _bool(json['configured']),
+      provider: _string(json['provider']),
+      model: _string(json['model']),
+      keySet: _bool(json['key_set']),
+      providers: providers.isEmpty ? const ['gemini'] : providers,
+    );
+  }
+}
+
+/// `POST /api/ai` result (`{do: set|clear}`). The server echoes `ok`/`error`
+/// plus the refreshed status under `status` — parsed into [config] so the UI can
+/// re-render key state without a second round-trip.
+class TailarrServerAIConfigResult {
+  final bool ok;
+  final String? error;
+  final TailarrServerAIConfig? config;
+
+  const TailarrServerAIConfigResult({
+    required this.ok,
+    required this.error,
+    required this.config,
+  });
+
+  factory TailarrServerAIConfigResult.fromJson(Map<String, dynamic> json) {
+    final error = json['error'];
+    final status = json['status'];
+    return TailarrServerAIConfigResult(
+      ok: _bool(json['ok']),
+      error: error == null ? null : error.toString(),
+      config: status is Map<String, dynamic>
+          ? TailarrServerAIConfig.fromJson(status)
+          : null,
+    );
+  }
+}
+
 /// One entry of `GET /api/pods/<name>/backups`
 class TailarrServerBackup {
   final String ts;
