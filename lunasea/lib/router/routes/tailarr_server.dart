@@ -3,6 +3,7 @@ import 'package:lunasea/modules.dart';
 import 'package:lunasea/modules/tailarr_server/core/state.dart';
 import 'package:lunasea/modules/tailarr_server/routes/pod_backups/route.dart';
 import 'package:lunasea/modules/tailarr_server/routes/pod_details/route.dart';
+import 'package:lunasea/modules/tailarr_server/routes/ai_config/route.dart';
 import 'package:lunasea/modules/tailarr_server/routes/pair/route.dart';
 import 'package:lunasea/modules/tailarr_server/routes/pod_logs/route.dart';
 import 'package:lunasea/modules/tailarr_server/routes/tailarr_server/route.dart';
@@ -22,6 +23,7 @@ enum TailarrServerRoutes with LunaRoutesMixin {
   USERS('users'),
   USER_DETAILS('user/:id'),
   PERSON_DETAILS('person/:id'),
+  AI_CONFIG('ai'),
   PAIR('pair');
 
   @override
@@ -66,6 +68,8 @@ enum TailarrServerRoutes with LunaRoutesMixin {
         return route(builder: (_, state) {
           return PersonDetailsRoute(id: state.pathParameters['id'] ?? '');
         });
+      case TailarrServerRoutes.AI_CONFIG:
+        return route(widget: const AIConfigRoute());
       case TailarrServerRoutes.PAIR:
         return route(widget: const TailarrServerPairRoute());
     }
@@ -79,6 +83,7 @@ enum TailarrServerRoutes with LunaRoutesMixin {
           TailarrServerRoutes.POD_DETAILS.routes,
           TailarrServerRoutes.UPDATES.routes,
           TailarrServerRoutes.USERS.routes,
+          TailarrServerRoutes.AI_CONFIG.routes,
           TailarrServerRoutes.PAIR.routes,
         ];
       case TailarrServerRoutes.USERS:
