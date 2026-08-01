@@ -451,20 +451,35 @@ class TailarrServerAuthInterceptor extends Interceptor {
     options.persistentConnection = false;
 
     var current = response;
+    DioException? connectError;
     for (var attempt = 0; attempt < maxRetries; attempt++) {
       await _sleep(_delayFor(attempt));
       options.extra[_extraKey] = attempt + 1;
       try {
         current = await _freshFetch(options);
+        connectError = null;
       } on DioException catch (e) {
-        // A genuine network error on the retry — propagate unchanged.
+        // A fresh retry can itself land in the serve settling window as a
+        // connection failure / "502 Proxy failed to establish tunnel" — the SAME
+        // window that drops the bearer. Since the retry runs on a throwaway Dio
+        // that bypasses the tailscale connect-retry interceptor, ride those out
+        // here within the bounded budget instead of surfacing immediately. Any
+        // OTHER network error propagates unchanged.
+        if (isTailscaleConnectFailure(e)) {
+          connectError = e;
+          continue;
+        }
         return handler.reject(e, true);
       }
       final c = current.statusCode;
       if (c != 401 && c != 403) return handler.resolve(current);
     }
 
-    // Budget exhausted on definitive 401/403s: no bearer, or a revoked/stale one.
+    // Budget exhausted. A trailing connection failure is a TRANSPORT problem,
+    // not an auth one — surface it as-is so a momentarily-down tunnel isn't
+    // mislabeled "unenrolled" (which would drop the token and force a re-pair).
+    if (connectError != null) return handler.reject(connectError, true);
+    // Otherwise: definitive 401/403s — no bearer, or a revoked/stale one.
     return handler.reject(_authError(options, current));
   }
 
@@ -491,6 +506,11 @@ class TailarrServerAuthInterceptor extends Interceptor {
 /// the slow `getNetwork` off the critical `getPods` path, few enough that a
 /// burst can't all hit serve at once) and shares an already-in-flight GET for
 /// the same key instead of re-issuing it. Mutating POSTs never go through here.
+///
+/// Note: a permit is held for the WHOLE call, including the auth interceptor's
+/// in-line retry/backoff — so during a poisoned storm two retrying reads can
+/// briefly hold both permits and delay other module GETs. That backpressure is
+/// intentional (don't pile more load onto a settling proxy).
 class _GetGate {
   /// Enough to keep the slow `getNetwork` off the critical `getPods` path, few
   /// enough that a startup burst can't all hit serve at once (B26).
@@ -501,6 +521,8 @@ class _GetGate {
   final _inFlight = <String, Future<dynamic>>{};
 
   Future<T> run<T>(String key, Future<T> Function() op) {
+    // INVARIANT: each [key] embeds its endpoint and thus maps to exactly one
+    // return type T, so the dedupe cast below is always sound.
     final existing = _inFlight[key];
     if (existing != null) return existing.then((v) => v as T);
     late final Future<T> future;

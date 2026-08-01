@@ -94,9 +94,28 @@ class _DelayAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
-TailarrServerAPI _apiWith(_ConcurrencyAdapter adapter) => _apiWith2(adapter);
+/// Always answers 500 → the module client's validateStatus (<500) rejects it as
+/// a DioException, so callers see an error. Counts calls.
+class _ErrorAdapter implements HttpClientAdapter {
+  int calls = 0;
 
-TailarrServerAPI _apiWith2(HttpClientAdapter adapter) {
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    calls++;
+    return ResponseBody.fromString('{"detail":"boom"}', 500, headers: {
+      Headers.contentTypeHeader: [Headers.jsonContentType],
+    });
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+TailarrServerAPI _apiWith(HttpClientAdapter adapter) {
   final api = TailarrServerAPI(host: 'https://ctrl.tail600657.ts.net/');
   api.httpClient.httpClientAdapter = adapter;
   return api;
@@ -145,7 +164,7 @@ void main() {
         'conserved — no over-admit when a release races a fresh acquire)',
         () async {
       final adapter = _DelayAdapter(const Duration(milliseconds: 5));
-      final api = _apiWith2(adapter);
+      final api = _apiWith(adapter);
       final futures = <Future<dynamic>>[];
       // Distinct keys so nothing dedupes; stagger arrivals so releases interleave
       // with new acquires — the exact window the permit race would exploit.
@@ -155,6 +174,25 @@ void main() {
       }
       await Future.wait(futures);
       expect(adapter.maxInFlight, lessThanOrEqualTo(2));
+    });
+
+    test('an op error propagates to BOTH the primary and deduped callers, and '
+        'frees the permit + in-flight key (next call re-issues)', () async {
+      final adapter = _ErrorAdapter();
+      final api = _apiWith(adapter);
+
+      final a = api.getPods();
+      final b = api.getPods(); // deduped onto the same in-flight future
+      // Attach BOTH matchers before awaiting so neither error goes unhandled.
+      final matchA = expectLater(a, throwsA(isA<DioException>()));
+      final matchB = expectLater(b, throwsA(isA<DioException>()));
+      await matchA;
+      await matchB;
+      expect(adapter.calls, 1, reason: 'the two concurrent calls shared one op');
+
+      // Key was cleared on completion → a later call re-issues (also errors).
+      await expectLater(api.getPods(), throwsA(isA<DioException>()));
+      expect(adapter.calls, 2);
     });
 
     test('a fresh GET after the previous one settled is NOT deduped', () async {

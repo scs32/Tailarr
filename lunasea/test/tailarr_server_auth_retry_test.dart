@@ -194,6 +194,61 @@ void main() {
       expect(fresh.calls, 0);
     });
 
+    test('a trailing CONNECTION failure on the retries surfaces as the raw '
+        'transport error, NOT ServerAuthRequiredException (a down tunnel must '
+        'not be mislabeled unenrolled)', () async {
+      final adapter = _InitialAdapter(status: 401);
+      // Every fresh retry throws a tailscale connect failure.
+      final dio = _dioWith(
+        adapter: adapter,
+        fresh: _FakeFreshFetch([]),
+        maxRetries: 3,
+      );
+      // Swap in a fresh fetcher that always throws a connect failure.
+      dio.interceptors.clear();
+      dio.interceptors.add(TailarrServerAuthInterceptor(
+        dio,
+        maxRetries: 3,
+        sleep: (_) async {},
+        freshFetch: (o) async => throw DioException(
+          requestOptions: o,
+          type: DioExceptionType.connectionError,
+          error: 'Connection refused',
+        ),
+      ));
+
+      await expectLater(
+        dio.get('api/pods'),
+        throwsA(predicate((e) =>
+            e is DioException &&
+            !isServerAuthRequired(e) &&
+            e.type == DioExceptionType.connectionError)),
+      );
+    });
+
+    test('CONTRACT: the module client carries validateStatus<500, and a plain '
+        'fresh Dio honors a request-carried validateStatus — so a repeat 401 '
+        'comes back as a Response (loop continues), not a throw', () async {
+      // The whole fresh-retry design hinges on this: freshConnectionFetch does
+      // Dio().fetch(options), and options must carry validateStatus so a repeat
+      // 401 is a Response the loop can inspect, not a thrown DioException that
+      // would abort the storm budget after one try.
+      final api = TailarrServerAPI(host: 'https://ctrl.tail600657.ts.net/');
+      final vs = api.httpClient.options.validateStatus;
+      expect(vs(401), isTrue);
+      expect(vs(403), isTrue);
+      expect(vs(500), isFalse);
+
+      final fresh = Dio()..httpClientAdapter = _InitialAdapter(status: 401);
+      final res = await fresh.fetch(RequestOptions(
+        path: 'api/pods',
+        method: 'GET',
+        baseUrl: 'https://ctrl.tail600657.ts.net/',
+        validateStatus: (s) => s != null && s < 500,
+      ));
+      expect(res.statusCode, 401); // a Response — did NOT throw
+    });
+
     test('a non-auth response passes through untouched', () async {
       final adapter = _InitialAdapter(status: 200);
       final fresh = _FakeFreshFetch([]);
