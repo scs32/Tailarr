@@ -111,6 +111,52 @@ void main() {
       expect(p.serverAdminToken, 'tailarr-tok-self');
     });
 
+    test('a still-valid stored bearer is REUSED, not re-minted (B26)', () async {
+      // Reconnect over a working token must be inert — no duplicate token in the
+      // server's .tokens.json. The serve adapter would mint 'tailarr-tok-NEW' if
+      // the mint legs ran; they must not.
+      final p = profile(host: 'https://ts.tail600657.ts.net')
+        ..serverAdminToken = 'tailarr-tok-existing';
+      final serve = _SeqAdapter([
+        '{"code":"ABCD-1234","poll_id":"p-1"}',
+        '{"status":"approved","token":"tailarr-tok-NEW"}',
+      ]);
+      final pair = _OneAdapter('{"ok":true,"person":"5a74ff15"}');
+      var probed = false;
+      final r = await QuickConnect.selfConfigure(
+        p,
+        deviceLabel: 'iPhone',
+        client: _client(serve, pair),
+        verifyExistingToken: () async {
+          probed = true;
+          return true; // the stored token still works
+        },
+      );
+      expect(r.ok, isTrue);
+      expect(probed, isTrue); // the reuse probe ran
+      expect(serve.i, 0); // ...and the mint legs never fired
+      expect(p.serverAdminToken, 'tailarr-tok-existing'); // unchanged, not NEW
+    });
+
+    test('a stored bearer that FAILS its probe falls through to minting a fresh '
+        'one', () async {
+      final p = profile(host: 'https://ts.tail600657.ts.net')
+        ..serverAdminToken = 'tailarr-tok-stale';
+      final serve = _SeqAdapter([
+        '{"code":"ABCD-1234","poll_id":"p-1"}',
+        '{"status":"approved","token":"tailarr-tok-fresh"}',
+      ]);
+      final pair = _OneAdapter('{"ok":true,"person":"5a74ff15"}');
+      final r = await QuickConnect.selfConfigure(
+        p,
+        deviceLabel: 'iPhone',
+        client: _client(serve, pair),
+        verifyExistingToken: () async => false, // stored token no longer works
+      );
+      expect(r.ok, isTrue);
+      expect(p.serverAdminToken, 'tailarr-tok-fresh');
+    });
+
     test('approve refused → refused, no token stored', () async {
       final p = profile(host: 'https://ts.tail600657.ts.net');
       final serve = _SeqAdapter(['{"code":"ABCD-1234","poll_id":"p-1"}']);

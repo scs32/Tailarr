@@ -54,9 +54,22 @@ class _State extends State<TailarrServerRoute>
 
   Future<void> _connect() async {
     setState(() => _connecting = true);
+    final state = context.read<TailarrServerState>();
     final result = await QuickConnect.selfConfigure(
       LunaProfile.current,
       deviceLabel: 'Tailarr app',
+      // Don't mint a duplicate admin token if the stored bearer still works —
+      // a manual reconnect over a still-valid token should be inert (B26).
+      verifyExistingToken: () async {
+        final api = state.api;
+        if (api == null) return false;
+        try {
+          await api.getPods();
+          return true;
+        } catch (_) {
+          return false;
+        }
+      },
     );
     if (!mounted) return;
     setState(() => _connecting = false);
@@ -168,10 +181,13 @@ class _State extends State<TailarrServerRoute>
           builder: (context, AsyncSnapshot<List<TailarrServerPod>> snapshot) {
             if (snapshot.hasError) {
               if (isServerAuthRequired(snapshot.error)) {
-                // APP-6: a controller 401/403 is the definitive "this device's
-                // bearer is stale/revoked" signal. Drop the stored token so
-                // every screen (this gate, the pair route, Sign Out) agrees the
-                // device is disconnected and re-surfaces "Connect This Device".
+                // APP-6/B26: this fires only after the API client has already
+                // retried a bounded number of transient 401/403s, so it's the
+                // definitive "this device's bearer is stale/revoked" signal —
+                // a lone transient miss never reaches here. Drop the stored
+                // token so every screen (this gate, the pair route, Sign Out)
+                // agrees the device is disconnected and re-surfaces
+                // "Connect This Device".
                 WidgetsBinding.instance
                     .addPostFrameCallback((_) => _dropStaleToken());
                 return _connectGate();

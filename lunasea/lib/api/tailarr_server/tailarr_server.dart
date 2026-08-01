@@ -52,26 +52,9 @@ class TailarrServerAPI {
       ),
     );
     attachTailscaleConnectRetry(dio);
-    // Surface a controller auth rejection as a typed error so screens can offer
-    // "Connect this device" instead of rendering empty data / a raw failure.
-    dio.interceptors.add(
-      InterceptorsWrapper(
-        onResponse: (response, handler) {
-          final code = response.statusCode;
-          if (code == 401 || code == 403) {
-            return handler.reject(
-              DioException(
-                requestOptions: response.requestOptions,
-                response: response,
-                type: DioExceptionType.badResponse,
-                error: const ServerAuthRequiredException(),
-              ),
-            );
-          }
-          handler.next(response);
-        },
-      ),
-    );
+    // Tolerate a TRANSIENT controller 401/403, then surface a sustained one as a
+    // typed auth error so screens can offer "Connect this device".
+    dio.interceptors.add(TailarrServerAuthInterceptor(dio));
     return TailarrServerAPI._internal(httpClient: dio);
   }
 
@@ -329,5 +312,72 @@ class TailarrServerAPI {
       options: Options(receiveTimeout: _longOperation),
     );
     return TailarrServerFleetResult.fromJson(response.data);
+  }
+}
+
+/// Tolerates a TRANSIENT controller 401/403 on the connected-check reads before
+/// concluding the device is unenrolled (B26).
+///
+/// The embedded `tailscale serve` proxy can briefly drop the admin bearer from
+/// a `GET api/pods` / `api/network` during its settling window, so a genuinely
+/// enrolled device sees a lone 401 that a retry always clears. Without this a
+/// single transient miss reverted the whole Tailarr Server module to its
+/// enrollment gate AND minted a duplicate admin token on the reconnect — a pile
+/// of them accumulated in the server's `.tokens.json`.
+///
+/// So a 401/403 on an idempotent GET is retried a small, bounded number of times
+/// with short backoff. Only a SUSTAINED failure — N consecutive definitive 401s
+/// — or a 401 on a mutating POST surfaces as [ServerAuthRequiredException], so
+/// the genuinely-unenrolled / revoked path still shows "Connect This Device".
+class TailarrServerAuthInterceptor extends Interceptor {
+  TailarrServerAuthInterceptor(
+    this._dio, {
+    this.maxRetries = 3,
+    this.backoff = const Duration(milliseconds: 300),
+    Future<void> Function(Duration)? sleep,
+  }) : _sleep = sleep ?? Future<void>.delayed;
+
+  final Dio _dio;
+  final int maxRetries;
+  final Duration backoff;
+  final Future<void> Function(Duration) _sleep;
+
+  /// Per-request retry counter, carried on the request's own extras so the
+  /// re-dispatch through the interceptor chain can't loop forever.
+  static const _extraKey = 'tailarr_auth_retries';
+
+  @override
+  Future<void> onResponse(
+    Response response,
+    ResponseInterceptorHandler handler,
+  ) async {
+    final code = response.statusCode;
+    if (code != 401 && code != 403) return handler.next(response);
+
+    final options = response.requestOptions;
+    final isGet = options.method.toUpperCase() == 'GET';
+    final attempts = (options.extra[_extraKey] as int?) ?? 0;
+
+    if (isGet && attempts < maxRetries) {
+      await _sleep(backoff * (attempts + 1));
+      options.extra[_extraKey] = attempts + 1;
+      try {
+        return handler.resolve(await _dio.fetch(options));
+      } on DioException catch (e) {
+        // The retry itself failed (another transient 401 exhausted the budget,
+        // or a genuine network error) — propagate that outcome unchanged.
+        return handler.reject(e, true);
+      }
+    }
+
+    // Definitive: no bearer, or a genuinely revoked/stale one.
+    return handler.reject(
+      DioException(
+        requestOptions: options,
+        response: response,
+        type: DioExceptionType.badResponse,
+        error: const ServerAuthRequiredException(),
+      ),
+    );
   }
 }
