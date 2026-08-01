@@ -133,12 +133,13 @@ void main() {
       final dio = _dioWith(adapter: adapter, fresh: fresh);
 
       await dio.get('api/pods');
+      // The fresh fetcher is a SEPARATE transport from the module's pooled
+      // client, and each retry is marked non-persistent (dart:io emits
+      // Connection: close) so the poisoned pooled socket is never reused/kept.
       expect(fresh.seen, isNotEmpty);
       for (final opts in fresh.seen) {
         expect(opts.persistentConnection, isFalse,
             reason: 'retry must not use a persistent (pooled) connection');
-        expect(opts.headers['Connection'], 'close',
-            reason: 'retry must ask the proxy to close the connection');
       }
     });
 

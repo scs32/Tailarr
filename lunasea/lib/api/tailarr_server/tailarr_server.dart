@@ -390,12 +390,12 @@ class TailarrServerAPI {
 ///
 /// So a 401/403 on an idempotent GET is retried a bounded number of times with
 /// exponential backoff, and CRUCIALLY each retry is fetched over a BRAND-NEW
-/// connection ([freshConnectionFetch] — a throwaway Dio with its own pool +
-/// `persistentConnection = false` + `Connection: close`). Re-fetching through
-/// the module's shared client would just grab the same poisoned pooled socket
-/// again — the connection-pool poisoning that made a whole request burst 401 at
-/// once (B26). The wider budget (default 5 tries, up to ~6s) rides a multi-second
-/// serve settling storm without reverting.
+/// connection ([freshConnectionFetch] — a throwaway Dio with its own pool, plus
+/// `persistentConnection = false` so dart:io doesn't keep the socket).
+/// Re-fetching through the module's shared client would just grab the same
+/// poisoned pooled socket again — the connection-pool poisoning that made a
+/// whole request burst 401 at once (B26). The wider budget (default 5 tries, up
+/// to ~6s) rides a multi-second serve settling storm without reverting.
 ///
 /// Only a SUSTAINED failure — the retry budget exhausted on definitive 401s — or
 /// a 401 on a mutating POST surfaces as [ServerAuthRequiredException], so the
@@ -420,7 +420,6 @@ class TailarrServerAuthInterceptor extends Interceptor {
   /// Per-request retry counter, carried on the request's own extras (diagnostic
   /// + a belt-and-braces loop guard).
   static const _extraKey = 'tailarr_auth_retries';
-  static const _connectionHeader = 'Connection';
 
   /// Exponential backoff, capped at [maxBackoff]: 300ms, 600, 1200, 2000, 2000…
   Duration _delayFor(int attempt) {
@@ -444,10 +443,12 @@ class TailarrServerAuthInterceptor extends Interceptor {
       return handler.reject(_authError(options, response));
     }
 
-    // Never reuse the poisoned pooled connection: mark this request so every
-    // retry dials fresh and the socket is dropped, not kept.
+    // Never reuse the poisoned pooled connection: the retry is dispatched over a
+    // brand-new pool by [_freshFetch]; persistentConnection=false additionally
+    // tells dart:io not to keep the socket (it emits `Connection: close`). On
+    // web this field is simply inert (no dart:io pool, and `Connection` is a
+    // browser-forbidden header we must not set by hand).
     options.persistentConnection = false;
-    options.headers[_connectionHeader] = 'close';
 
     var current = response;
     for (var attempt = 0; attempt < maxRetries; attempt++) {
@@ -526,11 +527,21 @@ class _GetGate {
     }
     final waiter = Completer<void>();
     _waiters.add(waiter);
-    return waiter.future.then((_) => _active++);
+    // The permit is granted by _release (which leaves _active untouched when it
+    // hands off), so the waiter does NOT increment — see _release.
+    return waiter.future;
   }
 
   void _release() {
-    _active--;
-    if (_waiters.isNotEmpty) _waiters.removeAt(0).complete();
+    // Conserve the permit: hand it DIRECTLY to the next waiter without touching
+    // _active. Decrementing here and letting the woken waiter re-increment would
+    // briefly free the slot, so a fresh acquire() racing this release could grab
+    // it too — admitting a 3rd concurrent GET past maxConcurrent (the permit
+    // race codex caught). Only drop the count when nobody is waiting.
+    if (_waiters.isNotEmpty) {
+      _waiters.removeAt(0).complete();
+    } else {
+      _active--;
+    }
   }
 }

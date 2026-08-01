@@ -62,7 +62,41 @@ class _ConcurrencyAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
-TailarrServerAPI _apiWith(_ConcurrencyAdapter adapter) {
+/// Each request takes [delay]; records max observed concurrency. Used to
+/// interleave releases with fresh arrivals so a permit-conservation bug (a woken
+/// waiter double-counting a slot a fresh acquire also grabbed) would over-admit.
+class _DelayAdapter implements HttpClientAdapter {
+  _DelayAdapter(this.delay);
+  final Duration delay;
+  int inFlight = 0;
+  int maxInFlight = 0;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    inFlight++;
+    if (inFlight > maxInFlight) maxInFlight = inFlight;
+    await Future<void>.delayed(delay);
+    inFlight--;
+    return ResponseBody.fromString(
+      '{"ok":true}',
+      200,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+TailarrServerAPI _apiWith(_ConcurrencyAdapter adapter) => _apiWith2(adapter);
+
+TailarrServerAPI _apiWith2(HttpClientAdapter adapter) {
   final api = TailarrServerAPI(host: 'https://ctrl.tail600657.ts.net/');
   api.httpClient.httpClientAdapter = adapter;
   return api;
@@ -105,6 +139,22 @@ void main() {
           reason: 'the second concurrent getPods should share the in-flight one');
       // Both callers still get a valid, independent result.
       expect(results, hasLength(2));
+    });
+
+    test('the concurrency cap holds under STAGGERED arrivals (permit is '
+        'conserved — no over-admit when a release races a fresh acquire)',
+        () async {
+      final adapter = _DelayAdapter(const Duration(milliseconds: 5));
+      final api = _apiWith2(adapter);
+      final futures = <Future<dynamic>>[];
+      // Distinct keys so nothing dedupes; stagger arrivals so releases interleave
+      // with new acquires — the exact window the permit race would exploit.
+      for (var i = 0; i < 12; i++) {
+        futures.add(api.getLogs('pod$i'));
+        await Future<void>.delayed(const Duration(milliseconds: 2));
+      }
+      await Future.wait(futures);
+      expect(adapter.maxInFlight, lessThanOrEqualTo(2));
     });
 
     test('a fresh GET after the previous one settled is NOT deduped', () async {

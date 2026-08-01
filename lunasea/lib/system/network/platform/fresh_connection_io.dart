@@ -12,8 +12,9 @@ import 'package:dio/io.dart';
 /// [HttpClient] and therefore its own connection pool + a fresh proxy CONNECT
 /// tunnel — while still routing through the app's global Tailscale
 /// `HttpOverrides` (those apply to every `HttpClient()` in the zone). The
-/// caller additionally sets `persistentConnection = false` + `Connection: close`
-/// on [options] so this socket is neither pooled nor reused afterward.
+/// caller additionally sets `persistentConnection = false` on [options], which
+/// dart:io honors by emitting `Connection: close`, so this socket is neither
+/// pooled nor reused afterward.
 Future<Response<dynamic>> freshConnectionFetch(RequestOptions options) async {
   final dio = Dio()..httpClientAdapter = IOHttpClientAdapter();
   try {
