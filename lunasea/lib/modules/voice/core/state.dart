@@ -232,11 +232,14 @@ class VoiceAssistantState extends LunaModuleState {
 
     _subs.add(session.turnComplete.listen((_) {
       _turnInProgress = false;
-      // Flush any buffered tail (incl. a reply shorter than the pre-roll) and
-      // re-arm the jitter buffer so the next turn pre-rolls afresh.
-      if (_voiceActive) _audio?.endPlaybackTurn();
-      // Model finished speaking: back to listening if the mic is live, else idle.
-      if (_voiceActive) _setActivity(VoiceActivity.listening);
+      // turnComplete = Gemini finished PRODUCING, not that the buffered speech
+      // has played. Flush this turn's tail (incl. a reply shorter than the
+      // pre-roll) and re-arm the jitter buffer; the orb stays `speaking` until
+      // the playback-drained callback fires (see startVoice), so it doesn't flip
+      // to `listening` while queued audio is still playing.
+      if (_voiceActive) {
+        _audio?.endPlaybackTurn();
+      }
       notifyListeners();
     }));
 
@@ -257,6 +260,13 @@ class VoiceAssistantState extends LunaModuleState {
     _subs.add(session.errors.listen((e) {
       _addSystem('Live error: $e', isError: true);
       _turnInProgress = false;
+      // A mid-turn error/disconnect strands sub-pre-roll audio in the buffer,
+      // which would otherwise prepend as a stale tail onto the next turn. Drop it
+      // and drop the orb out of `speaking`.
+      if (_voiceActive) {
+        _audio?.discardPlayback();
+        _setActivity(VoiceActivity.listening);
+      }
       notifyListeners();
     }));
   }
@@ -269,7 +279,15 @@ class VoiceAssistantState extends LunaModuleState {
     await ensureConnected();
     if (_status != VoiceConnectionStatus.ready) return;
 
-    final audio = VoiceAudioIO();
+    final audio = VoiceAudioIO(
+      // When the turn's speech has all reached the speaker, drop the orb back to
+      // listening — not the instant Gemini stops producing (turnComplete).
+      onPlaybackDrained: () {
+        if (_voiceActive && _activity == VoiceActivity.speaking) {
+          _setActivity(VoiceActivity.listening);
+        }
+      },
+    );
     final granted = await audio.ensureMicPermission();
     if (!granted) {
       final permanent = await audio.isMicPermanentlyDenied();

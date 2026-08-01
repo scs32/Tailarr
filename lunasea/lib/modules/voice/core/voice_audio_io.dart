@@ -45,11 +45,20 @@ import 'package:flutter_sound/flutter_sound.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
 
+import 'package:lunasea/system/logger.dart';
 import 'package:lunasea/modules/voice/core/voice_session.dart'
     show kMicSampleRate, kOutputSampleRate;
 import 'package:lunasea/modules/voice/core/pcm_playback_queue.dart';
 
 class VoiceAudioIO {
+  VoiceAudioIO({this.onPlaybackDrained});
+
+  /// Fired when a spoken turn's audio has all been handed to the speaker (the
+  /// closest signal to "finished speaking" available off-device) so the caller
+  /// can drop the orb back to `listening` only once queued speech has played,
+  /// not the instant Gemini stops PRODUCING.
+  final void Function()? onPlaybackDrained;
+
   final AudioRecorder _recorder = AudioRecorder();
   final FlutterSoundPlayer _player = FlutterSoundPlayer();
 
@@ -67,6 +76,11 @@ class VoiceAudioIO {
     feed: (frame) async {
       if (_playerReady) await _player.feedUint8FromStream(frame);
     },
+    onDrained: () => onPlaybackDrained?.call(),
+    onOverflow: (dropped) => LunaLogger()
+        .warning('Voice playback buffer overflow: dropped $dropped bytes'),
+    onFeedError: () =>
+        LunaLogger().warning('Voice playback feed failed; retrying next chunk'),
   );
 
   /// True once the mic is streaming into [micStream].
@@ -151,6 +165,14 @@ class VoiceAudioIO {
     }
   }
 
+  /// A turn ended abnormally (Live error / disconnect): drop any sub-pre-roll
+  /// audio still buffered so it can't prepend as a stale tail onto the next turn,
+  /// and re-arm the pre-roll. Unlike [flushPlayback] this does not tear down the
+  /// native stream (already-played audio can drain out).
+  void discardPlayback() {
+    if (_playerReady) _playback.reset();
+  }
+
   /// Start mic capture. Emits 16kHz mono s16le PCM chunks. `manageAudioSession`
   /// is OFF so `record` uses our shared session and never touches the category.
   Future<Stream<Uint8List>> startCapture() async {
@@ -187,7 +209,9 @@ class VoiceAudioIO {
   Future<void> stop() async {
     await stopCapture();
     _playerReady = false;
-    _playback.reset();
+    // Terminal for this instance: cancel timers, drop the buffer, and unpark any
+    // drain awaiting a feed that will never return once the player is stopped.
+    _playback.close();
     if (_player.isOpen()) {
       try {
         await _player.stopPlayer();

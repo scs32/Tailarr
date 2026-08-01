@@ -6,12 +6,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunasea/modules/voice/core/pcm_playback_queue.dart';
 
 /// Unit tests for the streamed-PCM jitter buffer — the pure buffering/scheduling
-/// logic behind the "speaks in chunks" fix. No audio device: the back-pressured
-/// device sink is stubbed so pre-roll, ordering, gaplessness, per-turn re-arm and
-/// barge-in are all deterministically checkable.
+/// logic behind the "speaks in chunks" fix, plus the teardown / error / turn /
+/// latency / memory boundaries surfaced in review. No audio device: the
+/// back-pressured device sink is stubbed so every path is deterministic.
 void main() {
-  /// A stub device sink that records every frame it is handed, in order, and
-  /// (optionally) applies back-pressure by not completing until released.
+  // Yield enough event-loop turns for the (async, one-frame-at-a-time) drain to
+  // make progress. Each feed await suspends, so multi-frame drains need several.
+  Future<void> pump([int times = 30]) async {
+    for (var i = 0; i < times; i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+  }
+
   Uint8List concat(List<Uint8List> frames) {
     final b = BytesBuilder();
     for (final f in frames) {
@@ -23,41 +29,67 @@ void main() {
   Uint8List ramp(int start, int len) =>
       Uint8List.fromList([for (var i = 0; i < len; i++) (start + i) & 0xff]);
 
+  // Track queues so we always cancel timers / unpark drains after each test.
+  final live = <PcmPlaybackQueue>[];
+  PcmPlaybackQueue make({
+    required Future<void> Function(Uint8List) feed,
+    int? preRollBytes,
+    int? frameBytes,
+    int? maxBufferedBytes,
+    Duration maxPreRoll = const Duration(minutes: 10), // effectively off
+    void Function()? onDrained,
+    void Function(int)? onOverflow,
+    void Function()? onFeedError,
+  }) {
+    final q = PcmPlaybackQueue(
+      feed: feed,
+      preRollBytes: preRollBytes,
+      frameBytes: frameBytes,
+      maxBufferedBytes: maxBufferedBytes,
+      maxPreRoll: maxPreRoll,
+      onDrained: onDrained,
+      onOverflow: onOverflow,
+      onFeedError: onFeedError,
+    );
+    live.add(q);
+    return q;
+  }
+
+  tearDown(() {
+    for (final q in live) {
+      q.close();
+    }
+    live.clear();
+  });
+
   group('pre-roll gating', () {
     test('nothing is fed until the pre-roll threshold is reached', () async {
       final fed = <Uint8List>[];
-      final q = PcmPlaybackQueue(
-        feed: (f) async => fed.add(f),
-        preRollBytes: 100,
-        frameBytes: 1000, // one frame, so ordering is trivial
-      );
+      final q = make(
+          feed: (f) async => fed.add(f), preRollBytes: 100, frameBytes: 1000);
 
       q.add(ramp(0, 40));
       q.add(ramp(40, 40));
-      await Future<void>.delayed(Duration.zero);
+      await pump();
       expect(fed, isEmpty, reason: 'below pre-roll: hold');
       expect(q.isFlowing, isFalse);
       expect(q.bufferedBytes, 80);
 
       q.add(ramp(80, 40)); // now 120 >= 100
-      await Future<void>.delayed(Duration.zero);
+      await pump();
       expect(q.isFlowing, isTrue);
-      // Everything buffered so far is flushed, in arrival order, byte-exact.
       expect(concat(fed), equals(ramp(0, 120)));
     });
 
     test('once flowing, later chunks pass straight through in order', () async {
       final fed = <Uint8List>[];
-      final q = PcmPlaybackQueue(
-        feed: (f) async => fed.add(f),
-        preRollBytes: 10,
-        frameBytes: 1000,
-      );
-      q.add(ramp(0, 10)); // reaches pre-roll, flushes
-      await Future<void>.delayed(Duration.zero);
-      q.add(ramp(10, 5));
-      q.add(ramp(15, 5));
-      await Future<void>.delayed(Duration.zero);
+      final q =
+          make(feed: (f) async => fed.add(f), preRollBytes: 10, frameBytes: 1000);
+      q.add(ramp(0, 10));
+      await pump();
+      q.add(ramp(10, 6));
+      q.add(ramp(16, 4));
+      await pump();
       expect(concat(fed), equals(ramp(0, 20)));
     });
   });
@@ -66,31 +98,26 @@ void main() {
     test('output is sliced into frameBytes-sized frames, losing no bytes',
         () async {
       final fed = <Uint8List>[];
-      final q = PcmPlaybackQueue(
-        feed: (f) async => fed.add(f),
-        preRollBytes: 250,
-        frameBytes: 100,
-      );
-      q.add(ramp(0, 250)); // hits pre-roll -> flush of 250 bytes
-      await Future<void>.delayed(Duration.zero);
-      expect(fed.length, 3, reason: '250 / 100 -> 100,100,50');
+      final q =
+          make(feed: (f) async => fed.add(f), preRollBytes: 250, frameBytes: 100);
+      q.add(ramp(0, 250));
+      await pump();
       expect(fed.map((f) => f.length).toList(), [100, 100, 50]);
       expect(concat(fed), equals(ramp(0, 250)));
     });
   });
 
   group('back-pressure', () {
-    test('feeds are serialized: no new feed starts before the prior completes',
-        () async {
+    test('feeds are serialized: concurrency never exceeds 1', () async {
       var inFlight = 0;
       var maxConcurrent = 0;
-      final completers = <Completer<void>>[];
-      final q = PcmPlaybackQueue(
+      final gates = <Completer<void>>[];
+      final q = make(
         feed: (f) async {
           inFlight++;
           maxConcurrent = inFlight > maxConcurrent ? inFlight : maxConcurrent;
           final c = Completer<void>();
-          completers.add(c);
+          gates.add(c);
           await c.future;
           inFlight--;
         },
@@ -98,109 +125,247 @@ void main() {
         frameBytes: 10,
       );
 
-      q.add(ramp(0, 50)); // 5 frames queued behind back-pressure
-      await Future<void>.delayed(Duration.zero);
-      // Only the first frame is in flight; the rest wait.
+      q.add(ramp(0, 50)); // 5 frames behind back-pressure
+      await pump();
       expect(maxConcurrent, 1);
-      // Release them one at a time; concurrency never exceeds 1.
-      while (completers.isNotEmpty) {
-        completers.removeAt(0).complete();
-        await Future<void>.delayed(Duration.zero);
+      while (gates.isNotEmpty) {
+        gates.removeAt(0).complete();
+        await pump();
         expect(inFlight, lessThanOrEqualTo(1));
       }
       expect(maxConcurrent, 1);
     });
   });
 
-  group('per-turn re-arm', () {
-    test('endTurn flushes a reply shorter than the pre-roll', () async {
+  group('F1 — barge-in must never wedge the drain', () {
+    test('a feed parked on the ring buffer is unparked by reset; next turn plays',
+        () async {
       final fed = <Uint8List>[];
-      final q = PcmPlaybackQueue(
+      var calls = 0;
+      Completer<void>? parked;
+      final q = make(
+        feed: (f) async {
+          calls++;
+          fed.add(f);
+          if (calls == 1) {
+            parked = Completer<void>();
+            await parked!.future; // never completes — mimics flutter_sound wedge
+          }
+        },
+        preRollBytes: 10,
+        frameBytes: 10,
+      );
+
+      q.add(ramp(0, 10)); // turn 1: first frame fed, then parked
+      await pump();
+      expect(fed.length, 1);
+
+      q.reset(); // barge-in while the feed is parked
+      await pump();
+
+      // Turn 2 must still play — the drain is NOT wedged.
+      q.add(ramp(100, 10));
+      await pump();
+      expect(fed.length, 2);
+      expect(fed.last, equals(ramp(100, 10)));
+      expect(q.bufferedBytes, 0);
+
+      parked?.complete(); // tidy the leaked future
+    });
+  });
+
+  group('feed exception must not drop the tail', () {
+    test('a throwing feed re-queues its frame; the rest of the tail survives',
+        () async {
+      final fed = <Uint8List>[];
+      var calls = 0;
+      var errors = 0;
+      final q = make(
+        feed: (f) async {
+          calls++;
+          if (calls == 1) throw StateError('device busy');
+          fed.add(f);
+        },
+        preRollBytes: 10,
+        frameBytes: 10,
+        onFeedError: () => errors++,
+      );
+
+      q.add(ramp(0, 50)); // first frame throws
+      await pump();
+      expect(errors, 1);
+      expect(fed, isEmpty, reason: 'the failing frame was NOT delivered');
+      expect(q.bufferedBytes, 50, reason: 'nothing dropped — all 50 preserved');
+
+      q.add(ramp(50, 10)); // re-kicks the drain; feeds now succeed
+      await pump();
+      expect(concat(fed), equals(ramp(0, 60)),
+          reason: 'byte-exact, in order, no hole from the earlier exception');
+    });
+  });
+
+  group('F3 — endTurn is a real boundary', () {
+    test('audio arriving after endTurn re-accumulates the pre-roll (not swept)',
+        () async {
+      final fed = <Uint8List>[];
+      var calls = 0;
+      Completer<void>? parked;
+      final q = make(
+        feed: (f) async {
+          calls++;
+          fed.add(f);
+          if (calls == 1) {
+            parked = Completer<void>();
+            await parked!.future; // hold turn N's frame in flight
+          }
+        },
+        preRollBytes: 100,
+        frameBytes: 100,
+      );
+
+      q.add(ramp(0, 100)); // turn N reaches pre-roll; frame parked
+      await pump();
+      expect(fed.length, 1);
+
+      q.endTurn(); // boundary while N's frame is still draining
+      q.add(ramp(200, 50)); // turn N+1 audio, below pre-roll
+      await pump();
+      expect(q.isFlowing, isFalse, reason: 'N+1 was NOT swept into passthrough');
+
+      parked?.complete(); // let N's frame finish
+      await pump();
+      expect(fed.length, 1, reason: 'N+1 held: still below its own pre-roll');
+
+      q.add(ramp(250, 50)); // N+1 now reaches pre-roll
+      await pump();
+      expect(concat(fed.sublist(1)), equals(ramp(200, 100)));
+    });
+  });
+
+  group('per-turn re-arm + drained signal', () {
+    test('endTurn flushes a reply shorter than the pre-roll and signals drained',
+        () async {
+      final fed = <Uint8List>[];
+      var drained = 0;
+      final q = make(
         feed: (f) async => fed.add(f),
         preRollBytes: 1000,
         frameBytes: 1000,
+        onDrained: () => drained++,
       );
-      q.add(ramp(0, 30)); // well under pre-roll -> held
-      await Future<void>.delayed(Duration.zero);
+      q.add(ramp(0, 30)); // under pre-roll -> held
+      await pump();
       expect(fed, isEmpty);
+      expect(drained, 0);
 
-      q.endTurn(); // short utterance must still play
-      await Future<void>.delayed(Duration.zero);
+      q.endTurn();
+      await pump();
       expect(concat(fed), equals(ramp(0, 30)));
+      expect(drained, 1, reason: 'drained fires once the tail reaches the device');
     });
 
     test('after endTurn the next turn re-accumulates the pre-roll', () async {
       final fed = <Uint8List>[];
-      final q = PcmPlaybackQueue(
-        feed: (f) async => fed.add(f),
-        preRollBytes: 50,
-        frameBytes: 1000,
-      );
-      q.add(ramp(0, 50)); // turn 1 reaches pre-roll
-      await Future<void>.delayed(Duration.zero);
+      final q =
+          make(feed: (f) async => fed.add(f), preRollBytes: 50, frameBytes: 1000);
+      q.add(ramp(0, 50));
+      await pump();
       q.endTurn();
-      await Future<void>.delayed(Duration.zero);
-      expect(q.isFlowing, isFalse, reason: 'pre-roll re-armed for next turn');
+      await pump();
+      expect(q.isFlowing, isFalse);
       fed.clear();
 
-      q.add(ramp(0, 20)); // turn 2 below pre-roll again -> held
-      await Future<void>.delayed(Duration.zero);
+      q.add(ramp(0, 20)); // below pre-roll again
+      await pump();
       expect(fed, isEmpty);
+    });
+  });
+
+  group('C — wall-clock pre-roll ceiling', () {
+    test('a short reply plays after maxPreRoll even without endTurn', () async {
+      final fed = <Uint8List>[];
+      final q = make(
+        feed: (f) async => fed.add(f),
+        preRollBytes: 10000, // never reached
+        frameBytes: 1000,
+        maxPreRoll: const Duration(milliseconds: 30),
+      );
+      q.add(ramp(0, 40));
+      await pump();
+      expect(fed, isEmpty, reason: 'still within the pre-roll window');
+
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      await pump();
+      expect(concat(fed), equals(ramp(0, 40)),
+          reason: 'wall-clock ceiling forced playback');
+    });
+  });
+
+  group('C — bounded memory', () {
+    test('a stalled feed cannot grow the buffer past maxBufferedBytes', () async {
+      final dropped = <int>[];
+      Completer<void>? parked;
+      final q = make(
+        feed: (f) async {
+          parked ??= Completer<void>();
+          await parked!.future; // stall forever after the first frame
+        },
+        preRollBytes: 20,
+        frameBytes: 20,
+        maxBufferedBytes: 100,
+        onOverflow: dropped.add,
+      );
+
+      for (var i = 0; i < 10; i++) {
+        q.add(ramp(i * 20, 20)); // 200 bytes offered; feed is stalled
+        await pump(2);
+      }
+      expect(q.bufferedBytes, lessThanOrEqualTo(100));
+      expect(dropped, isNotEmpty, reason: 'excess was dropped, not buffered');
+
+      parked?.complete();
     });
   });
 
   group('barge-in / reset', () {
     test('reset drops queued audio and re-arms the pre-roll', () async {
       final fed = <Uint8List>[];
-      final q = PcmPlaybackQueue(
-        feed: (f) async => fed.add(f),
-        preRollBytes: 1000,
-        frameBytes: 1000,
-      );
-      q.add(ramp(0, 40)); // held below pre-roll
+      final q = make(
+          feed: (f) async => fed.add(f), preRollBytes: 1000, frameBytes: 1000);
+      q.add(ramp(0, 40));
       q.reset();
-      await Future<void>.delayed(Duration.zero);
-      expect(fed, isEmpty, reason: 'abandoned-turn audio is dropped');
+      await pump();
+      expect(fed, isEmpty);
       expect(q.bufferedBytes, 0);
       expect(q.isFlowing, isFalse);
     });
+  });
 
-    test('reset mid-drain stops feeding the stale turn', () async {
+  group('odd-length safety', () {
+    test('odd chunks never yield an odd frame and lose no bytes', () async {
       final fed = <Uint8List>[];
-      final gate = <Completer<void>>[];
-      final q = PcmPlaybackQueue(
-        feed: (f) async {
-          fed.add(f);
-          final c = Completer<void>();
-          gate.add(c);
-          await c.future;
-        },
-        preRollBytes: 10,
-        frameBytes: 10,
-      );
-      q.add(ramp(0, 50)); // 5 frames; first is in flight, 4 pending
-      await Future<void>.delayed(Duration.zero);
-      expect(fed.length, 1);
-
-      q.reset(); // barge-in while draining
-      gate.removeAt(0).complete(); // let the in-flight feed finish
-      await Future<void>.delayed(Duration.zero);
-      // The 4 pending frames of the abandoned turn are NOT fed.
-      expect(fed.length, 1);
+      final q =
+          make(feed: (f) async => fed.add(f), preRollBytes: 4, frameBytes: 4);
+      q.add(ramp(0, 5)); // odd
+      await pump();
+      q.add(ramp(5, 5)); // odd; carry-byte merges across the boundary
+      await pump();
+      for (final f in fed) {
+        expect(f.length.isEven, isTrue,
+            reason: 'flutter_sound rejects odd frames');
+      }
+      expect(concat(fed), equals(ramp(0, 10)), reason: 'no byte lost');
     });
   });
 
   group('close', () {
     test('after close, add is a no-op', () async {
       final fed = <Uint8List>[];
-      final q = PcmPlaybackQueue(
-        feed: (f) async => fed.add(f),
-        preRollBytes: 1,
-        frameBytes: 10,
-      );
+      final q =
+          make(feed: (f) async => fed.add(f), preRollBytes: 1, frameBytes: 10);
       q.close();
       q.add(ramp(0, 100));
-      await Future<void>.delayed(Duration.zero);
+      await pump();
       expect(fed, isEmpty);
     });
   });
