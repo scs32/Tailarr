@@ -42,6 +42,41 @@ void main() {
       expect(visible.last.text, 'Yes, Dune (2021) is in your library.');
     });
 
+    test('drops the orphaned empty assistant placeholder after a tool turn', () {
+      // sendText() pre-creates an empty assistant bubble; when a tool call lands
+      // first, the real reply becomes a LATER assistant bubble, orphaning the
+      // placeholder. It must not render as a stray "…".
+      final visible = AssistantView.visibleMessages([
+        VoiceMessage(VoiceRole.user, 'Do I have Dune?'),
+        VoiceMessage(VoiceRole.assistant, ''), // orphaned placeholder
+        VoiceMessage(VoiceRole.tool, 'calling search_library(...)…'),
+        VoiceMessage(VoiceRole.assistant, 'Yes — Dune (2021).'),
+      ]);
+      expect(visible.map((m) => m.text).toList(),
+          ['Do I have Dune?', 'Yes — Dune (2021).']);
+    });
+
+    test('keeps a trailing empty assistant bubble (live streaming placeholder)',
+        () {
+      final visible = AssistantView.visibleMessages([
+        VoiceMessage(VoiceRole.user, 'How is the server?'),
+        VoiceMessage(VoiceRole.assistant, ''), // still the latest = "thinking"
+      ]);
+      expect(visible, hasLength(2));
+      expect(visible.last.role, VoiceRole.assistant);
+      expect(visible.last.text, isEmpty);
+    });
+
+    test('surfaces a FAILED tool call (but not successful ones)', () {
+      final visible = AssistantView.visibleMessages([
+        VoiceMessage(VoiceRole.tool, 'search_library(...) → ok'),
+        VoiceMessage(VoiceRole.tool, 'add_movie(...) → 500', isError: true),
+      ]);
+      expect(visible, hasLength(1));
+      expect(visible.single.role, VoiceRole.tool);
+      expect(visible.single.isError, isTrue);
+    });
+
     test('surfaces genuine errors (actionable system lines)', () {
       final visible = AssistantView.visibleMessages([
         VoiceMessage(VoiceRole.system,

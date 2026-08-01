@@ -38,19 +38,38 @@ class AssistantView extends StatefulWidget {
   /// Kept as a pure static so the debug-hiding contract can be unit-tested
   /// without a full widget bootstrap.
   static List<VoiceMessage> visibleMessages(Iterable<VoiceMessage> messages) {
-    return messages.where((m) {
+    final list = messages.toList();
+    final result = <VoiceMessage>[];
+    for (var i = 0; i < list.length; i++) {
+      final m = list[i];
+      final bool isLast = i == list.length - 1;
       switch (m.role) {
         case VoiceRole.user:
+          result.add(m);
+          break;
         case VoiceRole.assistant:
-          return true;
+          // The turn pre-creates an empty assistant bubble that the streamed
+          // reply fills in. When a tool call lands first, the real reply becomes
+          // a LATER assistant bubble, orphaning that placeholder — which would
+          // otherwise render as a stray "…". Drop an empty assistant line once
+          // it's been superseded; keep it only while it's the latest line (the
+          // live "thinking" placeholder).
+          if (m.text.isEmpty && !isLast) break;
+          result.add(m);
+          break;
         case VoiceRole.tool:
-          // Tool-call traces are debug telemetry — never shown.
-          return false;
+          // Tool-call traces are debug telemetry — never shown. A FAILED tool
+          // call is surfaced (as a generic notice, no internals) so a silent
+          // failure the model doesn't verbalize isn't invisible to the user.
+          if (m.isError) result.add(m);
+          break;
         case VoiceRole.system:
           // Only surface real, actionable errors; hide status/telemetry lines.
-          return m.isError;
+          if (m.isError) result.add(m);
+          break;
       }
-    }).toList();
+    }
+    return result;
   }
 
   @override
@@ -93,6 +112,10 @@ class _AssistantViewState extends State<AssistantView> {
         if (visible.isNotEmpty) _scrollToEnd();
         return Column(
           children: [
+            // A plain progress bar (not telemetry) so the first typed turn's
+            // Gemini + MCP dial isn't silent dead air.
+            if (state.status == VoiceConnectionStatus.connecting)
+              const LinearProgressIndicator(minHeight: 2.0),
             Expanded(child: _transcript(visible)),
             if (state.voiceActive) _voiceIndicator(state),
             _inputRow(state),
@@ -152,15 +175,20 @@ class _AssistantViewState extends State<AssistantView> {
 
   Widget _bubble(VoiceMessage m) {
     // Errors render as a quiet centered notice; conversation turns render as
-    // left/right chat bubbles. (Tool + non-error system lines never reach here.)
-    if (m.role == VoiceRole.system) {
+    // left/right chat bubbles. Only errors reach here for system/tool roles
+    // (see [visibleMessages]); a failed tool call shows a generic message
+    // rather than its raw name/args.
+    if (m.role == VoiceRole.system || m.role == VoiceRole.tool) {
+      final text = m.role == VoiceRole.tool
+          ? 'Something went wrong. Please try again.'
+          : m.text;
       return Align(
         alignment: Alignment.center,
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 6.0),
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
           child: Text(
-            m.text,
+            text,
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: LunaColours.red,
