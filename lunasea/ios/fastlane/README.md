@@ -15,53 +15,21 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 
 ## iOS
 
-### ios keychain_create
+### ios signing_bootstrap
 
 ```sh
-[bundle exec] fastlane ios keychain_create
+[bundle exec] fastlane ios signing_bootstrap
 ```
 
-Create the LunaSea Keychain
+One-time/renewal: create the shared App Store cert + profiles, push to match storage
 
-### ios keychain_delete
+### ios ci_signing
 
 ```sh
-[bundle exec] fastlane ios keychain_delete
+[bundle exec] fastlane ios ci_signing
 ```
 
-Delete the LunaSea Keychain
-
-### ios keychain_setup
-
-```sh
-[bundle exec] fastlane ios keychain_setup
-```
-
-Setup the Keychain
-
-### ios connect_appstore_connect
-
-```sh
-[bundle exec] fastlane ios connect_appstore_connect
-```
-
-Connect to App Store Connect
-
-### ios build_appstore
-
-```sh
-[bundle exec] fastlane ios build_appstore
-```
-
-Build App Package for App Store
-
-### ios deploy_appstore
-
-```sh
-[bundle exec] fastlane ios deploy_appstore
-```
-
-Deploy to App Store Connect
+Every build: fetch signing assets read-only and switch both targets to manual signing
 
 ----
 

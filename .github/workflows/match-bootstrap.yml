@@ -9,14 +9,26 @@ name: Signing bootstrap (match)
 #   * once, to populate empty storage
 #   * again when the distribution certificate approaches expiry (~1 year)
 #
+# IT WILL NOT PICK UP A CAPABILITY CHANGE. If you add or remove a capability on
+# either App ID (App Group, associated domains, push, ...), match sees valid
+# unexpired profiles in storage and simply reinstalls them — the stale profiles
+# keep signing until an archive fails on the mismatch. Regenerating them needs
+# `force: true` on the match call (or `fastlane match nuke` then re-bootstrap).
+#
+# CAUTION: Apple caps DISTRIBUTION certificates at 2 per team. This lane creates
+# one; match never adopts a pre-existing portal cert. If a run mints the cert but
+# then fails before pushing to storage, it leaves an orphan against that cap of
+# 2 — revoke the orphan before rerunning, or the third attempt hits the cap.
+#
 # It is deliberately NOT automatic: it mutates the Apple developer account and
 # the storage repo, so it requires typing `bootstrap` into the confirm input.
 #
 # It cannot be run from the Mac mini — `fastlane match` refuses to start without
 # a full Xcode, and the mini has Command Line Tools only (mini-setup-plan §3).
 #
-# Required repository secrets: MATCH_PASSWORD, MATCH_DEPLOY_KEY,
-# ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8.
+# Required repository secrets: MATCH_PASSWORD, MATCH_DEPLOY_KEY_RW (the
+# WRITE-capable storage deploy key — this lane pushes, so it cannot use the
+# read-only key the TestFlight build gets), ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8.
 
 on:
   workflow_dispatch:
@@ -51,12 +63,14 @@ jobs:
 
       - name: Configure match storage access
         env:
-          MATCH_DEPLOY_KEY: ${{ secrets.MATCH_DEPLOY_KEY }}
+          # WRITE-capable key: this lane pushes new assets to storage.
+          MATCH_DEPLOY_KEY: ${{ secrets.MATCH_DEPLOY_KEY_RW }}
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$MATCH_DEPLOY_KEY" > ~/.ssh/tailarr_match_ed25519
           chmod 600 ~/.ssh/tailarr_match_ed25519
-          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          # Pinned, not ssh-keyscan (which is trust-on-first-use).
+          printf '%s\n' 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' >> ~/.ssh/known_hosts
           cat >> ~/.ssh/config <<'EOF'
           Host github-match
             HostName github.com
@@ -86,6 +100,78 @@ jobs:
         run: |
           export ASC_KEY_P8_PATH="$HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8"
           fastlane ios signing_bootstrap
+
+      # match creates profiles from the capabilities currently enabled on each
+      # portal App ID — it does not read the .entitlements files and cannot
+      # enable anything itself. So a capability missing on the App ID yields a
+      # profile that signs fine here and fails the archive later. Assert the
+      # generated profiles actually grant what the entitlements ask for, at
+      # bootstrap time, where it is cheap to fix.
+      - name: Verify generated profiles grant the required entitlements
+        run: |
+          python3 - <<'PY'
+          import glob, os, plistlib, subprocess, sys
+
+          REQUIRED = {
+              "com.stephenspeicher.tailarr": {
+                  "aps-environment": "production",
+                  "com.apple.security.application-groups": ["group.com.stephenspeicher.tailarr"],
+                  "com.apple.developer.associated-domains": None,   # presence only
+              },
+              "com.stephenspeicher.tailarr.NotificationService": {
+                  "com.apple.security.application-groups": ["group.com.stephenspeicher.tailarr"],
+              },
+          }
+
+          paths = []
+          for d in ("~/Library/MobileDevice/Provisioning Profiles",
+                    "~/Library/Developer/Xcode/UserData/Provisioning Profiles"):
+              paths += glob.glob(os.path.expanduser(d) + "/*.mobileprovision")
+          if not paths:
+              sys.exit("no provisioning profiles installed — match did not run?")
+
+          by_appid, failures = {}, []
+          for p in paths:
+              pl = plistlib.loads(subprocess.run(
+                  ["security", "cms", "-D", "-i", p],
+                  capture_output=True, check=True).stdout)
+              ent = pl.get("Entitlements", {})
+              appid = ent.get("application-identifier", "")
+              bundle = appid.split(".", 1)[1] if "." in appid else appid
+              by_appid[bundle] = (pl.get("Name", "?"), ent)
+
+          for bundle, reqs in REQUIRED.items():
+              if bundle not in by_appid:
+                  failures.append(f"{bundle}: NO App Store profile installed")
+                  continue
+              name, ent = by_appid[bundle]
+              print(f"\n{bundle}\n  profile: {name}")
+              for key, expected in reqs.items():
+                  actual = ent.get(key)
+                  if actual is None:
+                      failures.append(f"{bundle}: profile '{name}' is missing {key}")
+                      print(f"  MISSING  {key}")
+                  elif expected is None:
+                      print(f"  ok       {key} = {actual}")
+                  elif isinstance(expected, list):
+                      missing = [v for v in expected if v not in (actual or [])]
+                      if missing:
+                          failures.append(f"{bundle}: {key} lacks {missing} (has {actual})")
+                          print(f"  MISSING  {key} lacks {missing}")
+                      else:
+                          print(f"  ok       {key} = {actual}")
+                  elif actual != expected:
+                      failures.append(f"{bundle}: {key} is {actual!r}, expected {expected!r}")
+                      print(f"  WRONG    {key} = {actual!r} (want {expected!r})")
+                  else:
+                      print(f"  ok       {key} = {actual!r}")
+
+          if failures:
+              print("\n".join(["", "FAILED:"] + [f"  - {f}" for f in failures]))
+              sys.exit("Enable the missing capabilities on the App IDs, then rerun "
+                       "this workflow with force:true to regenerate the profiles.")
+          print("\nAll required entitlements are granted by the generated profiles.")
+          PY
 
       - name: Summarise stored assets
         run: |

@@ -26,7 +26,11 @@ name: TestFlight
 #                      (create the key at App Store Connect > Users and Access
 #                       > Integrations, role: App Manager)
 #   MATCH_PASSWORD   - passphrase decrypting the match storage repo
-#   MATCH_DEPLOY_KEY - SSH private key with read access to the match storage repo
+#   MATCH_DEPLOY_KEY - READ-ONLY SSH deploy key for the match storage repo.
+#                      Must stay read-only: this workflow runs on every v* tag,
+#                      and a write-capable key here would let workflow code
+#                      rewrite the signing assets. The write-capable key
+#                      (MATCH_DEPLOY_KEY_RW) is used only by match-bootstrap.yml.
 #
 # Prerequisite (one time): an app record in App Store Connect with bundle ID
 # com.stephenspeicher.tailarr.
@@ -90,6 +94,7 @@ jobs:
         run: |
           mkdir -p ~/private_keys
           echo -n "$ASC_KEY_P8" | base64 -d > ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          chmod 600 ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
 
       - name: Flutter build (no codesign)
         working-directory: lunasea
@@ -101,6 +106,9 @@ jobs:
         working-directory: lunasea/ios
         env:
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          # Deliberately the READ-ONLY storage deploy key. `readonly: true`
+          # constrains match, not the credential — a write-capable key here
+          # would let any workflow code replace the signing assets.
           MATCH_DEPLOY_KEY: ${{ secrets.MATCH_DEPLOY_KEY }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
@@ -110,7 +118,9 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$MATCH_DEPLOY_KEY" > ~/.ssh/tailarr_match_ed25519
           chmod 600 ~/.ssh/tailarr_match_ed25519
-          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          # Pinned, not ssh-keyscan: scanning is trust-on-first-use against
+          # whatever answers as github.com at that moment.
+          printf '%s\n' 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' >> ~/.ssh/known_hosts
           cat >> ~/.ssh/config <<'EOF'
           Host github-match
             HostName github.com
@@ -131,9 +141,15 @@ jobs:
             -configuration Release \
             -destination generic/platform=iOS \
             -archivePath build/Runner.xcarchive \
-            archive \
-            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            CODE_SIGN_STYLE=Manual
+            archive
+          # No DEVELOPMENT_TEAM / CODE_SIGN_STYLE overrides here on purpose.
+          # Command-line build settings apply to EVERY target in the workspace,
+          # including all of Pods.xcodeproj. ci_signing has already written
+          # manual signing onto the two app targets, so the overrides would add
+          # nothing for them — but they would force Manual signing onto pod
+          # framework targets that have no identity configured, and the keychain
+          # holds only Apple Distribution. That is the same class of mistake as
+          # a global PROVISIONING_PROFILE_SPECIFIER.
 
       - name: Export & upload to TestFlight
         working-directory: lunasea/ios
