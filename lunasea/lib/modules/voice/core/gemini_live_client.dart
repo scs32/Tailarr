@@ -18,6 +18,19 @@
 /// `{"toolResponse": {functionResponses}}` to answer a `{"toolCall": {...}}`.
 /// Server audio arrives as `serverContent.modelTurn.parts[].inlineData` (24kHz
 /// PCM base64); transcripts as `serverContent.{input,output}Transcription.text`.
+///
+/// B30 — WHO OWNS `tools`/`systemInstruction`:
+///   • DEV raw-key path (`?key=…`, non-constrained endpoint): the `setup` frame
+///     this client sends is authoritative, so [functionDeclarations] +
+///     [systemInstruction] are honored here — keep sending them.
+///   • SHIPPING ephemeral-token path (`BidiGenerateContentConstrained
+///     ?access_token=…`): the endpoint uses the setup BAKED INTO THE TOKEN and
+///     IGNORES this client's `setup` frame. So the tools + systemInstruction that
+///     actually reach the model are the ones the SERVER bakes into the token at
+///     mint (`_mint_gemini_ephemeral`). Verified live 2026-07-31: a token minted
+///     WITHOUT tools makes the model answer "I don't have access to your server"
+///     even though this client declared them. Do NOT try to "fix" that by editing
+///     this file — the fix lives server-side.
 library;
 
 import 'dart:async';
@@ -65,7 +78,13 @@ class GeminiLiveClient {
     this.responseModalities = const ['AUDIO'],
     this.host = 'generativelanguage.googleapis.com',
     this.ephemeralToken,
+    this.outboundSink,
   });
+
+  /// TEST-ONLY seam: when set, every frame passed to [_send] is also appended
+  /// here, and [_send] tolerates a null socket (so the setup / toolResponse wire
+  /// shape is unit-testable without opening a WebSocket). Never set in production.
+  final List<Map<String, dynamic>>? outboundSink;
 
   /// AI Studio API key (Phase 1, via --dart-define). Ignored if [ephemeralToken]
   /// is set.
@@ -162,8 +181,15 @@ class GeminiLiveClient {
     final ws = await WebSocket.connect(_uri.toString()).timeout(timeout);
     _ws = ws;
     ws.listen(_onFrame, onError: _errors.add, onDone: _onDone, cancelOnError: false);
-    _send({
-      'setup': {
+    _send({'setup': buildSetupPayload()});
+    await _setupComplete.future.timeout(timeout);
+  }
+
+  /// The `setup` body sent on connect (authoritative on the raw-key path; see the
+  /// B30 note in the library doc for the ephemeral path). Extracted so its exact
+  /// shape — including the `tools[0].functionDeclarations` + `systemInstruction`
+  /// this client declares — is unit-testable without a socket.
+  Map<String, dynamic> buildSetupPayload() => {
         'model': 'models/$model',
         'generationConfig': {'responseModalities': responseModalities},
         if (systemInstruction != null)
@@ -179,10 +205,7 @@ class GeminiLiveClient {
         // Empty configs enable transcription of both directions.
         'inputAudioTranscription': <String, dynamic>{},
         'outputAudioTranscription': <String, dynamic>{},
-      }
-    });
-    await _setupComplete.future.timeout(timeout);
-  }
+      };
 
   /// Send one text turn (the text lane / fallback).
   void sendText(String text) {
@@ -222,8 +245,12 @@ class GeminiLiveClient {
   }
 
   void _send(Map<String, dynamic> msg) {
+    outboundSink?.add(msg);
     final ws = _ws;
-    if (ws == null) throw StateError('GeminiLiveClient not connected');
+    if (ws == null) {
+      if (outboundSink != null) return; // test seam: capture without a socket
+      throw StateError('GeminiLiveClient not connected');
+    }
     ws.add(jsonEncode(msg));
   }
 
