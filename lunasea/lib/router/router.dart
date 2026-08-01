@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:lunasea/database/models/profile.dart';
 import 'package:lunasea/modules/settings/routes/import_configuration/route.dart';
+import 'package:lunasea/modules/voice/routes/voice/route.dart';
 import 'package:lunasea/router/routes/settings.dart';
 import 'package:lunasea/system/logger.dart';
 import 'package:lunasea/utils/profile_tools.dart';
@@ -63,6 +64,12 @@ class LunaRouter {
         // (universal link) and tailarr:///import#payload (custom scheme).
         // The payload rides in the fragment so it never reaches a server;
         // ?c= is accepted as a fallback for contexts that strip fragments.
+        // In-app Gemini Live voice assistant (Phase 1). Reachable via the
+        // drawer and deep link tailarr:///voice_assistant.
+        GoRoute(
+          path: VoiceRoute.path,
+          builder: (context, state) => const VoiceRoute(),
+        ),
         GoRoute(
           path: '/import',
           builder: (context, state) => ImportConfigurationRoute(

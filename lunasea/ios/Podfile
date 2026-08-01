@@ -46,7 +46,10 @@ post_install do |installer|
         'PERMISSION_EVENTS=0',
         'PERMISSION_CONTACTS=0',
         'PERMISSION_REMINDERS=0',
-        'PERMISSION_MICROPHONE=0'
+        # =1 so permission_handler compiles IN the microphone handler; at =0 the
+        # code is stripped and Permission.microphone.request() silently returns
+        # denied without ever prompting (voice lane needs the mic).
+        'PERMISSION_MICROPHONE=1'
       ]
       if target_is_resource_bundle
         config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'

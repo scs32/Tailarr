@@ -74,6 +74,55 @@ class NtfyGatewayClient {
     );
   }
 
+  /// Mints a SHORT-LIVED Gemini Live ephemeral-token session for the CALLER'S
+  /// person (tailarr-server broker, v0.162.0+). Gated on the AI badge; the raw
+  /// provider key never leaves the controller. Older gateways 404 (no route) and
+  /// people without the badge / an unconfigured server get an `{ok:false,error}`
+  /// refusal — both surface via [GatewayAiSession] flags, not exceptions. Throws
+  /// only on transport errors.
+  Future<GatewayAiSession> selfAiSession() async {
+    final response = await httpClient.post('self/ai/session');
+    final data = response.data;
+    if (data is! Map<String, dynamic>) {
+      // Pre-broker gateways answer the POST with a non-JSON 404 page.
+      if (response.statusCode == 404) {
+        return GatewayAiSession(
+          ok: false,
+          error: 'not found',
+          statusCode: response.statusCode,
+        );
+      }
+      throw FormatException(
+        'Unexpected gateway response '
+        '(HTTP ${response.statusCode}): ${response.data}'.trim(),
+      );
+    }
+    return GatewayAiSession.fromJson(data, statusCode: response.statusCode);
+  }
+
+  /// Mints (or re-mints) the caller's own Tailarr MCP bearer via
+  /// `POST self/ai {do:"token"}` (v0.150.0+). Gated on the AI badge. Older
+  /// gateways 404; refusals return `{ok:false,error}` — surfaced via
+  /// [GatewayAiToken], not exceptions. Throws only on transport errors.
+  Future<GatewayAiToken> selfAiToken() async {
+    final response = await httpClient.post('self/ai', data: {'do': 'token'});
+    final data = response.data;
+    if (data is! Map<String, dynamic>) {
+      if (response.statusCode == 404) {
+        return GatewayAiToken(
+          ok: false,
+          error: 'not found',
+          statusCode: response.statusCode,
+        );
+      }
+      throw FormatException(
+        'Unexpected gateway response '
+        '(HTTP ${response.statusCode}): ${response.data}'.trim(),
+      );
+    }
+    return GatewayAiToken.fromJson(data, statusCode: response.statusCode);
+  }
+
   /// Registers (or unregisters) an APNs device token for content-free wake
   /// pushes (server v0.26.0+). Idempotent — re-register freely on every
   /// launch/token rotation. Old gateways 404 (no POST handler): surfaced

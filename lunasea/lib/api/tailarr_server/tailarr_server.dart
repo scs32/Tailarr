@@ -320,6 +320,49 @@ class TailarrServerAPI {
     return TailarrServerActionResult.fromJson(response.data);
   }
 
+  ////////////////////////
+  /// AI PROVIDER CONFIG ///
+  ////////////////////////
+  // Admin-gated voice-AI provider key (server: `op_ai_config_set/clear`). The
+  // raw key is write-only — `GET /api/ai` returns only provider/model/key_set,
+  // never the key itself.
+
+  /// Current AI-provider config. NEVER carries the raw key — only whether one
+  /// is set. A 401/403 surfaces as [ServerAuthRequiredException] (not admin /
+  /// not connected), same as every other `/api/*` read.
+  Future<TailarrServerAIConfig> getAIConfig() async {
+    final response = await httpClient.get('api/ai');
+    return TailarrServerAIConfig.fromJson(response.data);
+  }
+
+  /// Set the AI provider + raw key (stored 0600 server-side, never echoed). The
+  /// key is sent write-only and is not retained in the app.
+  Future<TailarrServerAIConfigResult> setAIConfig({
+    required String provider,
+    required String apiKey,
+    required String model,
+  }) async {
+    final response = await httpClient.post(
+      'api/ai',
+      data: {
+        'do': 'set',
+        'provider': provider,
+        'api_key': apiKey,
+        'model': model,
+      },
+    );
+    return TailarrServerAIConfigResult.fromJson(response.data);
+  }
+
+  /// Forget the AI provider config (removes the stored key).
+  Future<TailarrServerAIConfigResult> clearAIConfig() async {
+    final response = await httpClient.post(
+      'api/ai',
+      data: {'do': 'clear'},
+    );
+    return TailarrServerAIConfigResult.fromJson(response.data);
+  }
+
   /// `action` is one of: start, stop, restart, rerender. Never touches the
   /// controller pod.
   Future<TailarrServerFleetResult> fleetAction(String action) async {
