@@ -4,6 +4,7 @@ import 'package:lunasea/system/state.dart';
 import 'package:lunasea/system/logger.dart';
 import 'package:lunasea/modules/voice/core/voice_session.dart';
 import 'package:lunasea/modules/voice/core/voice_audio_io.dart';
+import 'package:lunasea/modules/voice/core/voice_credentials.dart';
 
 /// Who authored a line in the transcript.
 enum VoiceRole { user, assistant, tool, system }
@@ -27,27 +28,62 @@ enum VoiceConnectionStatus { idle, connecting, ready, error }
 
 /// State for the in-app Gemini Live voice assistant.
 ///
-/// PHASE 1 (prototype) config is injected at compile time via --dart-define,
-/// mirroring the app's existing TS_AUTHKEY test pattern. The Gemini API key
-/// therefore does NOT ship in a normal build — pass it only for a dev/test run.
-/// PHASE 2 replaces all three defines with a server-side ephemeral-token broker
-/// (see handoff/voice-inapp-phase1.md): the box holds GEMINI_API_KEY and mints a
-/// short-lived Live token, and the MCP token is minted in-app via /self/ai.
+/// CREDENTIALS ARE FETCHED AT RUNTIME — nothing secret is compiled into the
+/// build. On voice-session start the app asks the Tailarr controller (through
+/// the whois-authenticated `tailarr-gate` node) for a short-lived Gemini Live
+/// **ephemeral token** and the caller's own **MCP bearer**, both gated on the
+/// person's AI badge (see [VoiceCredentialBroker]). A TestFlight build therefore
+/// carries NO Gemini key and NO MCP token.
+///
+/// The three `--dart-define` reads below are a DEV-ONLY fallback: they are
+/// consumed ONLY when the build is compiled with
+/// `--dart-define=VOICE_DEV_DIRECT_KEYS=true` AND all three are supplied, for a
+/// local dev/harness run against a raw key. The DEFAULT (shipping) path never
+/// touches them and never carries a baked secret.
 class VoiceAssistantState extends LunaModuleState {
   VoiceAssistantState() {
     reset();
   }
 
-  static const String geminiApiKey = String.fromEnvironment('GEMINI_API_KEY');
-  static const String mcpUrl = String.fromEnvironment('TAILARR_MCP_URL');
-  static const String mcpToken = String.fromEnvironment('TAILARR_MCP_TOKEN');
-  static const String model = String.fromEnvironment(
+  /// Opt-in flag for the dev raw-key path. False in every normal/TestFlight
+  /// build, so the compiler tree-shakes the defines out of the default flow.
+  static const bool devDirectKeys =
+      bool.fromEnvironment('VOICE_DEV_DIRECT_KEYS', defaultValue: false);
+
+  /// DEV-ONLY (see class doc + [devDirectKeys]). Never read on the ship path.
+  static const String _devGeminiApiKey =
+      String.fromEnvironment('GEMINI_API_KEY');
+  static const String _devMcpUrl = String.fromEnvironment('TAILARR_MCP_URL');
+  static const String _devMcpToken =
+      String.fromEnvironment('TAILARR_MCP_TOKEN');
+
+  /// Live model when running the dev raw-key path. The shipping path uses the
+  /// server-bound model returned with the ephemeral token.
+  static const String _devModel = String.fromEnvironment(
     'GEMINI_LIVE_MODEL',
     defaultValue: kDefaultLiveModel,
   );
 
-  bool get isConfigured =>
-      geminiApiKey.isNotEmpty && mcpUrl.isNotEmpty && mcpToken.isNotEmpty;
+  /// True only for a dev build explicitly wired with all three raw defines.
+  static bool get _devConfigured =>
+      devDirectKeys &&
+      _devGeminiApiKey.isNotEmpty &&
+      _devMcpUrl.isNotEmpty &&
+      _devMcpToken.isNotEmpty;
+
+  /// Injectable credential fetch — the live broker by default; tests replace it
+  /// with a stub. Returns the runtime-fetched, non-baked voice credentials.
+  Future<VoiceCredentialResult> Function()? credentialFetcher;
+
+  /// The caller's MCP bearer, cached for the app-process lifetime so a reconnect
+  /// doesn't mint a fresh 30-day token each time. Not persisted — a cold launch
+  /// re-mints (cheap, and keeps nothing secret on disk).
+  String? _cachedMcpToken;
+
+  /// Why the last connect attempt found voice unavailable (badge/config/etc.),
+  /// or null when available. Drives the "ask your admin" UX.
+  VoiceUnavailableReason? _unavailableReason;
+  VoiceUnavailableReason? get unavailableReason => _unavailableReason;
 
   VoiceSession? _session;
   VoiceAudioIO? _audio;
@@ -88,6 +124,7 @@ class VoiceAssistantState extends LunaModuleState {
     _voiceActive = false;
     _activity = VoiceActivity.idle;
     _exposedTools = const [];
+    _unavailableReason = null;
     notifyListeners();
   }
 
@@ -97,32 +134,60 @@ class VoiceAssistantState extends LunaModuleState {
     notifyListeners();
   }
 
-  /// Open the MCP + Gemini Live session if not already connected.
+  /// Open the MCP + Gemini Live session if not already connected. Fetches
+  /// short-lived, badge-gated credentials from the server first (default path;
+  /// nothing secret is baked in). Sets a clear, non-crashing "AI access isn't
+  /// enabled — ask your admin" state when the device lacks the AI badge or the
+  /// server hasn't configured voice AI.
   Future<void> ensureConnected() async {
     if (_status == VoiceConnectionStatus.ready ||
         _status == VoiceConnectionStatus.connecting) {
       return;
     }
-    if (!isConfigured) {
-      _status = VoiceConnectionStatus.error;
-      _addSystem(
-        'Not configured. Build with --dart-define=GEMINI_API_KEY=… '
-        '--dart-define=TAILARR_MCP_URL=… --dart-define=TAILARR_MCP_TOKEN=…',
-        isError: true,
-      );
-      return;
-    }
 
     _status = VoiceConnectionStatus.connecting;
+    _unavailableReason = null;
     _addSystem('Connecting to Gemini Live and the Tailarr MCP…');
     notifyListeners();
 
-    final session = VoiceSession(
-      apiKey: geminiApiKey,
-      mcpUrl: mcpUrl,
-      mcpToken: mcpToken,
-      model: model,
-    );
+    final VoiceSession session;
+    if (_devConfigured) {
+      // DEV-ONLY raw-key path (VOICE_DEV_DIRECT_KEYS=true). Never taken by a
+      // shipping build — no secret is compiled in on the default path.
+      session = VoiceSession(
+        apiKey: _devGeminiApiKey,
+        mcpUrl: _devMcpUrl,
+        mcpToken: _devMcpToken,
+        model: _devModel,
+      );
+    } else {
+      // DEFAULT path: fetch runtime credentials (ephemeral Gemini token + MCP
+      // bearer) from the server, gated on the person's AI badge.
+      final fetch = credentialFetcher ??
+          () => VoiceCredentialBroker.resolve(cachedMcpToken: _cachedMcpToken);
+      final result = await fetch();
+      if (!result.ok) {
+        _unavailableReason = result.reason;
+        _status = VoiceConnectionStatus.error;
+        // Drop the "Connecting…" line so the transcript shows only the reason.
+        messages.removeWhere((m) =>
+            m.role == VoiceRole.system &&
+            m.text == 'Connecting to Gemini Live and the Tailarr MCP…');
+        _addSystem(result.message, isError: true);
+        notifyListeners();
+        return;
+      }
+      final creds = result.credentials!;
+      _cachedMcpToken = creds.mcpToken;
+      session = VoiceSession(
+        apiKey: '',
+        ephemeralToken: creds.ephemeralToken,
+        mcpUrl: creds.mcpUrl,
+        mcpToken: creds.mcpToken,
+        model: creds.model.isNotEmpty ? creds.model : kDefaultLiveModel,
+      );
+    }
+
     try {
       final whoami = await session.start();
       _session = session;

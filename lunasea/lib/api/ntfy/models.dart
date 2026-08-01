@@ -301,6 +301,133 @@ class GatewayServicesResponse {
   }
 }
 
+/// `POST http://tailarr-gate/self/ai/session` (tailarr-server broker, v0.162.0+):
+/// the ephemeral-token broker. Whois-authenticated like every /self/* route and
+/// gated on the person's AI badge. Returns a SHORT-LIVED, provider-scoped session
+/// descriptor the app connects Gemini Live with — the raw provider key NEVER
+/// leaves the server. On success:
+/// `{ok, provider, model, api_version, auth:{type:"ephemeral_token", value,
+///   expires_at}, mcp_url}`. Refusals come back `{ok:false, error}`.
+class GatewayAiSession {
+  final bool ok;
+  final String? error;
+  final String provider;
+  final String model;
+
+  /// The API version the ephemeral token was minted for — the Live socket MUST
+  /// connect on the SAME version or the token is rejected (server hands `v1beta`).
+  final String apiVersion;
+
+  /// The ephemeral Gemini Live token (`auth.value` when `auth.type ==
+  /// ephemeral_token`). Empty on any non-ephemeral/refused response — the app
+  /// NEVER receives a raw key here.
+  final String ephemeralToken;
+
+  /// RFC3339 expiry of [ephemeralToken] — the app re-fetches past this.
+  final String expiresAt;
+
+  /// Where to drive the Tailarr MCP tools (tailnet plane). May be empty if the
+  /// MCP pod isn't deployed; the caller then derives it from the tailnet suffix.
+  final String mcpUrl;
+  final int? statusCode;
+
+  const GatewayAiSession({
+    required this.ok,
+    required this.error,
+    this.provider = '',
+    this.model = '',
+    this.apiVersion = '',
+    this.ephemeralToken = '',
+    this.expiresAt = '',
+    this.mcpUrl = '',
+    this.statusCode,
+  });
+
+  /// A usable session descriptor with a real ephemeral token.
+  bool get isAvailable => ok && ephemeralToken.isNotEmpty;
+
+  /// The person lacks the AI badge — the definitive "ask your admin" refusal.
+  /// Keyed off the server's copy ("Ask your admin to enable AI access for you.").
+  bool get hasNoAccess =>
+      !ok && (error ?? '').toLowerCase().contains('ai access');
+
+  /// The admin hasn't added an AI provider key yet — AI is dormant server-side.
+  bool get isNotConfigured =>
+      !ok && (error ?? '').toLowerCase().contains('not configured');
+
+  /// The gateway is too old to route the broker (pre-v0.162.0 gate) — a clean
+  /// 404, degrade to "voice not available".
+  bool get isUnavailable => statusCode == 404;
+
+  factory GatewayAiSession.fromJson(
+    Map<String, dynamic> json, {
+    int? statusCode,
+  }) {
+    final error = json['error'];
+    final auth = json['auth'];
+    var token = '';
+    var expires = '';
+    if (auth is Map && auth['type'] == 'ephemeral_token') {
+      token = (auth['value'] as String?) ?? '';
+      expires = (auth['expires_at'] as String?) ?? '';
+    }
+    return GatewayAiSession(
+      ok: json['ok'] == true,
+      error: error == null ? null : error.toString(),
+      provider: (json['provider'] as String?) ?? '',
+      model: (json['model'] as String?) ?? '',
+      apiVersion: (json['api_version'] as String?) ?? '',
+      ephemeralToken: token,
+      expiresAt: expires,
+      mcpUrl: (json['mcp_url'] as String?) ?? '',
+      statusCode: statusCode,
+    );
+  }
+}
+
+/// `POST http://tailarr-gate/self/ai` with `{do:"token"}` (tailarr-server
+/// v0.150.0+): mints the caller's own 30-day person-bound Tailarr MCP bearer
+/// (`tailarr-mcp-…`). Gated on the AI badge; the raw admin token never leaves
+/// the controller. Returns `{ok, id, token, scopes}` on success.
+class GatewayAiToken {
+  final bool ok;
+  final String? error;
+
+  /// The minted MCP bearer (`token`), shown once. Empty on refusal.
+  final String token;
+  final int? statusCode;
+
+  const GatewayAiToken({
+    required this.ok,
+    required this.error,
+    this.token = '',
+    this.statusCode,
+  });
+
+  bool get isAvailable => ok && token.isNotEmpty;
+
+  /// AI not enabled for this person/server — the "ask your admin" refusals
+  /// ("Ask your admin to enable AI access for you." / "AI access isn't turned
+  /// on for this server.").
+  bool get hasNoAccess =>
+      !ok && (error ?? '').toLowerCase().contains('ai access');
+
+  bool get isUnavailable => statusCode == 404;
+
+  factory GatewayAiToken.fromJson(
+    Map<String, dynamic> json, {
+    int? statusCode,
+  }) {
+    final error = json['error'];
+    return GatewayAiToken(
+      ok: json['ok'] == true,
+      error: error == null ? null : error.toString(),
+      token: (json['token'] as String?) ?? '',
+      statusCode: statusCode,
+    );
+  }
+}
+
 /// `POST http://tailarr-gate/self/push-token` (tailarr-server v0.26.0+):
 /// registers/unregisters this device's APNs token for content-free wake
 /// pushes. Whois-authenticated like every /self/* route.
