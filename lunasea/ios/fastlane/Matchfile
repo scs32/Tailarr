@@ -1,4 +1,28 @@
-git_url("git@github.com:JagandeepBrar/fastlane-match-storage.git")
+# fastlane match — Tailarr's OWN private storage.
+#
+# Replaces the inherited LunaSea upstream storage
+# (JagandeepBrar/fastlane-match-storage, app.lunasea.lunasea), which Tailarr
+# never had write access to and never actually used.
+#
+# Why this exists: CI used to archive with `-allowProvisioningUpdates` +
+# CODE_SIGN_STYLE=Automatic, which mints a fresh "Created via API" certificate
+# on EVERY build. Apple caps those (~11) and Archive then fails outright —
+# that is what killed build 45. match stores ONE shared certificate + the two
+# provisioning profiles in this repo (encrypted with MATCH_PASSWORD) and CI
+# reuses them, so the cap never fills again.
+#
+# Access: repo-scoped read/write deploy key.
+#   local : ~/.ssh/tailarr_match_ed25519 via the `github-match` Host alias.
+#   CI    : the same key, from the MATCH_DEPLOY_KEY repository secret.
+# Passphrase: `ops/scripts/secret get match-passphrase` locally / the
+#   MATCH_PASSWORD repository secret in CI.
+
+git_url("git@github-match:scs32/tailarr-fastlane-match.git")
 storage_mode("git")
-app_identifier(["app.lunasea.lunasea"])
+
+app_identifier([
+  "com.stephenspeicher.tailarr",
+  "com.stephenspeicher.tailarr.NotificationService",
+])
+team_id("857ZZSY5ZQ")
 platform("ios")
