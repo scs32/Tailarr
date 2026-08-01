@@ -140,8 +140,16 @@ class VoiceAudioIO {
 
   /// Feed one chunk of Gemini's output PCM. Goes through the jitter buffer, which
   /// pre-rolls a cushion then feeds the speaker gaplessly under back-pressure.
-  void feedPlayback(Uint8List pcm24) {
-    if (_playerReady) _playback.add(pcm24);
+  ///
+  /// Returns whether the chunk was ACCEPTED into the pipeline. It is rejected
+  /// while the player is torn down (e.g. mid barge-in flush), so the caller must
+  /// NOT flip the orb to `speaking` for a chunk that was dropped — otherwise an
+  /// interrupted server frame that also carries audio could strand the orb in
+  /// `speaking` with no pending drain callback to restore `listening` (codex#7).
+  bool feedPlayback(Uint8List pcm24) {
+    if (!_playerReady) return false;
+    _playback.add(pcm24);
+    return true;
   }
 
   /// The model finished a spoken turn: flush any buffered tail (including a reply
@@ -150,9 +158,15 @@ class VoiceAudioIO {
     if (_playerReady) _playback.endTurn();
   }
 
-  /// Barge-in: drop everything still queued for the abandoned model turn by
-  /// clearing the jitter buffer AND tearing the output stream down and re-arming
-  /// it (stopPlayer drops the native ring; a fresh stream discards the rest).
+  /// Barge-in OR a turn that ended abnormally (Live error / disconnect): drop
+  /// everything still queued for the abandoned turn by clearing the jitter buffer
+  /// AND tearing the output stream down and re-arming it.
+  ///
+  /// The native restart is load-bearing, not just a nicety: flutter_sound 9.30
+  /// keeps a SINGLE mutable needSomeFood completer, so if we merely dropped the
+  /// Dart-side buffer a stale native "needSomeFood" callback could later satisfy
+  /// a NEWER feed's completer and desync playback (codex#8). stopPlayer() +
+  /// a fresh startPlayerFromStream() resets that native state cleanly.
   Future<void> flushPlayback() async {
     if (!_playerReady) return;
     _playerReady = false;
@@ -163,14 +177,6 @@ class VoiceAudioIO {
     } catch (_) {
       // If the player is mid-teardown, leave it stopped; next turn re-opens it.
     }
-  }
-
-  /// A turn ended abnormally (Live error / disconnect): drop any sub-pre-roll
-  /// audio still buffered so it can't prepend as a stale tail onto the next turn,
-  /// and re-arm the pre-roll. Unlike [flushPlayback] this does not tear down the
-  /// native stream (already-played audio can drain out).
-  void discardPlayback() {
-    if (_playerReady) _playback.reset();
   }
 
   /// Start mic capture. Emits 16kHz mono s16le PCM chunks. `manageAudioSession`

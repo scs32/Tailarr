@@ -367,6 +367,76 @@ void main() {
     });
   });
 
+  group('codex#4 — drained fires at the turn boundary, not FIFO emptiness', () {
+    test('turn-1 drained fires before turn-2 audio is fed', () async {
+      final fed = <Uint8List>[];
+      var calls = 0;
+      var drainedCount = 0;
+      var drainedAtLen = -1;
+      Completer<void>? parked;
+      final q = make(
+        feed: (f) async {
+          calls++;
+          fed.add(f);
+          if (calls == 1) {
+            parked = Completer<void>();
+            await parked!.future; // hold turn-1's only frame in flight
+          }
+        },
+        preRollBytes: 20,
+        frameBytes: 20,
+        onDrained: () {
+          drainedCount++;
+          drainedAtLen = fed.length;
+        },
+      );
+
+      q.add(ramp(0, 20)); // turn 1 -> flowing; frame 1 goes in-flight (parked)
+      await pump();
+      q.endTurn(); // turn-1 boundary while its frame is still in flight
+      q.add(ramp(100, 40)); // turn-2 audio arrives BEFORE turn 1 drains
+      await pump();
+      expect(drainedCount, 0, reason: 'turn-1 frame not yet accepted');
+
+      parked!.complete(); // turn-1's frame is accepted
+      await pump();
+      expect(drainedCount, 1);
+      expect(drainedAtLen, 1,
+          reason: 'fired at the turn-1 boundary, before any turn-2 frame');
+      expect(fed.length, greaterThan(1), reason: 'turn 2 then keeps playing');
+    });
+  });
+
+  group('codex#5 — the memory cap is HARD', () {
+    test('a chunk larger than remaining capacity is prefix-accepted', () async {
+      final dropped = <int>[];
+      Completer<void>? parked;
+      final q = make(
+        feed: (f) async {
+          parked ??= Completer<void>();
+          await parked!.future; // stall after the first frame goes in-flight
+        },
+        preRollBytes: 40,
+        frameBytes: 20,
+        maxBufferedBytes: 100,
+        onOverflow: dropped.add,
+      );
+
+      q.add(ramp(0, 40)); // -> flowing; first 20-byte frame in-flight (parked)
+      await pump(2);
+      q.add(ramp(40, 50)); // remaining 60 -> full accept; buffered 20+50=70
+      await pump(2);
+      q.add(ramp(90, 30)); // remaining 10 (incl. in-flight 20) -> keep 10, drop 20
+      await pump(2);
+      q.add(ramp(120, 50)); // remaining 0 -> drop all 50
+      await pump(2);
+      expect(q.bufferedBytes, 80, reason: '70 + a 10-byte prefix');
+      expect(dropped, [20, 50]);
+
+      parked?.complete();
+    });
+  });
+
   group('C — bounded memory', () {
     test('a stalled feed cannot grow the buffer past maxBufferedBytes', () async {
       final dropped = <int>[];

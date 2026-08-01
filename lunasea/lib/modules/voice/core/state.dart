@@ -246,8 +246,11 @@ class VoiceAssistantState extends LunaModuleState {
     // --- Voice lane: play Gemini's audio + honour barge-in ---
     _subs.add(session.audio.listen((chunk) {
       if (!_voiceActive) return;
-      _audio?.feedPlayback(chunk);
-      _setActivity(VoiceActivity.speaking);
+      // Only show `speaking` if the chunk was actually accepted for playback.
+      // A chunk arriving during a barge-in flush is rejected; flipping to
+      // `speaking` for it would strand the orb (no drain callback follows).
+      final accepted = _audio?.feedPlayback(chunk) ?? false;
+      if (accepted) _setActivity(VoiceActivity.speaking);
     }));
 
     _subs.add(session.interrupted.listen((_) {
@@ -261,10 +264,11 @@ class VoiceAssistantState extends LunaModuleState {
       _addSystem('Live error: $e', isError: true);
       _turnInProgress = false;
       // A mid-turn error/disconnect strands sub-pre-roll audio in the buffer,
-      // which would otherwise prepend as a stale tail onto the next turn. Drop it
-      // and drop the orb out of `speaking`.
+      // which would otherwise prepend as a stale tail onto the next turn. Flush
+      // it (also resets the native stream so no stale plugin callback lingers —
+      // codex#8) and drop the orb out of `speaking`.
       if (_voiceActive) {
-        _audio?.discardPlayback();
+        _audio?.flushPlayback();
         _setActivity(VoiceActivity.listening);
       }
       notifyListeners();

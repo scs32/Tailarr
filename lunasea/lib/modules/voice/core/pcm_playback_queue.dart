@@ -129,6 +129,25 @@ class PcmPlaybackQueue {
   /// NEXT turn's audio is held back.
   int _flushBytes = 0;
 
+  /// Size of the frame currently awaiting device acceptance (0 when none). It has
+  /// left [_chunks]/[_bufferedBytes] but is still our responsibility (it may be
+  /// re-queued on failure), so both the memory cap and the drained-signal
+  /// accounting must include it.
+  int _inFlightBytes = 0;
+
+  /// Monotonic count of bytes the device has ACCEPTED this session. Paired with
+  /// [_drainTarget] it makes the "turn finished playing" signal a cumulative
+  /// checkpoint — immune to NEXT-turn audio that arrives before this turn drains.
+  int _acceptedBytes = 0;
+
+  /// The [_acceptedBytes] value at which the current turn's audio has all reached
+  /// the device (set by [endTurn]).
+  int _drainTarget = 0;
+
+  /// Bytes of the current turn that will never be fed (a lone odd carry-byte),
+  /// dropped from the front when the turn's boundary is signalled.
+  int _turnLeftover = 0;
+
   bool _draining = false;
   bool _closed = false;
   bool _turnEndPending = false;
@@ -155,12 +174,27 @@ class PcmPlaybackQueue {
   /// bytes or the wall-clock ceiling), then drained to the device in order.
   void add(Uint8List chunk) {
     if (_closed || chunk.isEmpty) return;
-    if (_bufferedBytes >= maxBufferedBytes) {
+    // HARD cap: compare against remaining capacity (incl. the in-flight frame),
+    // so a large chunk can't blow past the cap just because we weren't AT it yet.
+    final remaining = maxBufferedBytes - _bufferedBytes - _inFlightBytes;
+    if (remaining <= 0) {
       onOverflow?.call(chunk.length);
       return;
     }
-    _chunks.add(chunk);
-    _bufferedBytes += chunk.length;
+    var toAdd = chunk;
+    if (chunk.length > remaining) {
+      // Accept an even-aligned prefix (keep 16-bit sample alignment); drop the
+      // rest. Better graceful degradation than dropping the whole chunk.
+      final keep = remaining.isEven ? remaining : remaining - 1;
+      if (keep <= 0) {
+        onOverflow?.call(chunk.length);
+        return;
+      }
+      toAdd = Uint8List.sublistView(chunk, 0, keep);
+      onOverflow?.call(chunk.length - keep);
+    }
+    _chunks.add(toAdd);
+    _bufferedBytes += toAdd.length;
     if (!_flowing && _flushBytes == 0) {
       if (_bufferedBytes >= preRollBytes) {
         _flowing = true;
@@ -177,14 +211,21 @@ class PcmPlaybackQueue {
   void endTurn() {
     if (_closed) return;
     _cancelPreRollTimer();
-    _flushBytes = _bufferedBytes; // boundary: only bytes present NOW flush
+    // This turn's still-unplayed audio = what's buffered + the in-flight frame.
+    // Target the cumulative accepted-byte count at which it will all have reached
+    // the device, so the boundary signal is independent of any NEXT-turn audio
+    // that arrives before this turn finishes draining (codex#4).
+    var pending = _bufferedBytes + _inFlightBytes;
+    _turnLeftover = pending.isOdd ? 1 : 0; // a lone carry-byte is never fed
+    pending -= _turnLeftover;
+    _drainTarget = _acceptedBytes + pending;
+    _flushBytes = _bufferedBytes; // feed-gating boundary for the !flowing path
     _flowing = false; // the next turn must re-accumulate the pre-roll
     _turnEndPending = true;
-    if (_flushBytes > 0) {
+    if (_bufferedBytes > 0) {
       unawaited(_drain());
-    } else {
-      _maybeSignalDrained();
     }
+    _maybeSignalDrained();
   }
 
   /// Barge-in / hard stop: drop everything queued for the abandoned turn and
@@ -199,6 +240,10 @@ class PcmPlaybackQueue {
     _bufferedBytes = 0;
     _flowing = false;
     _flushBytes = 0;
+    _inFlightBytes = 0;
+    _acceptedBytes = 0;
+    _drainTarget = 0;
+    _turnLeftover = 0;
     _turnEndPending = false;
   }
 
@@ -212,6 +257,10 @@ class PcmPlaybackQueue {
     _bufferedBytes = 0;
     _flowing = false;
     _flushBytes = 0;
+    _inFlightBytes = 0;
+    _acceptedBytes = 0;
+    _drainTarget = 0;
+    _turnLeftover = 0;
     _turnEndPending = false;
   }
 
@@ -276,10 +325,8 @@ class PcmPlaybackQueue {
         final take = allowance < frameBytes ? allowance : frameBytes;
         final frame = _takeFront(take);
         if (frame.isEmpty) break; // only an odd trailing byte remains
-        if (!_flowing) {
-          _flushBytes -= frame.length;
-          if (_flushBytes < 0) _flushBytes = 0;
-        }
+        // The frame has left the buffer but is still ours until accepted.
+        _inFlightBytes = frame.length;
 
         final f = feed(frame);
         // A post-cancel throw lands on this abandoned future; swallow it so it
@@ -288,6 +335,7 @@ class PcmPlaybackQueue {
         try {
           await Future.any<void>([f, cancel.future]);
         } catch (_) {
+          _inFlightBytes = 0;
           // A genuine feed failure (NOT teardown/barge-in): preserve the frame
           // so the tail is not silently dropped, then stop. Only reachable when
           // the epoch is unchanged.
@@ -301,7 +349,19 @@ class PcmPlaybackQueue {
           }
           return;
         }
-        if (_closed || _epoch != myEpoch) return; // barge-in / close won the race
+        if (_closed || _epoch != myEpoch) {
+          _inFlightBytes = 0; // barge-in / close won the race; frame abandoned
+          return;
+        }
+        // Frame accepted by the device. Decrement the flush allowance (feed
+        // gating) and advance the cumulative accepted count (drained signal).
+        if (!_flowing) {
+          _flushBytes -= frame.length;
+          if (_flushBytes < 0) _flushBytes = 0;
+        }
+        _acceptedBytes += frame.length;
+        _inFlightBytes = 0;
+        _maybeSignalDrained();
       }
     } finally {
       _draining = false;
@@ -344,21 +404,43 @@ class PcmPlaybackQueue {
     if (frame.isEmpty) return;
     _chunks.addFirst(frame);
     _bufferedBytes += frame.length;
-    if (!_flowing) _flushBytes += frame.length;
+    // Note: [_flushBytes] is only decremented once a frame is ACCEPTED, so a
+    // failed frame's allowance was never consumed — nothing to restore here.
+  }
+
+  /// Drop up to [n] bytes from the FRONT (splitting a straddling chunk).
+  void _dropFront(int n) {
+    var need = n;
+    while (need > 0 && _chunks.isNotEmpty) {
+      final head = _chunks.first;
+      if (head.length <= need) {
+        _chunks.removeFirst();
+        _bufferedBytes -= head.length;
+        need -= head.length;
+      } else {
+        _chunks.removeFirst();
+        _chunks.addFirst(Uint8List.sublistView(head, need));
+        _bufferedBytes -= need;
+        need = 0;
+      }
+    }
   }
 
   void _maybeSignalDrained() {
-    if (!_turnEndPending || _draining || _closed) return;
-    // A lone odd carry-byte is never playable — treat <1 sample as drained.
-    if (_bufferedBytes < 2) {
-      if (_bufferedBytes > 0) {
-        _chunks.clear();
-        _bufferedBytes = 0;
+    // Never signal with a frame still in flight — its bytes are not yet accepted.
+    if (!_turnEndPending || _closed || _inFlightBytes > 0) return;
+    // Boundary reached when the device has ACCEPTED all of this turn's bytes — a
+    // cumulative checkpoint, so NEXT-turn audio already buffered/draining cannot
+    // suppress this signal or fire it early (codex#4).
+    if (_acceptedBytes >= _drainTarget) {
+      // Drop this turn's lone odd carry-byte (excluded from the target) so it
+      // can't prepend as a stale sample onto the next turn.
+      if (_turnLeftover > 0) {
+        _dropFront(_turnLeftover);
+        _turnLeftover = 0;
       }
-      // Zero the flush allowance too: an ODD-total turn leaves a lone carry-byte
-      // whose bookkeeping would otherwise keep _flushBytes == 1 forever, so the
-      // NEXT turn would be silent-until-turnComplete until its own endTurn healed
-      // it. Clearing here keeps the boundary clean for the next turn's pre-roll.
+      // Zero the flush allowance too: an ODD-total turn otherwise leaves it stuck
+      // at 1, which would make the NEXT turn skip its pre-roll branch forever.
       _flushBytes = 0;
       _turnEndPending = false;
       onDrained?.call();
