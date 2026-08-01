@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:lunasea/core.dart';
+import 'package:lunasea/modules/settings/routes/configuration_general/pages/tailscale_health.dart';
 import 'package:lunasea/system/network/platform/network_io.dart'
     if (dart.library.html) 'package:lunasea/system/network/platform/network_html.dart';
 import 'package:tailscale_embed/tailscale_embed.dart';
@@ -111,7 +112,8 @@ class _State extends State<ConfigurationGeneralTailscaleStatusRoute>
         children: [
           _connectionBlock(status),
           _nodeCard(status),
-          if (status.health.isNotEmpty) _healthCard(status),
+          if (TailscaleHealthView.effectiveHealth(status).isNotEmpty)
+            _healthCard(status),
           if (status.recovery != null) _recoveryCard(status.recovery!),
           if (status.running) ..._peers(status),
         ],
@@ -125,7 +127,9 @@ class _State extends State<ConfigurationGeneralTailscaleStatusRoute>
     if (!status.running) {
       state = 'Stopped';
       color = LunaColours.red;
-    } else if (status.isHealthy) {
+    } else if (TailscaleHealthView.isHealthy(status)) {
+      // Effective health: a stale magicsock "ReceiveIPv4 is not running"
+      // warning does not demote a tunnel whose peers are online (P1).
       state = 'Connected';
       color = LunaColours.accent;
     } else if (status.backendState == 'Starting') {
@@ -196,7 +200,7 @@ class _State extends State<ConfigurationGeneralTailscaleStatusRoute>
   Widget _healthCard(TailscaleStatus status) {
     return LunaTableCard(
       title: 'Health Warnings',
-      content: status.health
+      content: TailscaleHealthView.effectiveHealth(status)
           .map((warning) => LunaTableContent(body: warning))
           .toList(),
     );

@@ -109,6 +109,74 @@ void main() {
     await disposePage(tester);
   });
 
+  testWidgets(
+      'suppresses a stale magicsock ReceiveIPv4 warning when peers are online (P1)',
+      (tester) async {
+    await pumpStatusPage(
+      tester,
+      const TailscaleStatus(
+        running: true,
+        identity: 'default',
+        proxyPort: 41641,
+        backendState: 'Running',
+        health: ['MagicSock function ReceiveIPv4 is not running'],
+        peers: [
+          TailscaleNode(
+            hostName: 'tailarr',
+            dnsName: 'tailarr.taila06ea9.ts.net',
+            ips: ['100.64.0.2'],
+            online: true,
+          ),
+        ],
+      ),
+    );
+
+    // The stale magicsock warning is a false alarm when a peer is reachable:
+    // no Health Warnings card, and the connection reads Connected.
+    expect(find.text('Health Warnings', findRichText: true), findsNothing);
+    expect(
+      find.text('MagicSock function ReceiveIPv4 is not running',
+          findRichText: true),
+      findsNothing,
+    );
+    expect(find.text('Connected', findRichText: true), findsOneWidget);
+
+    await disposePage(tester);
+  });
+
+  testWidgets(
+      'keeps the magicsock warning when no peer is online (real outage)',
+      (tester) async {
+    await pumpStatusPage(
+      tester,
+      const TailscaleStatus(
+        running: true,
+        identity: 'default',
+        proxyPort: 41641,
+        backendState: 'Running',
+        health: ['MagicSock function ReceiveIPv4 is not running'],
+        peers: [
+          TailscaleNode(
+            hostName: 'tailarr',
+            dnsName: 'tailarr.taila06ea9.ts.net',
+            ips: ['100.64.0.2'],
+            online: false,
+          ),
+        ],
+      ),
+    );
+
+    expect(find.text('Health Warnings', findRichText: true), findsOneWidget);
+    expect(
+      find.text('MagicSock function ReceiveIPv4 is not running',
+          findRichText: true),
+      findsOneWidget,
+    );
+    expect(find.text('Connected', findRichText: true), findsNothing);
+
+    await disposePage(tester);
+  });
+
   testWidgets('renders the stopped state', (tester) async {
     await pumpStatusPage(
       tester,
