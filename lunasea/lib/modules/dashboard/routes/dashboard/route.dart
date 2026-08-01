@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 
 import 'package:lunasea/modules.dart';
-import 'package:lunasea/database/tables/dashboard.dart';
-import 'package:lunasea/database/tables/lunasea.dart';
 import 'package:lunasea/widgets/ui.dart';
-import 'package:lunasea/modules/dashboard/routes/dashboard/pages/assistant.dart';
-import 'package:lunasea/modules/dashboard/routes/dashboard/pages/calendar.dart';
-import 'package:lunasea/modules/dashboard/routes/dashboard/widgets/switch_view_action.dart';
-import 'package:lunasea/modules/dashboard/routes/dashboard/widgets/navigation_bar.dart';
+import 'package:lunasea/modules/voice/widgets/assistant_view.dart';
 
+/// The Dashboard home: the full-page voice/text assistant (Gemini Live).
+///
+/// Per Stephen's 2026-08 directive the dashboard is a normal, full-screen chat
+/// with the assistant — there is no bottom tab bar. The old Modules launcher
+/// still lives in the hamburger drawer, and the release Calendar view
+/// (`pages/calendar.dart`) is retained in the codebase but no longer surfaced
+/// here.
 class DashboardRoute extends StatefulWidget {
   const DashboardRoute({
     super.key,
@@ -20,14 +22,12 @@ class DashboardRoute extends StatefulWidget {
 
 class _State extends State<DashboardRoute> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
-  LunaPageController? _pageController;
+  final ScrollController _scroll = ScrollController();
 
   @override
-  void initState() {
-    super.initState();
-
-    int page = DashboardDatabase.NAVIGATION_INDEX.read();
-    _pageController = LunaPageController(initialPage: page);
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
   }
 
   @override
@@ -35,10 +35,9 @@ class _State extends State<DashboardRoute> {
     return LunaScaffold(
       scaffoldKey: _scaffoldKey,
       module: LunaModule.DASHBOARD,
-      body: _body(),
       appBar: _appBar(),
       drawer: LunaDrawer(page: LunaModule.DASHBOARD.key),
-      bottomNavigationBar: HomeNavigationBar(pageController: _pageController),
+      body: AssistantView(scrollController: _scroll),
     );
   }
 
@@ -46,23 +45,7 @@ class _State extends State<DashboardRoute> {
     return LunaAppBar(
       title: 'Tailarr',
       useDrawer: true,
-      scrollControllers: HomeNavigationBar.scrollControllers,
-      pageController: _pageController,
-      actions: [SwitchViewAction(pageController: _pageController)],
-    );
-  }
-
-  Widget _body() {
-    return LunaSeaDatabase.ENABLED_PROFILE.listenableBuilder(
-      builder: (context, _) => LunaPageView(
-        controller: _pageController,
-        children: [
-          // Tab 0 is now the voice-assistant orb (the dashboard IS the orb you
-          // talk to). The module launcher moved to the drawer; Calendar stays.
-          AssistantPage(key: ValueKey(LunaSeaDatabase.ENABLED_PROFILE.read())),
-          CalendarPage(key: ValueKey(LunaSeaDatabase.ENABLED_PROFILE.read())),
-        ],
-      ),
+      scrollControllers: [_scroll],
     );
   }
 }
