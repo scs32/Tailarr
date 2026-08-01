@@ -47,6 +47,7 @@ import 'package:record/record.dart';
 
 import 'package:lunasea/modules/voice/core/voice_session.dart'
     show kMicSampleRate, kOutputSampleRate;
+import 'package:lunasea/modules/voice/core/pcm_playback_queue.dart';
 
 class VoiceAudioIO {
   final AudioRecorder _recorder = AudioRecorder();
@@ -55,6 +56,18 @@ class VoiceAudioIO {
   bool _sessionConfigured = false;
   bool _playerReady = false;
   StreamSubscription<Uint8List>? _micSub;
+
+  /// Pre-roll jitter buffer between Gemini's bursty 24kHz output and the speaker.
+  /// Without it, each websocket chunk was fed straight into flutter_sound's
+  /// no-flow-control sink, so playback underran between bursts (and dropped
+  /// tails when the device was momentarily full) — the "speaks in chunks" bug.
+  /// It hands audio to the player through the BACK-PRESSURED `feedUint8FromStream`
+  /// so nothing is dropped and the native ring never overruns.
+  late final PcmPlaybackQueue _playback = PcmPlaybackQueue(
+    feed: (frame) async {
+      if (_playerReady) await _player.feedUint8FromStream(frame);
+    },
+  );
 
   /// True once the mic is streaming into [micStream].
   bool get isCapturing => _micSub != null;
@@ -111,17 +124,25 @@ class VoiceAudioIO {
     _playerReady = true;
   }
 
-  /// Feed one chunk of Gemini's output PCM to the speaker.
+  /// Feed one chunk of Gemini's output PCM. Goes through the jitter buffer, which
+  /// pre-rolls a cushion then feeds the speaker gaplessly under back-pressure.
   void feedPlayback(Uint8List pcm24) {
-    if (_playerReady) _player.uint8ListSink?.add(pcm24);
+    if (_playerReady) _playback.add(pcm24);
+  }
+
+  /// The model finished a spoken turn: flush any buffered tail (including a reply
+  /// shorter than the pre-roll) and re-arm the pre-roll for the next turn.
+  void endPlaybackTurn() {
+    if (_playerReady) _playback.endTurn();
   }
 
   /// Barge-in: drop everything still queued for the abandoned model turn by
-  /// tearing the output stream down and re-arming it (a fresh StreamController
-  /// discards the old buffer; the native ring buffer is dropped by stopPlayer).
+  /// clearing the jitter buffer AND tearing the output stream down and re-arming
+  /// it (stopPlayer drops the native ring; a fresh stream discards the rest).
   Future<void> flushPlayback() async {
     if (!_playerReady) return;
     _playerReady = false;
+    _playback.reset();
     try {
       await _player.stopPlayer();
       await _startPlayerStream();
@@ -166,6 +187,7 @@ class VoiceAudioIO {
   Future<void> stop() async {
     await stopCapture();
     _playerReady = false;
+    _playback.reset();
     if (_player.isOpen()) {
       try {
         await _player.stopPlayer();

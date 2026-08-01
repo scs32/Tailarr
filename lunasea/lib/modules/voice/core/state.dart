@@ -232,6 +232,9 @@ class VoiceAssistantState extends LunaModuleState {
 
     _subs.add(session.turnComplete.listen((_) {
       _turnInProgress = false;
+      // Flush any buffered tail (incl. a reply shorter than the pre-roll) and
+      // re-arm the jitter buffer so the next turn pre-rolls afresh.
+      if (_voiceActive) _audio?.endPlaybackTurn();
       // Model finished speaking: back to listening if the mic is live, else idle.
       if (_voiceActive) _setActivity(VoiceActivity.listening);
       notifyListeners();
