@@ -61,7 +61,9 @@ class VoiceAudioIO {
     @visibleForTesting Future<void> Function(Uint8List frame)? feedPlayerStream,
     @visibleForTesting Stream<AudioInterruptionEvent>? interruptionEvents,
     @visibleForTesting Stream<void>? becomingNoisyEvents,
-  })  : _openPlayerStream = openPlayerStream,
+    @visibleForTesting Future<void> Function(bool active)? setSessionActive,
+  })  : _setSessionActive = setSessionActive,
+        _openPlayerStream = openPlayerStream,
         _closePlayerStream = closePlayerStream,
         _feedPlayerStream = feedPlayerStream,
         _interruptionEvents = interruptionEvents,
@@ -72,6 +74,11 @@ class VoiceAudioIO {
   /// Null in production — see [configureSession].
   final Stream<AudioInterruptionEvent>? _interruptionEvents;
   final Stream<void>? _becomingNoisyEvents;
+
+  /// Seam for `AVAudioSession.setActive(...)` — the one call in this class with
+  /// PROCESS-WIDE effect, and therefore the only one whose ordering across
+  /// instances matters. Null in production.
+  final Future<void> Function(bool active)? _setSessionActive;
 
   /// Seams so the playback LIFECYCLE (restart-failed recovery in particular) is
   /// testable without an audio device. Null in production — see
@@ -102,6 +109,39 @@ class VoiceAudioIO {
   /// True only when a REAL platform AVAudioSession was configured by us, and so
   /// is ours to deactivate in [stop]. False under the test seams.
   bool _sessionOwned = false;
+
+  /// PROCESS-WIDE ownership of the shared AVAudioSession.
+  ///
+  /// The lane above serializes one instance's player. It cannot serialize
+  /// ACROSS instances — and it does not have to, except for `setActive(false)`,
+  /// which is global. That matters because teardown is deliberately bounded
+  /// (see [teardownTimeout] and state.dart's `_disposeBounded`): when a hung
+  /// teardown is abandoned, the old instance's `stop()` is still alive and may
+  /// reach `setActive(false)` long after a NEW instance has activated the
+  /// session — silently deafening the live lane. Bounding teardown traded a
+  /// permanent wedge for that race; this epoch closes it.
+  ///
+  /// Every instance that activates the shared session takes the next epoch.
+  /// Only the CURRENT owner may deactivate it; a superseded instance skips the
+  /// call, because by then the session belongs to someone else.
+  static int _sessionEpoch = 0;
+  int _mySessionEpoch = 0;
+
+  /// The single funnel for the process-wide activation call.
+  Future<void> _setActive(bool active) async {
+    final seam = _setSessionActive;
+    if (seam != null) return seam(active);
+    final session = await AudioSession.instance;
+    await session.setActive(active);
+  }
+
+  /// Claim process-wide ownership of the shared session. Synchronous on
+  /// purpose: the claim must land in one turn so two instances cannot
+  /// interleave into the same epoch.
+  void _claimSession() {
+    _sessionOwned = true;
+    _mySessionEpoch = ++_sessionEpoch;
+  }
   bool _playerReady = false;
 
   /// True when the output stream is DOWN but should be up — a restart failed.
@@ -175,6 +215,16 @@ class VoiceAudioIO {
   /// a burst of chunks would each submit an op, and each submission bumps the
   /// generation — which would supersede the recovery already running and spin
   /// forever under continuous websocket audio.
+  ///
+  /// KNOWN, ACCEPTED LIMIT: this clears only when the lane op completes, so a
+  /// native open/close that never returns leaves it true and starves further
+  /// recovery for this instance. That is deliberate. If the platform has hung
+  /// the player, retrying it is pointless, and the instance is already
+  /// unusable. What matters is that the failure stays CONTAINED: the terminal
+  /// teardown is bounded by [teardownTimeout] and state.dart's disposal is
+  /// bounded too, so `stopVoice()` still returns, `_voiceChain` is still
+  /// released, and the user gets a working lane from a FRESH instance on the
+  /// next tap. A hung player costs one instance, never the app.
   bool _recoveryPending = false;
   StreamSubscription<Uint8List>? _micSub;
   StreamSubscription<AudioInterruptionEvent>? _interruptionSub;
@@ -249,6 +299,10 @@ class VoiceAudioIO {
     // configure or own — just wire the handlers.
     if (_interruptionEvents != null || _becomingNoisyEvents != null) {
       _sessionConfigured = true;
+      if (_setSessionActive != null) {
+        await _setActive(true);
+        _claimSession();
+      }
       await _subscribeAudioEvents(
         _interruptionEvents ?? const Stream<AudioInterruptionEvent>.empty(),
         _becomingNoisyEvents ?? const Stream<void>.empty(),
@@ -269,7 +323,7 @@ class VoiceAudioIO {
     await session.setActive(true);
     _sessionConfigured = true;
     // Only a REAL platform session is ours to deactivate again in stop().
-    _sessionOwned = true;
+    _claimSession();
     await _subscribeAudioEvents(
       session.interruptionEventStream,
       session.becomingNoisyEventStream,
@@ -358,9 +412,13 @@ class VoiceAudioIO {
       await _player.openPlayer();
       await _openStream(gen);
     });
+    // Re-checked AFTER the await below, not just before it: `stop()` is
+    // terminal and can land in between, and re-acquiring process-wide audio
+    // focus after a terminal stop steals it back from whatever now owns it.
     if (_playerClosed) return;
     // Re-assert our category AFTER the player core has initialised so ours wins.
     final session = await AudioSession.instance;
+    if (_playerClosed) return;
     await session.setActive(true);
   }
 
@@ -587,8 +645,15 @@ class VoiceAudioIO {
       _logWarn('Voice player teardown timed out; abandoning the native close');
     } catch (_) {}
     if (_sessionOwned) {
-      final session = await AudioSession.instance;
-      await session.setActive(false);
+      if (_mySessionEpoch == _sessionEpoch) {
+        await _setActive(false);
+      } else {
+        // A newer instance owns the shared session — most likely because our
+        // own teardown was abandoned by a timeout and a fresh lane started
+        // meanwhile. Deactivating now would deafen the LIVE instance.
+        _logWarn(
+            'Skipping AVAudioSession deactivation: a newer voice instance owns it');
+      }
       _sessionOwned = false;
     }
     _sessionConfigured = false;

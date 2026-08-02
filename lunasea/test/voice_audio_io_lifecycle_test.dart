@@ -124,6 +124,7 @@ void main() {
   }
 
   interruptionTests();
+  sharedSessionTests();
 
   group('N1: one serialized owner of the player lifecycle', () {
     test('a flush during an in-flight recovery must not double-open the stream',
@@ -351,6 +352,75 @@ void interruptionTests() {
           reason: 'stop() cancels the subscriptions, and the lane is terminal: '
               'a late event must not resurrect the player');
       expect(t.io.feedPlayback(pcm(320)), isFalse);
+    });
+  });
+}
+
+/// Codex re-review: the player lane serializes ONE instance. `setActive()` on
+/// the AVAudioSession is PROCESS-WIDE, so its ordering across instances is not
+/// something any per-instance lane can fix.
+///
+/// This matters because teardown is deliberately bounded (teardownTimeout, and
+/// state.dart's _disposeBounded). Bounding it is what stops the N2 permanent
+/// wedge — but an abandoned `stop()` is still ALIVE, and could later reach
+/// `setActive(false)` after a NEW instance had already activated the session,
+/// silently deafening the live lane. Written from that failure.
+void sharedSessionTests() {
+  ({VoiceAudioIO io, List<String> log}) makeIO(String name, List<String> log) {
+    final io = VoiceAudioIO(
+      openPlayerStream: () async {},
+      closePlayerStream: () async {},
+      feedPlayerStream: (f) async {},
+      interruptionEvents: const Stream<AudioInterruptionEvent>.empty(),
+      setSessionActive: (active) async => log.add('$name:setActive($active)'),
+    );
+    io.teardownTimeout = const Duration(milliseconds: 20);
+    return (io: io, log: log);
+  }
+
+  group('process-wide AVAudioSession ownership', () {
+    test('a superseded instance must not deactivate the shared session',
+        () async {
+      final log = <String>[];
+      final a = makeIO('old', log);
+      await a.io.configureSession();
+
+      // A new lane starts before the old one finished tearing down — exactly
+      // what an abandoned, timed-out teardown leaves behind.
+      final b = makeIO('new', log);
+      await b.io.configureSession();
+
+      // The abandoned old teardown finally runs.
+      await a.io.stop();
+
+      expect(log, isNot(contains('old:setActive(false)')),
+          reason: 'the old instance no longer owns the shared session; '
+              'deactivating it here deafens the LIVE instance');
+      expect(log, equals(['old:setActive(true)', 'new:setActive(true)']));
+
+      // ...and the current owner still releases it properly.
+      await b.io.stop();
+      expect(log.last, 'new:setActive(false)',
+          reason: 'the CURRENT owner must still hand the session back, or '
+              'other apps never regain audio focus');
+    });
+
+    test('a single instance still releases the session on stop', () async {
+      final log = <String>[];
+      final a = makeIO('solo', log);
+      await a.io.configureSession();
+      await a.io.stop();
+      expect(log, equals(['solo:setActive(true)', 'solo:setActive(false)']));
+    });
+
+    test('stop() is idempotent and does not double-deactivate', () async {
+      final log = <String>[];
+      final a = makeIO('solo', log);
+      await a.io.configureSession();
+      await a.io.stop();
+      await a.io.stop();
+      await a.io.dispose();
+      expect(log.where((l) => l.contains('setActive(false)')).length, 1);
     });
   });
 }
