@@ -105,6 +105,15 @@ class VoiceAudioIO {
   AudioRecorder get _recorder => _recorderInstance ??= AudioRecorder();
   final FlutterSoundPlayer _player = FlutterSoundPlayer();
 
+  /// Instance-terminal, set SYNCHRONOUSLY by [stop] before its first await.
+  ///
+  /// `_playerClosed` says the same thing for the player lane; this is the
+  /// whole-instance form, read by the session arbiter and by [captureInto], so
+  /// a platform call that state.dart abandoned and that answers later cannot
+  /// apply a side effect (activating the shared session, opening a mic) on
+  /// behalf of an instance that is already gone.
+  bool _terminal = false;
+
   bool _sessionConfigured = false;
   /// True only when a REAL platform AVAudioSession was configured by us, and so
   /// is ours to deactivate in [stop]. False under the test seams.
@@ -127,7 +136,77 @@ class VoiceAudioIO {
   static int _sessionEpoch = 0;
   int _mySessionEpoch = 0;
 
-  /// The single funnel for the process-wide activation call.
+  /// PROCESS-WIDE serialization of the shared session — the arbiter.
+  ///
+  /// An epoch COMPARISON is not enough on its own, because a comparison cannot
+  /// revoke an effect that is already in flight. Two windows were reachable
+  /// with a bare compare:
+  ///
+  ///   A. check-to-effect: the old instance reads `_mySessionEpoch ==
+  ///      _sessionEpoch`, passes, and parks INSIDE `setActive(false)`. A new
+  ///      instance activates and claims a newer epoch while that call is still
+  ///      airborne. The old deactivation then lands on the live lane.
+  ///   B. activation-to-claim: the new instance claimed its epoch only AFTER
+  ///      `setActive(true)` returned, so an old instance checking in that gap
+  ///      still saw itself as owner and deactivated a session already on.
+  ///
+  /// Both are one defect: validation and side effect were not atomic. The
+  /// answer is a single process-wide lane on which claim-and-activate and
+  /// validate-and-deactivate each run as an indivisible unit, so no other
+  /// generation can transfer ownership in between.
+  static Future<void> _sessionLane = Future<void>.value();
+
+  /// Run [body] as one indivisible unit against the shared session.
+  ///
+  /// The CALLER's wait is bounded ([teardownTimeout]) but the body keeps its
+  /// place in the queue. That is deliberate and is the trade the player lane
+  /// already makes: ordering must never cost liveness, or one platform
+  /// `setActive` that never returns would wedge every future voice instance —
+  /// the N2 permanent-wedge shape, one level up. Abandoning the WAIT is safe
+  /// because every body re-validates ownership and terminality at the moment it
+  /// actually runs, so a body that executes late is inert, not damaging.
+  Future<void> _onSessionLane(Future<void> Function() body) {
+    final next = _sessionLane.then((_) => body(), onError: (_) => body());
+    _sessionLane = next.catchError((_) {});
+    return next.timeout(teardownTimeout, onTimeout: () {
+      _logWarn('Shared audio session did not answer in time; not waiting');
+    }).catchError((_) {});
+  }
+
+  /// Claim ownership and activate, atomically. Skipped entirely once this
+  /// instance is terminal: an abandoned configure that finally gets its turn
+  /// must not steal the epoch from — or re-activate under — a live instance.
+  Future<void> _acquireSession() => _onSessionLane(() async {
+        if (_terminal) return;
+        _claimSession();
+        await _setActive(true);
+      });
+
+  /// Re-assert activation WITHOUT taking a new epoch (see [startPlayback]).
+  /// Inert unless this instance is still the owner.
+  Future<void> _reassertSession() => _onSessionLane(() async {
+        if (_terminal || !_ownsSession) return;
+        await _setActive(true);
+      });
+
+  /// Validate ownership and deactivate, atomically.
+  Future<void> _releaseSession() => _onSessionLane(() async {
+        if (!_sessionOwned) return;
+        if (_mySessionEpoch != _sessionEpoch) {
+          // A newer instance owns the shared session — most likely because our
+          // own teardown was abandoned by a timeout and a fresh lane started
+          // meanwhile. Deactivating now would deafen the LIVE instance.
+          _logWarn('Skipping AVAudioSession deactivation: a newer voice '
+              'instance owns it');
+          _sessionOwned = false;
+          return;
+        }
+        await _setActive(false);
+        _sessionOwned = false;
+      });
+
+  /// The single funnel for the process-wide activation call. Only ever invoked
+  /// from inside a [_onSessionLane] body.
   Future<void> _setActive(bool active) async {
     final seam = _setSessionActive;
     if (seam != null) return seam(active);
@@ -136,12 +215,18 @@ class VoiceAudioIO {
   }
 
   /// Claim process-wide ownership of the shared session. Synchronous on
-  /// purpose: the claim must land in one turn so two instances cannot
-  /// interleave into the same epoch.
+  /// purpose, and called from inside the arbiter BEFORE the activation it
+  /// guards — never after, or window B above reopens.
   void _claimSession() {
     _sessionOwned = true;
     _mySessionEpoch = ++_sessionEpoch;
   }
+
+  /// True while this instance is still the process-wide session owner. Every
+  /// side effect on the shared session — activation as well as deactivation —
+  /// is gated on it, so a superseded instance can apply neither.
+  bool get _ownsSession => _sessionOwned && _mySessionEpoch == _sessionEpoch;
+
   bool _playerReady = false;
 
   /// True when the output stream is DOWN but should be up — a restart failed.
@@ -300,8 +385,7 @@ class VoiceAudioIO {
     if (_interruptionEvents != null || _becomingNoisyEvents != null) {
       _sessionConfigured = true;
       if (_setSessionActive != null) {
-        await _setActive(true);
-        _claimSession();
+        await _acquireSession();
       }
       await _subscribeAudioEvents(
         _interruptionEvents ?? const Stream<AudioInterruptionEvent>.empty(),
@@ -320,10 +404,10 @@ class VoiceAudioIO {
       // voiceChat => system acoustic echo cancellation for full-duplex voice.
       avAudioSessionMode: AVAudioSessionMode.voiceChat,
     ));
-    await session.setActive(true);
     _sessionConfigured = true;
-    // Only a REAL platform session is ours to deactivate again in stop().
-    _claimSession();
+    // Only a REAL platform session is ours to deactivate again in stop(), and
+    // the claim must be atomic with the activation — see [_sessionLane].
+    await _acquireSession();
     await _subscribeAudioEvents(
       session.interruptionEventStream,
       session.becomingNoisyEventStream,
@@ -412,22 +496,32 @@ class VoiceAudioIO {
       await _player.openPlayer();
       await _openStream(gen);
     });
-    // Re-checked AFTER the await below, not just before it: `stop()` is
-    // terminal and can land in between, and re-acquiring process-wide audio
-    // focus after a terminal stop steals it back from whatever now owns it.
-    if (_playerClosed) return;
-    // Re-assert our category AFTER the player core has initialised so ours wins.
-    final session = await AudioSession.instance;
-    if (_playerClosed) return;
-    await session.setActive(true);
+    // Re-assert our category AFTER the player core has initialised so ours
+    // wins. This is a process-wide side effect like any other, so it goes
+    // through the arbiter instead of calling setActive directly: `stop()` is
+    // terminal and can land in between, and re-acquiring audio focus after a
+    // terminal stop — or after a newer instance took the epoch — steals it
+    // back from whatever now owns it. [_reassertSession] re-validates both at
+    // the moment the call is actually issued, not before the await.
+    await _reassertSession();
   }
 
   /// Raw native open. Sets NO state — committing readiness is the lane's job
   /// (see [_openStream]); this used to set `_playerReady = true` unconditionally,
   /// which is precisely how a superseded or post-stop open resurrected a player.
-  Future<void> _rawOpenPlayerStream() {
+  Future<void> _rawOpenPlayerStream() async {
     final open = _openPlayerStream;
     if (open != null) return open();
+    // `openPlayer()` used to live ONLY in startPlayback's lane op, which is
+    // non-terminal and therefore supersedable: `_playerWanted` is set before
+    // `configureSession()` installs the interruption handlers, so an
+    // interruption delivered in the microtask window between that op's
+    // submission and its run submits a flush, bumps the generation, and the
+    // open op is skipped — permanently. Nothing retried it, because flush and
+    // recovery both come straight here, onto a player that was never opened.
+    // Making the open idempotent HERE means every path that needs a stream
+    // gets a player, whichever one wins the race.
+    if (!_player.isOpen()) await _player.openPlayer();
     return _player.startPlayerFromStream(
       codec: Codec.pcm16,
       interleaved: true,
@@ -592,7 +686,28 @@ class VoiceAudioIO {
   /// Convenience: pipe mic PCM straight into a sink (e.g. session.sendAudioChunk).
   Future<void> captureInto(void Function(Uint8List pcm16) onChunk) async {
     final stream = await startCapture();
+    // Publication point: re-checked HERE, immediately before writing, not
+    // before the await. `startStream()` is a platform call that state.dart
+    // BOUNDS; if that wait is abandoned and the platform answers later,
+    // subscribing now would open a LIVE MICROPHONE on an instance that has
+    // already been stopped — the one late side effect in this class a user
+    // would actually notice.
+    if (_terminal) {
+      await _abortLateCapture();
+      return;
+    }
     _micSub = stream.listen(onChunk);
+  }
+
+  /// Undo a capture that arrived after the instance was already terminal.
+  Future<void> _abortLateCapture() async {
+    _logWarn('Microphone stream arrived after stop(); discarding it');
+    try {
+      final rec = _recorderInstance;
+      if (rec != null && await rec.isRecording()) await rec.stop();
+    } catch (e, st) {
+      _logError('Failed to stop a late microphone stream', e, st);
+    }
   }
 
   Future<void> stopCapture() async {
@@ -612,6 +727,7 @@ class VoiceAudioIO {
     // in this block must land in one event-loop turn so that a recovery or
     // flush already parked inside a platform call cannot come back afterwards
     // and commit readiness on a player we are tearing down (N1).
+    _terminal = true;
     _playerClosed = true;
     _playerWanted = false;
     _playerGen++;
@@ -644,18 +760,10 @@ class VoiceAudioIO {
       // runs if the platform ever answers; we just stop waiting for it.
       _logWarn('Voice player teardown timed out; abandoning the native close');
     } catch (_) {}
-    if (_sessionOwned) {
-      if (_mySessionEpoch == _sessionEpoch) {
-        await _setActive(false);
-      } else {
-        // A newer instance owns the shared session — most likely because our
-        // own teardown was abandoned by a timeout and a fresh lane started
-        // meanwhile. Deactivating now would deafen the LIVE instance.
-        _logWarn(
-            'Skipping AVAudioSession deactivation: a newer voice instance owns it');
-      }
-      _sessionOwned = false;
-    }
+    // Validate-and-deactivate, atomically (see [_sessionLane]). Checking the
+    // epoch here and THEN awaiting setActive(false) was still racy: the check
+    // cannot revoke a call already in flight.
+    await _releaseSession();
     _sessionConfigured = false;
   }
 
