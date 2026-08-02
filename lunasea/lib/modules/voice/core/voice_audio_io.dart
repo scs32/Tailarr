@@ -96,7 +96,73 @@ class VoiceAudioIO {
   /// failed restart was terminal, because nothing in the app ever calls
   /// [startPlayback] again for an existing instance.
   bool _needsPlayerRestart = false;
-  bool _recovering = false;
+
+  // --- N1: ONE serialized owner of the player lifecycle -------------------
+  //
+  // The M4 lazy recovery originally serialized itself against OTHER recoveries
+  // with a `_recovering` flag. That is not enough: recovery also races
+  // [flushPlayback], [stop] and [dispose], because all four close and reopen
+  // the SAME native flutter_sound stream. Three failures were reachable:
+  //
+  //   * a second interruption flushed while a recovery was parked in
+  //     close/open, so both rebuilt the one native stream — and flutter_sound
+  //     9.30 keeps a SINGLE mutable needSomeFood completer, which is exactly
+  //     the desync codex#8 already cost us once;
+  //   * one path set `_playerReady = true` while the other was tearing the
+  //     stream down, admitting frames into a stream being destroyed;
+  //   * a recovery that finished AFTER stop()/dispose() logically RESURRECTED a
+  //     disposed player, re-arming playback on an instance whose AVAudioSession
+  //     had already been deactivated.
+  //
+  // The fix is deliberately NOT a second independent flag. Every lifecycle
+  // transition — start, flush, recovery and the terminal stop — is submitted to
+  // one lane:
+  //
+  //   * [_playerLane] is a Future chain, so at most ONE native close/open pair
+  //     is ever in flight. That kills the double-rebuild.
+  //   * [_playerGen] is bumped SYNCHRONOUSLY when an op is submitted, so an op
+  //     that is queued (or parked mid-await) can tell it has been superseded by
+  //     a newer intent and must not publish its result. That kills stale intent.
+  //   * [_playerClosed] is terminal and never cleared, and is likewise set
+  //     synchronously by [stop]. That kills resurrection: readiness is only
+  //     ever committed inside a lane body under [_laneCurrent], so no queued or
+  //     parked op can set `_playerReady = true` after the instance is done.
+  //
+  // Deadlock safety (the one invariant to preserve): nothing on the lane ever
+  // awaits the [PcmPlaybackQueue] drain, and nothing on the drain path ever
+  // awaits the lane. [feedPlayback]/[endPlaybackTurn] only fire-and-forget a
+  // recovery request, and `_playback.reset()`/`close()` are SYNCHRONOUS, so the
+  // cancel that unparks a drain stuck in `await feed(...)` lands before the
+  // lane awaits any native call.
+  Future<void> _playerLane = Future<void>.value();
+  int _playerGen = 0;
+  bool _playerClosed = false;
+
+  /// How long the TERMINAL teardown will wait for the lane to drain before
+  /// abandoning the native close.
+  ///
+  /// The lane gives correct ordering, but ordering must never cost liveness:
+  /// if a platform call ahead of us is hung (flutter_sound is documented to
+  /// wedge on the feed path) an unbounded wait here would wedge `stop()` —
+  /// and through it `dispose()`, `_stopVoiceBody` and the whole `_voiceChain`.
+  /// That is the same permanent-wedge shape as N2, so it gets the same answer:
+  /// bound it. Safe to abandon, because the instance is already terminal — no
+  /// abandoned op can resurrect it.
+  @visibleForTesting
+  Duration teardownTimeout = const Duration(seconds: 5);
+
+  /// Whether the output stream is SUPPOSED to be up. Needed because
+  /// `_playerReady` is false for the whole duration of a rebuild, so it cannot
+  /// by itself tell "never started / stopped" apart from "mid-flush" — which is
+  /// how two overlapping flushes used to make the second silently no-op and
+  /// skip its jitter-buffer reset.
+  bool _playerWanted = false;
+
+  /// Dedupes recovery REQUESTS only (the lane does the serializing). Without it
+  /// a burst of chunks would each submit an op, and each submission bumps the
+  /// generation — which would supersede the recovery already running and spin
+  /// forever under continuous websocket audio.
+  bool _recoveryPending = false;
   StreamSubscription<Uint8List>? _micSub;
   StreamSubscription<AudioInterruptionEvent>? _interruptionSub;
   StreamSubscription<void>? _noisySub;
@@ -209,34 +275,88 @@ class VoiceAudioIO {
     });
   }
 
+  /// True while [gen] is still the newest intent AND the instance is alive.
+  /// Checked after every await, and ALWAYS immediately before committing
+  /// readiness — that check is what makes resurrection impossible.
+  bool _laneCurrent(int gen) => !_playerClosed && _playerGen == gen;
+
+  /// Submit one lifecycle transition to the single player lane.
+  ///
+  /// The generation is bumped synchronously HERE, at submission, not when the
+  /// body runs — so a newer intent supersedes an older one even while the older
+  /// one is parked inside a platform call that may never return.
+  ///
+  /// [terminal] ops (stop/dispose teardown) run even though they set
+  /// `_playerClosed`, and are idempotent; every other op is skipped once the
+  /// instance is closed or superseded.
+  Future<void> _enqueuePlayerOp(
+    Future<void> Function(int gen) body, {
+    bool terminal = false,
+  }) {
+    final gen = ++_playerGen;
+    Future<void> run(_) {
+      if (!terminal && !_laneCurrent(gen)) return Future<void>.value();
+      return body(gen);
+    }
+
+    final next = _playerLane.then(run, onError: run);
+    _playerLane = next.catchError((_) {});
+    return next;
+  }
+
   /// Open the speaker stream for Gemini's 24kHz PCM output.
   Future<void> startPlayback() async {
+    if (_playerClosed) return;
+    _playerWanted = true;
     // Test seam: with an injected stream opener there is no plugin to open.
     if (_openPlayerStream != null) {
-      await _startPlayerStream();
+      await _enqueuePlayerOp(_openStream);
       return;
     }
+    // configureSession() installs the interruption/noisy subscriptions, which
+    // fire flushPlayback() — so it must complete BEFORE the open is submitted,
+    // and the open itself must be on the lane or a first-frame interruption
+    // could rebuild the stream underneath this very startup.
     await configureSession();
-    if (_player.isOpen()) return;
-    await _player.openPlayer();
-    await _startPlayerStream();
+    await _enqueuePlayerOp((gen) async {
+      if (_player.isOpen()) return;
+      await _player.openPlayer();
+      await _openStream(gen);
+    });
+    if (_playerClosed) return;
     // Re-assert our category AFTER the player core has initialised so ours wins.
     final session = await AudioSession.instance;
     await session.setActive(true);
   }
 
-  Future<void> _startPlayerStream() async {
+  /// Raw native open. Sets NO state — committing readiness is the lane's job
+  /// (see [_openStream]); this used to set `_playerReady = true` unconditionally,
+  /// which is precisely how a superseded or post-stop open resurrected a player.
+  Future<void> _rawOpenPlayerStream() {
     final open = _openPlayerStream;
-    if (open != null) {
-      await open();
-    } else {
-      await _player.startPlayerFromStream(
-        codec: Codec.pcm16,
-        interleaved: true,
-        numChannels: 1,
-        sampleRate: kOutputSampleRate,
-        bufferSize: 8192,
-      );
+    if (open != null) return open();
+    return _player.startPlayerFromStream(
+      codec: Codec.pcm16,
+      interleaved: true,
+      numChannels: 1,
+      sampleRate: kOutputSampleRate,
+      bufferSize: 8192,
+    );
+  }
+
+  /// Open the native stream and COMMIT readiness — but only if this op still
+  /// owns the lane. An open that lands superseded (a newer flush) or after the
+  /// instance is closed is thrown away and closed again rather than published.
+  /// Must only ever be called from inside a lane body.
+  Future<void> _openStream(int gen) async {
+    await _rawOpenPlayerStream();
+    if (!_laneCurrent(gen)) {
+      // Nobody wants this stream any more. Best-effort close so the native
+      // resource does not leak — and crucially, do NOT set `_playerReady`.
+      try {
+        await _stopPlayerStream();
+      } catch (_) {}
+      return;
     }
     _playerReady = true;
     _needsPlayerRestart = false;
@@ -248,26 +368,39 @@ class VoiceAudioIO {
   Future<void> _feedFrame(Uint8List frame) =>
       (_feedPlayerStream ?? _player.feedUint8FromStream)(frame);
 
-  /// Attempt to re-open a stream that failed to restart. Serialized (one attempt
-  /// at a time) and only ever entered from [feedPlayback]/[endPlaybackTurn], so
-  /// a device that is genuinely gone costs one attempt per turn, not a spin.
-  Future<void> _recoverPlayer() async {
-    if (_recovering || _playerReady || !_needsPlayerRestart) return;
-    _recovering = true;
-    try {
-      try {
-        await _stopPlayerStream();
-      } catch (_) {
-        // Best effort: the stream may already be down. What matters is the open.
-      }
-      await _startPlayerStream();
-      _logWarn('Voice playback stream recovered after a failed restart');
-    } catch (e, st) {
-      _logError('Voice playback stream recovery failed', e, st);
-      onPlaybackUnavailable?.call();
-    } finally {
-      _recovering = false;
+  /// Ask for a re-open of a stream that failed to restart. Deduped (see
+  /// [_recoveryPending]) and serialized on the player lane, so a device that is
+  /// genuinely gone costs one attempt per turn, not a spin — and a recovery can
+  /// never overlap a flush, a stop or another recovery.
+  void _requestRecovery() {
+    if (_recoveryPending ||
+        _playerClosed ||
+        _playerReady ||
+        !_needsPlayerRestart) {
+      return;
     }
+    _recoveryPending = true;
+    unawaited(_enqueuePlayerOp((gen) async {
+      // Re-check eligibility INSIDE the lane: a flush that ran ahead of us may
+      // already have rebuilt the stream, making this a no-op.
+      if (_playerReady || !_needsPlayerRestart) return;
+      try {
+        try {
+          await _stopPlayerStream();
+        } catch (_) {
+          // Best effort: the stream may already be down. The open is what
+          // matters.
+        }
+        if (!_laneCurrent(gen)) return;
+        await _openStream(gen);
+        if (_playerReady) {
+          _logWarn('Voice playback stream recovered after a failed restart');
+        }
+      } catch (e, st) {
+        _logError('Voice playback stream recovery failed', e, st);
+        if (_laneCurrent(gen)) onPlaybackUnavailable?.call();
+      }
+    }).whenComplete(() => _recoveryPending = false));
   }
 
   /// Feed one chunk of Gemini's output PCM. Goes through the jitter buffer, which
@@ -281,8 +414,9 @@ class VoiceAudioIO {
   bool feedPlayback(Uint8List pcm24) {
     if (!_playerReady) {
       // A previous restart failed. Try to come back rather than staying mute
-      // for the rest of the session; this chunk is still rejected.
-      if (_needsPlayerRestart) unawaited(_recoverPlayer());
+      // for the rest of the session; this chunk is still rejected. Fire-and-
+      // forget by design: the drain path must NEVER await the lifecycle lane.
+      if (_needsPlayerRestart) _requestRecovery();
       return false;
     }
     _playback.add(pcm24);
@@ -295,7 +429,7 @@ class VoiceAudioIO {
     if (_playerReady) {
       _playback.endTurn();
     } else if (_needsPlayerRestart) {
-      unawaited(_recoverPlayer());
+      _requestRecovery();
     }
   }
 
@@ -308,24 +442,40 @@ class VoiceAudioIO {
   /// Dart-side buffer a stale native "needSomeFood" callback could later satisfy
   /// a NEWER feed's completer and desync playback (codex#8). stopPlayer() +
   /// a fresh startPlayerFromStream() resets that native state cleanly.
-  Future<void> flushPlayback() async {
-    if (!_playerReady && !_needsPlayerRestart) return;
+  Future<void> flushPlayback() {
+    // Guarded on "the stream is SUPPOSED to be up" rather than on
+    // `_playerReady`, which is false for the whole duration of a rebuild. The
+    // old guard made a second interruption landing mid-flush return early and
+    // silently skip its own jitter-buffer reset.
+    if (_playerClosed || !_playerWanted) return Future<void>.value();
+    // Synchronous intent gate, BEFORE anything is awaited: reject chunks in the
+    // same event-loop turn (state.dart relies on a chunk arriving during a
+    // barge-in being rejected, so the orb cannot strand in `speaking`) and
+    // unpark a drain sitting in `await feed(...)`.
     _playerReady = false;
     _playback.reset();
-    try {
-      await _stopPlayerStream();
-      await _startPlayerStream();
-    } catch (e, st) {
-      // A failed restart used to be swallowed silently AND was terminal: the
-      // old comment claimed "next turn re-opens it", but no turn ever calls
-      // startPlayback() — startVoice only ever constructs new instances. So
-      // every later feedPlayback() returned false forever: no audio, no orb, no
-      // error. Log it, flag it for lazy recovery on the next feed/turn, and
-      // tell the state layer so the orb does not strand in `speaking`.
-      _logError('Voice playback stream restart failed', e, st);
-      _needsPlayerRestart = true;
-      onPlaybackUnavailable?.call();
-    }
+    return _enqueuePlayerOp((gen) async {
+      try {
+        await _stopPlayerStream();
+        if (!_laneCurrent(gen)) return;
+        await _openStream(gen);
+      } catch (e, st) {
+        // A failed restart used to be swallowed silently AND was terminal: the
+        // old comment claimed "next turn re-opens it", but no turn ever calls
+        // startPlayback() — startVoice only ever constructs new instances. So
+        // every later feedPlayback() returned false forever: no audio, no orb,
+        // no error. Log it, flag it for lazy recovery on the next feed/turn,
+        // and tell the state layer so the orb does not strand in `speaking`.
+        _logError('Voice playback stream restart failed', e, st);
+        // Only the CURRENT intent may leave the instance flagged for recovery
+        // or fire the callback — a superseded flush must not, and a flush that
+        // lost the race to stop() must never re-arm a terminated instance.
+        if (_laneCurrent(gen)) {
+          _needsPlayerRestart = true;
+          onPlaybackUnavailable?.call();
+        }
+      }
+    });
   }
 
   /// Start mic capture. Emits 16kHz mono s16le PCM chunks. `manageAudioSession`
@@ -365,22 +515,42 @@ class VoiceAudioIO {
 
   /// Stop everything and release the audio session so other apps regain focus.
   Future<void> stop() async {
-    await stopCapture();
+    // TERMINAL, and terminal SYNCHRONOUSLY — before the first await. Everything
+    // in this block must land in one event-loop turn so that a recovery or
+    // flush already parked inside a platform call cannot come back afterwards
+    // and commit readiness on a player we are tearing down (N1).
+    _playerClosed = true;
+    _playerWanted = false;
+    _playerGen++;
     _playerReady = false;
     _needsPlayerRestart = false;
+    // Cancel timers, drop the buffer, and unpark any drain awaiting a feed that
+    // will never return once the player is stopped. Synchronous, so it can
+    // never deadlock against the lane op queued below.
+    _playback.close();
+    await stopCapture();
     await _interruptionSub?.cancel();
     _interruptionSub = null;
     await _noisySub?.cancel();
     _noisySub = null;
-    // Terminal for this instance: cancel timers, drop the buffer, and unpark any
-    // drain awaiting a feed that will never return once the player is stopped.
-    _playback.close();
-    if (_player.isOpen()) {
-      try {
-        await _stopPlayerStream();
-      } catch (_) {}
-      await _player.closePlayer();
-    }
+    // The native teardown goes ON the lane, so it lands AFTER any in-flight
+    // open instead of interleaving with it (closePlayer racing a concurrent
+    // startPlayerFromStream was the ugliest form of this bug).
+    final teardown = _enqueuePlayerOp((_) async {
+      if (_player.isOpen()) {
+        try {
+          await _stopPlayerStream();
+        } catch (_) {}
+        await _player.closePlayer();
+      }
+    }, terminal: true);
+    try {
+      await teardown.timeout(teardownTimeout);
+    } on TimeoutException {
+      // Bounded on purpose — see [teardownTimeout]. The queued teardown still
+      // runs if the platform ever answers; we just stop waiting for it.
+      _logWarn('Voice player teardown timed out; abandoning the native close');
+    } catch (_) {}
     if (_sessionConfigured) {
       final session = await AudioSession.instance;
       await session.setActive(false);
