@@ -1,0 +1,70 @@
+# Analyze + test every PR and every push to master.
+#
+# Why this exists: until 2026-08-02 the app had 282 unit tests and NO workflow
+# that ran them on a pull request — the only automation was the manual
+# TestFlight build. PR #18 (the voice jitter buffer) went through four review
+# rounds with no CI signal at all; a defect that truncated the tail of every
+# spoken reply survived three of them.
+#
+# FLUTTER_VERSION is pinned to match testflight.yml. That pin is load-bearing:
+# on Flutter 3.44.x every widget-importing test fails to COMPILE, because
+# simple_icons 14.6.1 extends IconData, which is now `final`. A newer runner
+# would report a red suite that has nothing to do with the change under test.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+env:
+  FLUTTER_VERSION: 3.38.6
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze-test:
+    name: Analyze & test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Flutter dependencies
+        working-directory: lunasea
+        run: flutter pub get
+
+      # A fresh clone does not analyze clean without these — the repo commits
+      # no generated artifacts. Same sequence as testflight.yml; keep in step.
+      - name: Generate Dart code
+        working-directory: lunasea
+        env:
+          BUILD: ${{ github.run_number }}
+          COMMIT: ${{ github.sha }}
+          FLAVOR: beta
+        run: |
+          dart run environment_config:generate
+          dart pub global activate spider
+          dart pub global run spider build
+          dart run build_runner build --delete-conflicting-outputs
+          dart scripts/generate_localization.dart
+
+      # Not --fatal-infos: the LunaSea fork carries ~437 inherited
+      # info/warning-level issues. Errors are what must stay at zero.
+      - name: Analyze
+        working-directory: lunasea
+        run: flutter analyze
+
+      - name: Test
+        working-directory: lunasea
+        run: flutter test
