@@ -59,11 +59,14 @@ jobs:
           dart run build_runner build --delete-conflicting-outputs
           dart scripts/generate_localization.dart
 
-      # Not --fatal-infos: the LunaSea fork carries ~437 inherited
-      # info/warning-level issues. Errors are what must stay at zero.
+      # The LunaSea fork carries ~435 inherited info/warning-level issues and
+      # zero errors. `flutter analyze` exits non-zero on ANY issue, so both
+      # flags are required for "errors are what must stay at zero" to actually
+      # be the gate — without them this step fails on legacy lint noise and
+      # tells you nothing about the change under review.
       - name: Analyze
         working-directory: lunasea
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Test
         working-directory: lunasea
