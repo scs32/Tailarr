@@ -182,9 +182,12 @@ void main() {
 
       await state.startVoice();
 
+      // Asserting merely "some error message exists" would pass on any error
+      // from any source — including one that has nothing to do with the
+      // timeout. Pin it to the connect-timeout copy.
       expect(
-        state.messages.any((m) => m.isError),
-        isTrue,
+        state.messages.where((m) => m.isError).map((m) => m.text),
+        contains(contains('timed out')),
         reason: 'on the exact failure this machinery exists for, the user was '
             'told nothing and the orb just quietly stopped',
       );
@@ -372,6 +375,43 @@ void main() {
       await later.stop();
       expect(log, contains('later:setActive(false)'),
           reason: 'and it must still be able to hand the session back');
+    });
+
+    test('an instance whose activation was abandoned can RETRY it', () async {
+      // `configureSession()` is idempotent on `_sessionConfigured`. Committing
+      // that flag BEFORE the activation — or on an abandoned one — meant the
+      // instance believed itself configured while the session was never
+      // active, opened a speaker and a mic against it, and could never retry
+      // because every later call returned at the idempotence guard.
+      final log = <String>[];
+      final firstCall = Completer<void>();
+      var calls = 0;
+
+      final io = makeIO('retry', log, setActive: (active) async {
+        calls++;
+        log.add('retry:setActive($active)');
+        // The FIRST activation never answers within the bound.
+        if (active && calls == 1) await firstCall.future;
+      })
+        ..teardownTimeout = const Duration(milliseconds: 40);
+
+      await io.configureSession();
+      expect(log, ['retry:setActive(true)']);
+
+      // The retry must actually reach the platform again.
+      await io.configureSession();
+      expect(calls, greaterThanOrEqualTo(2),
+          reason: 'the instance recorded itself as configured off an activation '
+              'that was abandoned, so it never tried again — silently running '
+              'a voice lane on an inactive audio session');
+
+      // ...and it genuinely owns the session now, which only a real claim
+      // followed by a real activation can produce.
+      await io.stop();
+      expect(log.last, 'retry:setActive(false)',
+          reason: 'a successful retry must leave the instance owning — and '
+              'therefore releasing — the shared session');
+      firstCall.complete();
     });
 
     test('a microphone that arrives after stop() is never opened', () async {

@@ -203,14 +203,15 @@ class VoiceAudioIO {
         if (_terminal) return false;
         _claimSession();
         await _setActive(true);
-        // Re-checked AFTER the activation returns: `stop()` can land while the
-        // platform call is parked, and an activation that completes for a dead
-        // instance must hand the session straight back rather than sit on it.
-        if (_terminal) {
-          await _setActive(false);
-          _sessionOwned = false;
-          return false;
-        }
+        // NOTE: deliberately NO post-activation terminality re-check here.
+        // One was added and then removed: `stop()` unconditionally queues
+        // `_releaseSession` behind this body, so an activation that completes
+        // for an instance stopped mid-call is already deactivated by that
+        // release — and if this call never returns, a re-check placed after it
+        // never runs either. No test could distinguish the guard's presence
+        // from its absence, which is the definition of dead machinery. This
+        // series has cost enough in unreviewed additions; the release is the
+        // single owner of deactivation and stays that way.
         return true;
       }, false);
 
