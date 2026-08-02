@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import 'package:lunasea/system/state.dart';
 import 'package:lunasea/system/logger.dart';
 import 'package:lunasea/modules/voice/core/voice_session.dart';
@@ -100,6 +102,49 @@ class VoiceAssistantState extends LunaModuleState {
   bool _voiceActive = false;
   bool get voiceActive => _voiceActive;
 
+  /// True while [startVoice] is between its first await and publishing [_audio].
+  /// Without this window being observable, [stopVoice] saw `_voiceActive == false`
+  /// and returned, and the start it was meant to cancel went on to turn the MIC
+  /// ON after the user had already stopped it.
+  bool _voiceStarting = false;
+  bool get voiceStarting => _voiceStarting;
+
+  /// Generation counter for start/stop. Bumped SYNCHRONOUSLY by every
+  /// [startVoice], [stopVoice] and [reset], so an in-flight startup can tell
+  /// after each await that it has been superseded and must tear itself down
+  /// instead of publishing a mic nobody asked for.
+  int _voiceOp = 0;
+
+  /// Serializes start/stop bodies. The generation bump above is the CANCEL
+  /// signal (synchronous, so it lands even while a startup is parked); this
+  /// chain then guarantees the cancelled startup finishes disposing before the
+  /// next start begins. Both are needed: `VoiceAudioIO.stop()` calls
+  /// `setActive(false)` on the process-wide AVAudioSession, so an aborted
+  /// start's teardown running LATE would deactivate the session out from under
+  /// a newer, live instance.
+  Future<void> _voiceChain = Future<void>.value();
+
+  /// Builds the device-audio layer. Overridden in tests so the start/stop
+  /// ORDERING can be exercised without a microphone.
+  @visibleForTesting
+  VoiceAudioIO Function({
+    void Function()? onPlaybackDrained,
+    void Function()? onPlaybackUnavailable,
+  })? audioFactory;
+
+  /// Test seam: pretend the Gemini/MCP session is already connected.
+  @visibleForTesting
+  void debugSetConnected(VoiceSession session) {
+    _session = session;
+    _status = VoiceConnectionStatus.ready;
+  }
+
+  Future<void> _enqueueVoiceOp(Future<void> Function() body) {
+    final next = _voiceChain.then((_) => body(), onError: (_) => body());
+    _voiceChain = next.catchError((_) {});
+    return next;
+  }
+
   VoiceActivity _activity = VoiceActivity.idle;
 
   /// The live-voice orb state. `idle` whenever the voice lane is off.
@@ -114,6 +159,10 @@ class VoiceAssistantState extends LunaModuleState {
       s.cancel();
     }
     _subs.clear();
+    // Invalidate any in-flight startup, or it would survive the reset and turn
+    // the mic on afterwards — the original bug through a different door.
+    _voiceOp++;
+    _voiceStarting = false;
     _audio?.dispose();
     _audio = null;
     _session?.close();
@@ -278,64 +327,133 @@ class VoiceAssistantState extends LunaModuleState {
   /// Enter the live-voice lane: open the mic + speaker and stream to Gemini.
   /// Safe to call when already active (no-op). Requires a granted mic
   /// permission; surfaces a clear message if denied.
-  Future<void> startVoice() async {
-    if (_voiceActive) return;
-    await ensureConnected();
-    if (_status != VoiceConnectionStatus.ready) return;
+  Future<void> startVoice() {
+    // A second tap during startup coalesces onto the first rather than building
+    // a second VoiceAudioIO (which would orphan a recorder/player). Cancelling
+    // is what toggleVoice routes to stopVoice for.
+    if (_voiceActive || _voiceStarting) return _voiceChain;
+    _voiceStarting = true;
+    final myOp = ++_voiceOp;
+    notifyListeners();
+    return _enqueueVoiceOp(() => _startVoiceBody(myOp));
+  }
 
-    final audio = VoiceAudioIO(
-      // When the turn's speech has all reached the speaker, drop the orb back to
-      // listening — not the instant Gemini stops producing (turnComplete).
-      onPlaybackDrained: () {
-        if (_voiceActive && _activity == VoiceActivity.speaking) {
-          _setActivity(VoiceActivity.listening);
-        }
-      },
-    );
-    final granted = await audio.ensureMicPermission();
-    if (!granted) {
-      final permanent = await audio.isMicPermanentlyDenied();
-      _addSystem(
-        permanent
-            ? 'Microphone access is off. Enable it in Settings to talk.'
-            : 'Microphone permission is needed to talk.',
-        isError: true,
-      );
-      await audio.dispose();
-      notifyListeners();
-      return;
-    }
-
+  Future<void> _startVoiceBody(int myOp) async {
+    // Superseded before we even got a turn on the chain.
+    if (_voiceOp != myOp) return;
+    VoiceAudioIO? audio;
+    var published = false;
     try {
-      await audio.startPlayback();
-      await audio.captureInto((pcm) => _session!.sendAudioChunk(pcm));
-      _audio = audio;
+      await ensureConnected();
+      if (_voiceOp != myOp) return;
+      if (_status != VoiceConnectionStatus.ready) return;
+      final session = _session;
+      if (session == null) return;
+
+      final build = audioFactory ?? VoiceAudioIO.new;
+      final instance = build(
+        // When the turn's speech has all reached the speaker, drop the orb back
+        // to listening — not the instant Gemini stops producing (turnComplete).
+        // Identity-checked so a stale instance can never drive the live orb.
+        onPlaybackDrained: () {
+          if (_voiceActive &&
+              identical(_audio, audio) &&
+              _activity == VoiceActivity.speaking) {
+            _setActivity(VoiceActivity.listening);
+          }
+        },
+        // The output stream died and could not be rebuilt: nothing more will
+        // play, so release the orb instead of stranding it in `speaking`.
+        onPlaybackUnavailable: () {
+          if (_voiceActive && identical(_audio, audio)) {
+            _addSystem('Audio playback stopped working; text still works.',
+                isError: true);
+            if (_activity == VoiceActivity.speaking) {
+              _setActivity(VoiceActivity.listening);
+            }
+            notifyListeners();
+          }
+        },
+      );
+      audio = instance;
+
+      final granted = await instance.ensureMicPermission();
+      if (_voiceOp != myOp) return;
+      if (!granted) {
+        final permanent = await instance.isMicPermanentlyDenied();
+        if (_voiceOp != myOp) return;
+        _addSystem(
+          permanent
+              ? 'Microphone access is off. Enable it in Settings to talk.'
+              : 'Microphone permission is needed to talk.',
+          isError: true,
+        );
+        return;
+      }
+
+      await instance.startPlayback();
+      if (_voiceOp != myOp) return;
+      // Capture the session locally: _session can be replaced/closed under us,
+      // and the mic callback outlives this frame.
+      await instance.captureInto((pcm) {
+        if (_voiceOp != myOp) return; // stale instance: stop feeding Gemini
+        session.sendAudioChunk(pcm);
+      });
+      // The mic IS live from here; only the teardown below turns it off again.
+      if (_voiceOp != myOp) return;
+
+      // No await between here and publishing, so a cancel cannot interleave.
+      _audio = instance;
       _voiceActive = true;
+      published = true;
       _setActivity(VoiceActivity.listening);
       _addSystem('Listening… speak, and tap the mic to stop.');
     } catch (e, st) {
       LunaLogger().error('Failed to start voice lane', e, st);
-      _addSystem('Could not start the microphone: $e', isError: true);
-      await audio.dispose();
-      _voiceActive = false;
-      _setActivity(VoiceActivity.idle);
+      if (_voiceOp == myOp) {
+        _addSystem('Could not start the microphone: $e', isError: true);
+        _setActivity(VoiceActivity.idle);
+      }
+    } finally {
+      // Anything not published is ours to tear down — including a startup the
+      // user cancelled after the mic was already streaming.
+      if (!published) {
+        try {
+          await audio?.dispose();
+        } catch (e, st) {
+          LunaLogger().error('Failed to dispose an aborted voice lane', e, st);
+        }
+      }
+      // Op-conditional: a stale body must not clear a NEWER startup's flag.
+      if (_voiceOp == myOp) _voiceStarting = false;
+      notifyListeners();
     }
-    notifyListeners();
   }
 
   /// Leave the live-voice lane (mic + speaker off). The Gemini/MCP session stays
-  /// connected so the text lane keeps working.
-  Future<void> stopVoice() async {
-    if (!_voiceActive) return;
+  /// connected so the text lane keeps working. Also the CANCEL path for a
+  /// startup still in flight.
+  Future<void> stopVoice() {
+    if (!_voiceActive && !_voiceStarting) return _voiceChain;
+    // Synchronous cancel signal + immediate UI truth, so an in-flight startup
+    // sees it while parked and never publishes a mic the user has stopped.
+    _voiceOp++;
+    _voiceStarting = false;
     _voiceActive = false;
     _setActivity(VoiceActivity.idle);
-    await _audio?.stop();
-    await _audio?.dispose();
+    return _enqueueVoiceOp(_stopVoiceBody);
+  }
+
+  Future<void> _stopVoiceBody() async {
+    final audio = _audio;
     _audio = null;
+    // dispose() already calls stop(); calling both just tore it down twice.
+    await audio?.dispose();
     notifyListeners();
   }
 
-  Future<void> toggleVoice() => _voiceActive ? stopVoice() : startVoice();
+  Future<void> toggleVoice() =>
+      (_voiceActive || _voiceStarting) ? stopVoice() : startVoice();
 
   /// Send a typed turn. Streams the answer back into the transcript.
   Future<void> sendText(String text) async {
