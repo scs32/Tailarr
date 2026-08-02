@@ -340,6 +340,40 @@ void main() {
               "instance's own release");
     });
 
+    test('a permanently hung setActive must not wedge every FUTURE instance',
+        () async {
+      // The regression the arbiter itself introduced, and the reason this
+      // suite exists: the session lane is STATIC. Bounding only the caller's
+      // wait left one never-returning platform call pending on that lane
+      // forever, so every later VoiceAudioIO in the process queued behind it,
+      // timed out, and silently never ran its body — a per-instance wedge
+      // promoted to a process-lifetime one. Strictly worse than the race it
+      // replaced.
+      final log = <String>[];
+      final wedged = Completer<void>(); // never completed, on purpose
+
+      final hung = makeIO('hung', log, setActive: (active) async {
+        log.add('hung:setActive($active)');
+        await wedged.future;
+      });
+      unawaited(hung.configureSession());
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      // A fresh instance arrives long after. It must still get the session.
+      final later = makeIO('later', log);
+      await later.configureSession();
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+
+      expect(log, contains('later:setActive(true)'),
+          reason: 'a later instance never even ran its activation: one hung '
+              'platform call has wedged the shared lane for the lifetime of '
+              'the process');
+
+      await later.stop();
+      expect(log, contains('later:setActive(false)'),
+          reason: 'and it must still be able to hand the session back');
+    });
+
     test('a microphone that arrives after stop() is never opened', () async {
       // captureInto() publishes `_micSub` AFTER an await that state.dart
       // BOUNDS. A late completion used to open a LIVE MIC on a dead instance —

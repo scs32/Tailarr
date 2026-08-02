@@ -165,32 +165,64 @@ class VoiceAudioIO {
   /// the N2 permanent-wedge shape, one level up. Abandoning the WAIT is safe
   /// because every body re-validates ownership and terminality at the moment it
   /// actually runs, so a body that executes late is inert, not damaging.
-  Future<void> _onSessionLane(Future<void> Function() body) {
-    final next = _sessionLane.then((_) => body(), onError: (_) => body());
-    _sessionLane = next.catchError((_) {});
-    return next.timeout(teardownTimeout, onTimeout: () {
-      _logWarn('Shared audio session did not answer in time; not waiting');
-    }).catchError((_) {});
+  /// Run [body] as one indivisible unit against the shared session, returning
+  /// [onAbandon] if it does not finish in time.
+  ///
+  /// The BODY is bounded, not merely the caller's wait. Bounding only the wait
+  /// was a strictly worse bug than the one it replaced: the lane is STATIC, so
+  /// one platform `setActive` that never returned left `_sessionLane` pending
+  /// forever and every future VoiceAudioIO in the process queued behind it,
+  /// timed out, and silently never ran its body. A per-instance wedge became a
+  /// process-lifetime one. Bounding the body means the lane always advances.
+  ///
+  /// The trade is explicit: after a hung call, ORDERING against that abandoned
+  /// call is lost (nothing in Dart can revoke it) — but correctness does not
+  /// rest on ordering alone. Every body re-validates ownership and terminality
+  /// when it runs and again before it commits, so a late body is inert.
+  /// Liveness is preserved unconditionally; that is the right way round.
+  Future<T> _onSessionLane<T>(Future<T> Function() body, T onAbandon) {
+    Future<T> run() => body().timeout(teardownTimeout, onTimeout: () {
+          _logWarn('Shared audio session did not answer in time; '
+              'abandoning the call and releasing the lane');
+          return onAbandon;
+        });
+    final next = _sessionLane.then((_) => run(), onError: (_) => run());
+    _sessionLane = next.then((_) {}, onError: (_) {});
+    return next.catchError((_) => onAbandon);
   }
 
-  /// Claim ownership and activate, atomically. Skipped entirely once this
-  /// instance is terminal: an abandoned configure that finally gets its turn
-  /// must not steal the epoch from — or re-activate under — a live instance.
-  Future<void> _acquireSession() => _onSessionLane(() async {
-        if (_terminal) return;
+  /// Claim ownership and activate, atomically. Returns whether the session is
+  /// actually active and ours as a result — the caller MUST NOT record itself
+  /// as configured otherwise, or it proceeds to open a speaker and a mic
+  /// against a session that was never activated, and never retries.
+  ///
+  /// Skipped entirely once this instance is terminal: an abandoned configure
+  /// that finally gets its turn must not steal the epoch from — or re-activate
+  /// under — a live instance.
+  Future<bool> _acquireSession() => _onSessionLane<bool>(() async {
+        if (_terminal) return false;
         _claimSession();
         await _setActive(true);
-      });
+        // Re-checked AFTER the activation returns: `stop()` can land while the
+        // platform call is parked, and an activation that completes for a dead
+        // instance must hand the session straight back rather than sit on it.
+        if (_terminal) {
+          await _setActive(false);
+          _sessionOwned = false;
+          return false;
+        }
+        return true;
+      }, false);
 
   /// Re-assert activation WITHOUT taking a new epoch (see [startPlayback]).
   /// Inert unless this instance is still the owner.
-  Future<void> _reassertSession() => _onSessionLane(() async {
+  Future<void> _reassertSession() => _onSessionLane<void>(() async {
         if (_terminal || !_ownsSession) return;
         await _setActive(true);
-      });
+      }, null);
 
   /// Validate ownership and deactivate, atomically.
-  Future<void> _releaseSession() => _onSessionLane(() async {
+  Future<void> _releaseSession() => _onSessionLane<void>(() async {
         if (!_sessionOwned) return;
         if (_mySessionEpoch != _sessionEpoch) {
           // A newer instance owns the shared session — most likely because our
@@ -203,7 +235,7 @@ class VoiceAudioIO {
         }
         await _setActive(false);
         _sessionOwned = false;
-      });
+      }, null);
 
   /// The single funnel for the process-wide activation call. Only ever invoked
   /// from inside a [_onSessionLane] body.
@@ -383,10 +415,12 @@ class VoiceAudioIO {
     // Test seam: injected event streams mean there is no platform session to
     // configure or own — just wire the handlers.
     if (_interruptionEvents != null || _becomingNoisyEvents != null) {
-      _sessionConfigured = true;
-      if (_setSessionActive != null) {
-        await _acquireSession();
+      if (_setSessionActive != null && !await _acquireSession()) {
+        // Not active and not ours: stay UNconfigured so the next call retries,
+        // rather than opening a speaker and a mic against a dead session.
+        return;
       }
+      _sessionConfigured = true;
       await _subscribeAudioEvents(
         _interruptionEvents ?? const Stream<AudioInterruptionEvent>.empty(),
         _becomingNoisyEvents ?? const Stream<void>.empty(),
@@ -404,10 +438,12 @@ class VoiceAudioIO {
       // voiceChat => system acoustic echo cancellation for full-duplex voice.
       avAudioSessionMode: AVAudioSessionMode.voiceChat,
     ));
-    _sessionConfigured = true;
     // Only a REAL platform session is ours to deactivate again in stop(), and
     // the claim must be atomic with the activation — see [_sessionLane].
-    await _acquireSession();
+    // `_sessionConfigured` is committed ONLY on success: recording success for
+    // an abandoned activation left the instance permanently unable to retry.
+    if (!await _acquireSession()) return;
+    _sessionConfigured = true;
     await _subscribeAudioEvents(
       session.interruptionEventStream,
       session.becomingNoisyEventStream,
