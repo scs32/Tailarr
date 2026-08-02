@@ -63,6 +63,56 @@ class _TestableIO extends VoiceAudioIO {
   }
 }
 
+/// An instance that hangs inside `configureSession()` BEFORE it ever reaches
+/// the session arbiter — the production shape being `session.configure(...)`
+/// or the platform `AudioSession.instance` hop not returning.
+///
+/// This is the hang point that makes a zombie claim reachable: because the
+/// instance never submitted its claim, a newer instance's claim is submitted
+/// and lands FIRST, and the old one's claim arrives afterwards — from an
+/// instance that has already been disposed.
+class _LateConfigureIO extends _TestableIO {
+  _LateConfigureIO({
+    required this.gate,
+    required super.openPlayerStream,
+    required super.closePlayerStream,
+    required super.feedPlayerStream,
+    required super.interruptionEvents,
+    required super.setSessionActive,
+  });
+
+  final Future<void> gate;
+
+  @override
+  Future<void> configureSession() async {
+    await gate;
+    await super.configureSession();
+  }
+}
+
+/// An instance whose microphone stream arrives late, so `captureInto`'s
+/// publication point is exercised without the `record` platform channel.
+/// Extends [VoiceAudioIO] directly, NOT `_TestableIO`, because the real
+/// `captureInto` is the code under test here.
+class _LateMicIO extends VoiceAudioIO {
+  _LateMicIO({
+    required this.gate,
+    required super.openPlayerStream,
+    required super.closePlayerStream,
+    required super.feedPlayerStream,
+    required super.interruptionEvents,
+    required super.setSessionActive,
+  });
+
+  final Future<void> gate;
+
+  @override
+  Future<Stream<Uint8List>> startCapture() async {
+    await gate;
+    return const Stream<Uint8List>.empty();
+  }
+}
+
 /// An instance whose `dispose()` parks — exactly what `_disposeBounded`
 /// abandons when a teardown outruns `startupTimeout`. The park is placed
 /// BEFORE `super.dispose()`, so when it is finally released the REAL
@@ -253,23 +303,30 @@ void main() {
       // is a disposed instance holding the newest epoch, and its teardown then
       // lawfully deactivates the session out from under live B.
       final log = <String>[];
-      final activateGate = Completer<void>();
+      final configureGate = Completer<void>();
 
-      final a = makeIO('zombie', log, setActive: (active) async {
-        log.add('zombie:setActive($active)');
-        if (active) await activateGate.future;
-      });
+      // A hangs BEFORE it ever submits its ownership claim, so the claim it
+      // eventually makes arrives after the live instance's.
+      final a = _LateConfigureIO(
+        gate: configureGate.future,
+        openPlayerStream: () async {},
+        closePlayerStream: () async {},
+        feedPlayerStream: (f) async {},
+        interruptionEvents: const Stream<AudioInterruptionEvent>.empty(),
+        setSessionActive: (active) async =>
+            log.add('zombie:setActive($active)'),
+      )..teardownTimeout = const Duration(milliseconds: 40);
       unawaited(a.configureSession());
       await Future<void>.delayed(const Duration(milliseconds: 10));
 
-      // Abandoned and torn down while its activation is still airborne.
+      // Abandoned and torn down while its configure is still airborne.
       await a.dispose();
 
       final b = makeIO('live', log);
       await b.configureSession();
 
-      // Step 2: the zombie's activation finally answers.
-      activateGate.complete();
+      // Step 2: the zombie's configure finally answers and reaches the arbiter.
+      configureGate.complete();
       await Future<void>.delayed(const Duration(milliseconds: 30));
       await a.dispose(); // the onLate teardown, exactly as state.dart runs it
 
@@ -285,10 +342,31 @@ void main() {
 
     test('a microphone that arrives after stop() is never opened', () async {
       // captureInto() publishes `_micSub` AFTER an await that state.dart
-      // bounds. A late completion used to open a LIVE MIC on a dead instance.
-      final io = makeIO('mic', <String>[]);
+      // BOUNDS. A late completion used to open a LIVE MIC on a dead instance —
+      // the one orphan side effect a user would actually notice.
+      final micGate = Completer<void>();
+      final io = _LateMicIO(
+        gate: micGate.future,
+        openPlayerStream: () async {},
+        closePlayerStream: () async {},
+        feedPlayerStream: (f) async {},
+        interruptionEvents: const Stream<AudioInterruptionEvent>.empty(),
+        setSessionActive: (active) async {},
+      )..teardownTimeout = const Duration(milliseconds: 40);
+
+      final capture = io.captureInto((_) {});
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      // Step 1: the instance is torn down while the mic is still airborne.
       await io.stop();
-      expect(io.isCapturing, isFalse);
+
+      // Step 2: the microphone finally arrives.
+      micGate.complete();
+      await capture;
+
+      expect(io.isCapturing, isFalse,
+          reason: 'the platform answered after stop(); subscribing now opens a '
+              'live microphone on an instance nobody owns');
     });
   });
 
