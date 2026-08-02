@@ -38,6 +38,7 @@ void main() {
     int? maxBufferedBytes,
     Duration maxPreRoll = const Duration(minutes: 10), // effectively off
     Duration feedRetryDelay = const Duration(minutes: 10), // effectively off
+    Duration underrunRearm = const Duration(minutes: 10), // effectively off
     void Function()? onDrained,
     void Function(int)? onOverflow,
     void Function()? onFeedError,
@@ -49,6 +50,7 @@ void main() {
       maxBufferedBytes: maxBufferedBytes,
       maxPreRoll: maxPreRoll,
       feedRetryDelay: feedRetryDelay,
+      underrunRearm: underrunRearm,
       onDrained: onDrained,
       onOverflow: onOverflow,
       onFeedError: onFeedError,
@@ -491,6 +493,169 @@ void main() {
             reason: 'flutter_sound rejects odd frames');
       }
       expect(concat(fed), equals(ramp(0, 10)), reason: 'no byte lost');
+    });
+  });
+
+  // The state EVERY earlier test missed: at endTurn the queue is essentially
+  // always BOTH holding a buffered tail AND parked in `await feed(...)`, because
+  // Gemini produces faster than realtime playback. Round-4 review (Fable M1)
+  // proved the turn's tail is then truncated by exactly one frame and onDrained
+  // never fires — the orb sticks in `speaking` and the stranded tail blurts into
+  // the next turn.
+  group('turn boundary with a frame in flight (M1)', () {
+    test('buffered>0 AND inFlight>0 at endTurn still feeds the whole turn',
+        () async {
+      final fed = <Uint8List>[];
+      final gate = Completer<void>();
+      var calls = 0;
+      var drained = 0;
+      final q = make(
+        feed: (f) async {
+          fed.add(f);
+          if (calls++ == 0) await gate.future; // park the FIRST frame in flight
+        },
+        preRollBytes: 60,
+        frameBytes: 20,
+        onDrained: () => drained++,
+      );
+
+      q.add(ramp(0, 100));
+      await pump();
+      expect(concat(fed).length, 20, reason: 'frame 1 parked in flight');
+      expect(q.bufferedBytes, 80, reason: 'the rest is buffered');
+
+      q.endTurn(); // boundary lands with buffered>0 AND inFlight>0
+      gate.complete();
+      await pump();
+
+      expect(concat(fed), equals(ramp(0, 100)),
+          reason: 'the in-flight frame must not steal the tail allowance');
+      expect(drained, 1, reason: 'onDrained must fire for the finished turn');
+      expect(q.bufferedBytes, 0, reason: 'no tail stranded into the next turn');
+    });
+
+    test('a pre-boundary frame that FAILS post-boundary still drains the turn',
+        () async {
+      final fed = <Uint8List>[];
+      final gate = Completer<void>();
+      var calls = 0;
+      var drained = 0;
+      final q = make(
+        feed: (f) async {
+          if (calls++ == 0) {
+            await gate.future;
+            throw StateError('device rejected the frame');
+          }
+          fed.add(f);
+        },
+        preRollBytes: 60,
+        frameBytes: 20,
+        feedRetryDelay: const Duration(milliseconds: 5),
+        onDrained: () => drained++,
+      );
+
+      q.add(ramp(0, 100));
+      await pump();
+      expect(q.bufferedBytes, 80);
+
+      q.endTurn(); // boundary lands while frame 1 is still in flight
+      gate.complete(); // ...and frame 1 then FAILS, so it is re-queued
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      await pump();
+
+      expect(concat(fed), equals(ramp(0, 100)),
+          reason: 'a re-queued frame must carry its flush allowance back');
+      expect(drained, 1);
+    });
+
+    test('the next turn is not polluted by a stranded tail', () async {
+      final fed = <Uint8List>[];
+      final gate = Completer<void>();
+      var calls = 0;
+      final drainedAt = <int>[];
+      final q = make(
+        feed: (f) async {
+          fed.add(f);
+          if (calls++ == 0) await gate.future;
+        },
+        preRollBytes: 60,
+        frameBytes: 20,
+        onDrained: () => drainedAt.add(concat(fed).length),
+      );
+
+      q.add(ramp(0, 100));
+      await pump();
+      q.endTurn();
+      gate.complete();
+      await pump();
+      expect(concat(fed), equals(ramp(0, 100)));
+
+      // Turn 2 must start cleanly at 200, not replay turn 1's stranded bytes.
+      q.add(ramp(200, 100));
+      q.endTurn();
+      await pump();
+      expect(concat(fed), equals(concat([ramp(0, 100), ramp(200, 100)])));
+      expect(drainedAt, equals([100, 200]),
+          reason: 'exactly one drain signal per turn, at the turn boundary');
+    });
+  });
+
+  // M2: the pre-roll used to arm ONCE per turn — after the cushion drained,
+  // `_flowing` stayed true forever, so a genuine mid-turn stall (Gemini pausing
+  // to run a tool) meant every resumed chunk fed an already-empty device buffer
+  // and the chunked-audio artifact came back MID-reply.
+  group('mid-turn underrun re-arms the pre-roll (M2)', () {
+    test('a genuine mid-turn stall re-arms; the resumed burst re-cushions',
+        () async {
+      final fed = <Uint8List>[];
+      final q = make(
+        feed: (f) async => fed.add(f),
+        preRollBytes: 100,
+        frameBytes: 50,
+        underrunRearm: const Duration(milliseconds: 20),
+      );
+
+      q.add(ramp(0, 100));
+      await pump();
+      expect(q.isFlowing, isTrue, reason: 'pre-roll met, playing');
+      expect(q.bufferedBytes, 0, reason: 'cushion fully spent');
+      expect(concat(fed), equals(ramp(0, 100)));
+
+      // Gemini stalls mid-turn (tool call). No endTurn — the turn is not over.
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+
+      // The resumed burst must be HELD to rebuild a cushion, not trickled out.
+      q.add(ramp(100, 40)); // below the 100-byte pre-roll
+      await pump();
+      expect(q.isFlowing, isFalse, reason: 'stall must re-arm the pre-roll');
+      expect(concat(fed), equals(ramp(0, 100)),
+          reason: 'resumed chunk must NOT feed an empty device buffer');
+
+      q.add(ramp(140, 60)); // now 100 buffered again -> flows
+      await pump();
+      expect(q.isFlowing, isTrue);
+      expect(concat(fed), equals(ramp(0, 200)), reason: 'no byte lost');
+    });
+
+    test('a SHORT gap does not re-arm (no stutter on ordinary jitter)',
+        () async {
+      final fed = <Uint8List>[];
+      final q = make(
+        feed: (f) async => fed.add(f),
+        preRollBytes: 100,
+        frameBytes: 50,
+        underrunRearm: const Duration(milliseconds: 200),
+      );
+      q.add(ramp(0, 100));
+      await pump();
+      expect(q.isFlowing, isTrue);
+
+      await Future<void>.delayed(const Duration(milliseconds: 10)); // jitter
+      q.add(ramp(100, 20));
+      await pump();
+      expect(q.isFlowing, isTrue,
+          reason: 'the device reserve still covers a short gap');
+      expect(concat(fed), equals(ramp(0, 120)), reason: 'kept flowing');
     });
   });
 

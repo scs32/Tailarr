@@ -19,7 +19,11 @@
 ///   * **Pre-roll** — accumulate [preRollBytes] of audio (bounded by a wall-clock
 ///     [maxPreRoll] so a short reply / short prefix still plays promptly) before
 ///     the FIRST frame of a turn is played, so playback starts with a cushion
-///     that absorbs the bursty, slower-than-realtime cadence.
+///     that absorbs the bursty, slower-than-realtime cadence. The pre-roll is
+///     re-armed not only per turn but on a genuine MID-turn underrun (the queue
+///     sitting empty for [underrunRearm]), because Gemini also stalls in the
+///     middle of a reply to run a tool — without that, the cushion is spent once
+///     and the chunked-audio artifact comes back mid-reply.
 ///   * **Serialized, awaited, INTERRUPTIBLE feeding** — hand audio to the device
 ///     one frame at a time through an async [feed] sink that only completes once
 ///     the bytes are accepted (flutter_sound's `feedUint8FromStream`), so nothing
@@ -31,10 +35,11 @@
 ///     swept into the flush.
 ///   * **Barge-in** — [reset] drops everything still queued for an abandoned
 ///     turn and re-arms the pre-roll.
-///   * **Bounded memory** — a hard [maxBufferedBytes] cap is the safety net if
-///     production ever wildly outpaces playback (only reachable if the device
-///     feed stalls); excess is dropped with an [onOverflow] notification rather
-///     than growing without bound.
+///   * **Bounded memory** — a hard [maxBufferedBytes] cap. Note this IS reachable
+///     in normal use, not only on a stalled feed: playback drains at realtime
+///     while production runs at a multiple of it, so a long reply builds a real
+///     backlog. The cap is sized (~60s) so only a runaway hits it; excess is
+///     dropped with an [onOverflow] notification rather than growing unbounded.
 ///
 /// Pure Dart (no Flutter, no plugins) so the buffering/scheduling logic is unit
 /// testable without an audio device; [VoiceAudioIO] wires it to flutter_sound.
@@ -64,12 +69,13 @@ class PcmPlaybackQueue {
     int? maxBufferedBytes,
     this.maxPreRoll = const Duration(milliseconds: 400),
     this.feedRetryDelay = const Duration(milliseconds: 200),
+    this.underrunRearm = const Duration(milliseconds: 250),
     this.onDrained,
     this.onOverflow,
     this.onFeedError,
   })  : preRollBytes = preRollBytes ?? _msToBytes(300),
         frameBytes = frameBytes ?? _msToBytes(100),
-        maxBufferedBytes = maxBufferedBytes ?? _bytesPerSecond * 10 {
+        maxBufferedBytes = maxBufferedBytes ?? _bytesPerSecond * 60 {
     assert(this.preRollBytes > 0);
     assert(this.frameBytes > 0 && this.frameBytes.isEven,
         'frameBytes must be a positive multiple of the 2-byte sample size');
@@ -99,9 +105,32 @@ class PcmPlaybackQueue {
   /// plays instead of leaving the tail stuck.
   final Duration feedRetryDelay;
 
-  /// Hard upper bound on retained-but-unfed audio (default ~10s). Safety net for
-  /// a stalled device feed; excess incoming audio is dropped, not buffered.
+  /// Hard upper bound on retained-but-unfed audio (default ~60s ≈ 2.9MB).
+  ///
+  /// This is NOT only a stalled-device safety net: playback drains at exactly
+  /// [_bytesPerSecond] while Gemini produces at a MULTIPLE of realtime, so the
+  /// backlog grows at (k-1)x realtime for a k-times-realtime producer. At a
+  /// typical 3x the old ~10s cap was hit by any reply longer than ~15s of
+  /// speech, and [add] then dropped audio from the MIDDLE of the reply with
+  /// only a log line. 60s of buffer is trivial memory and puts the cap back
+  /// where it belongs: a genuine runaway, not a normal long answer.
   final int maxBufferedBytes;
+
+  /// How long the Dart queue may sit EMPTY mid-turn before the pre-roll is
+  /// re-armed. Gemini stalls mid-turn (tool call, model pause); without this the
+  /// pre-roll arms only once per turn, the cushion drains, and every resumed
+  /// chunk feeds an empty device buffer — the chunked-audio artifact returns
+  /// mid-reply.
+  ///
+  /// Sized ABOVE flutter_sound's own native reserve (bufferSize 8192 at
+  /// 48000 B/s ~ 170ms, treated as a floor rather than an exact depth). Below
+  /// that the device may still be playing, so re-arming would manufacture the
+  /// very gap this prevents; above it the speaker is already dry and re-arming
+  /// is free — it only decides whether the resume is one clean start or a
+  /// cascade of micro-underruns. 250ms separates the two regimes and still
+  /// catches a ~600ms tool-call stall. Worst-case cost of a false positive is
+  /// bounded by [maxPreRoll].
+  final Duration underrunRearm;
 
   /// Fired (once per turn) when the turn's audio has all been handed to the
   /// device after [endTurn] — the closest signal available in pure Dart to
@@ -164,6 +193,10 @@ class PcmPlaybackQueue {
   Timer? _preRollTimer;
   Timer? _retryTimer;
 
+  /// When the queue last went empty mid-turn while [_flowing] (null when not
+  /// idle). Drives the lazy mid-turn pre-roll re-arm — see [_markEmptyIfIdle].
+  DateTime? _emptySince;
+
   /// Bytes currently buffered in Dart (not yet handed to the device). Test seam.
   int get bufferedBytes => _bufferedBytes;
 
@@ -174,6 +207,12 @@ class PcmPlaybackQueue {
   /// bytes or the wall-clock ceiling), then drained to the device in order.
   void add(Uint8List chunk) {
     if (_closed || chunk.isEmpty) return;
+    // Production resumed. If it stalled long enough that the device buffer has
+    // certainly run dry, re-arm the pre-roll so this burst rebuilds a cushion
+    // instead of trickling into an empty speaker (the chunked-audio artifact,
+    // mid-reply). Must run BEFORE the pre-roll branch below.
+    if (_flowing && !_turnEndPending && _underran) _flowing = false;
+    _emptySince = null;
     // HARD cap: compare against remaining capacity (incl. the in-flight frame),
     // so a large chunk can't blow past the cap just because we weren't AT it yet.
     final remaining = maxBufferedBytes - _bufferedBytes - _inFlightBytes;
@@ -219,9 +258,19 @@ class PcmPlaybackQueue {
     _turnLeftover = pending.isOdd ? 1 : 0; // a lone carry-byte is never fed
     pending -= _turnLeftover;
     _drainTarget = _acceptedBytes + pending;
-    _flushBytes = _bufferedBytes; // feed-gating boundary for the !flowing path
+    // The allowance MUST include the in-flight frame. When that frame is
+    // accepted the drain decrements the allowance by frame.length (it reads the
+    // CURRENT _flowing, which endTurn has just cleared) — so an allowance of
+    // only _bufferedBytes lets the in-flight frame steal from the buffered
+    // tail, the flush stops exactly one frame short, _acceptedBytes never
+    // reaches _drainTarget and onDrained never fires. Counting the in-flight
+    // bytes here also means a frame that FAILS post-boundary and is
+    // _requeueFront'ed carries its allowance back with it (its allowance was
+    // never consumed, and its bytes re-enter _bufferedBytes).
+    _flushBytes = _bufferedBytes + _inFlightBytes;
     _flowing = false; // the next turn must re-accumulate the pre-roll
     _turnEndPending = true;
+    _emptySince = null; // the boundary re-arms the pre-roll on its own
     if (_bufferedBytes > 0) {
       unawaited(_drain());
     }
@@ -245,6 +294,7 @@ class PcmPlaybackQueue {
     _drainTarget = 0;
     _turnLeftover = 0;
     _turnEndPending = false;
+    _emptySince = null;
   }
 
   void close() {
@@ -262,6 +312,7 @@ class PcmPlaybackQueue {
     _drainTarget = 0;
     _turnLeftover = 0;
     _turnEndPending = false;
+    _emptySince = null;
   }
 
   void _signalCancel() {
@@ -301,6 +352,32 @@ class PcmPlaybackQueue {
   void _cancelRetryTimer() {
     _retryTimer?.cancel();
     _retryTimer = null;
+  }
+
+  /// Mid-turn underrun watchdog. Note the drain having emptied the Dart queue
+  /// does NOT mean the speaker is dry — flutter_sound still holds its own
+  /// reserve (~170ms at bufferSize 8192, 48000 B/s) — so only SUSTAINED
+  /// emptiness counts as a real stall. Below that reserve the device is likely
+  /// still playing and re-arming would CREATE the gap it exists to prevent;
+  /// [underrunRearm] therefore sits comfortably ABOVE it.
+  ///
+  /// Deliberately timer-free: the decision only matters at the moment the next
+  /// chunk arrives, so it is made lazily in [add]. That keeps this out of the
+  /// timer-lifecycle class of bug (`_preRollTimer`/`_retryTimer` both need
+  /// cancelling on endTurn/reset/close and epoch-guarding against firing across
+  /// a barge-in); an empty-since stamp needs none of that.
+  void _markEmptyIfIdle() {
+    if (_closed || !_flowing || _turnEndPending) return;
+    // <=1 counts as empty: an odd carry-byte alone breaks the drain loop.
+    if (_bufferedBytes > 1 || _inFlightBytes > 0) return;
+    _emptySince ??= DateTime.now();
+  }
+
+  /// True when the queue has sat empty long enough mid-turn that the device
+  /// buffer has certainly run dry.
+  bool get _underran {
+    final since = _emptySince;
+    return since != null && DateTime.now().difference(since) >= underrunRearm;
   }
 
   Future<void> _drain() async {
@@ -357,6 +434,12 @@ class PcmPlaybackQueue {
         // gating) and advance the cumulative accepted count (drained signal).
         if (!_flowing) {
           _flushBytes -= frame.length;
+          // A negative allowance means the boundary accounting under-counted
+          // this turn (that is exactly how the in-flight-frame truncation hid
+          // for three review rounds — the clamp below silently absorbed it).
+          // Assert in debug/tests; still clamp in release rather than wedge.
+          assert(_flushBytes >= 0,
+              'flush allowance under-counted: frames were fed that endTurn did not budget for');
           if (_flushBytes < 0) _flushBytes = 0;
         }
         _acceptedBytes += frame.length;
@@ -367,6 +450,8 @@ class PcmPlaybackQueue {
       _draining = false;
     }
     _maybeSignalDrained();
+    // The drain ran out of work mid-turn: start the underrun clock.
+    _markEmptyIfIdle();
   }
 
   /// Take up to [n] bytes from the FRONT, splitting a straddling chunk and never
@@ -443,6 +528,19 @@ class PcmPlaybackQueue {
       // at 1, which would make the NEXT turn skip its pre-roll branch forever.
       _flushBytes = 0;
       _turnEndPending = false;
+      // Next-turn audio that arrived DURING this flush skipped the pre-roll
+      // branch in add() (it is gated on `_flushBytes == 0`). Nothing else
+      // re-evaluates it, so without this the prefix would sit silent until the
+      // next add()/endTurn instead of honouring the maxPreRoll ceiling.
+      if (!_flowing && _bufferedBytes > 0) {
+        if (_bufferedBytes >= preRollBytes) {
+          _flowing = true;
+          _cancelPreRollTimer();
+          unawaited(_drain());
+        } else {
+          _startPreRollTimer();
+        }
+      }
       onDrained?.call();
     }
   }
