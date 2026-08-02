@@ -124,6 +124,50 @@ class VoiceAssistantState extends LunaModuleState {
   /// a newer, live instance.
   Future<void> _voiceChain = Future<void>.value();
 
+  /// Hard bound on every platform await in [_startVoiceBody] and on every
+  /// teardown that runs on [_voiceChain].
+  ///
+  /// N2: the startup body awaited `ensureConnected()`, the mic permission,
+  /// `startPlayback()`, `captureInto()` and the aborted-instance disposal with
+  /// NO timeout — and `_voiceChain` waits on that body. A platform future that
+  /// never completed therefore prevented EVERY queued stop and retry from ever
+  /// running: voice dead until the app was restarted. The synchronous
+  /// generation counter above prevents a stale publication but cannot RELEASE
+  /// the lane. Worse, `stopVoice()` clears the UI flags synchronously, so the
+  /// app did not even look hung — taps silently did nothing.
+  ///
+  /// This is reachable, not theoretical. `voice_audio_io.dart` documents
+  /// flutter_sound wedging on the feed path, and the app backlog already
+  /// carries a user-reported hard-lock of exactly this class: TailscaleGuard's
+  /// `ensure()` with no timeout pinning a full-screen AbsorbPointer forever,
+  /// with `if (_connecting) return;` blocking every retry. Shipping a second
+  /// permanent-wedge path is not acceptable, so every await here is bounded.
+  @visibleForTesting
+  Duration startupTimeout = const Duration(seconds: 20);
+
+  /// Logging must never take down the voice lane — the same rule
+  /// `voice_audio_io.dart` already documents for the playback path.
+  /// [LunaLogger] writes to a Hive box and THROWS if the database is not open
+  /// (early app startup, or a unit test), and because the write is async and
+  /// unawaited that surfaces as an UNHANDLED zone error rather than something a
+  /// try/catch can hold. Every one of the logs below sits on a failure or
+  /// teardown path, so an unguarded one would turn a handled error into a
+  /// crash — precisely when the lane is already unwinding.
+  void _logError(String message, Object error, StackTrace stackTrace) =>
+      runZonedGuarded(() => LunaLogger().error(message, error, stackTrace),
+          (_, __) {});
+
+  /// Tear an instance down without ever letting the teardown itself wedge the
+  /// lane — a hung `dispose()` is just as fatal as a hung `startPlayback()`.
+  Future<void> _disposeBounded(VoiceAudioIO? audio, String context) async {
+    if (audio == null) return;
+    try {
+      await audio.dispose().timeout(startupTimeout);
+    } catch (e, st) {
+      _logError('Failed to dispose $context', e, st);
+    }
+  }
+
   /// Builds the device-audio layer. Overridden in tests so the start/stop
   /// ORDERING can be exercised without a microphone.
   @visibleForTesting
@@ -163,10 +207,41 @@ class VoiceAssistantState extends LunaModuleState {
     // the mic on afterwards — the original bug through a different door.
     _voiceOp++;
     _voiceStarting = false;
-    _audio?.dispose();
+    final audio = _audio;
     _audio = null;
-    _session?.close();
+    final session = _session;
     _session = null;
+    // N3: the teardown goes ON `_voiceChain`, even though reset() itself is
+    // synchronous (the LunaModuleState API gives us no choice about that).
+    //
+    // It previously called `_audio?.dispose()` unawaited and OFF-chain. That is
+    // exactly the cross-generation ordering `_voiceChain` exists to prevent:
+    // `VoiceAudioIO.stop()` calls `setActive(false)` on the PROCESS-WIDE
+    // AVAudioSession, so a later startVoice() could configure and activate a
+    // fresh instance while this disposal was still in flight — and the old
+    // instance's teardown would then deactivate the session out from under the
+    // new, live one. Silent, and audio-dead until the next start.
+    //
+    // This is currently LATENT, not live: VoiceAssistantState is absent from
+    // the LunaModule.state() switch (modules.dart:559ff), so LunaState.reset()
+    // never reaches it and only the constructor calls reset() (with both fields
+    // null). It is routed through the chain anyway because the moment voice
+    // joins module lifecycle this becomes live, and it would fail silently.
+    //
+    // Both calls were also unawaited with no catch — an async throw from either
+    // surfaced as an UNHANDLED zone error rather than something callers could
+    // hold. Each is now bounded and logged independently, so a failing audio
+    // teardown cannot skip the session close.
+    if (audio != null || session != null) {
+      unawaited(_enqueueVoiceOp(() async {
+        await _disposeBounded(audio, 'the voice lane on reset');
+        try {
+          await session?.close().timeout(startupTimeout);
+        } catch (e, st) {
+          _logError('Failed to close the voice session on reset', e, st);
+        }
+      }));
+    }
     messages.clear();
     _status = VoiceConnectionStatus.idle;
     _turnInProgress = false;
@@ -246,7 +321,7 @@ class VoiceAssistantState extends LunaModuleState {
       _addSystem('Connected as: $whoami');
       _addSystem('Tools available: ${_exposedTools.join(', ')}');
     } catch (e, st) {
-      LunaLogger().error('Voice session failed to start', e, st);
+      _logError('Voice session failed to start', e, st);
       _status = VoiceConnectionStatus.error;
       _addSystem('Failed to connect: $e', isError: true);
       await session.close();
@@ -343,8 +418,49 @@ class VoiceAssistantState extends LunaModuleState {
     if (_voiceOp != myOp) return;
     VoiceAudioIO? audio;
     var published = false;
+
+    // The generation this body still believes it owns. It equals [myOp] until
+    // one of OUR OWN timeouts invalidates us, and then tracks that bump.
+    //
+    // Two distinct notions are needed and must not be conflated:
+    //   * [myOp] is FROZEN. Every publication check and the mic callback below
+    //     compare against it, so once a timeout has invalidated this startup
+    //     they stay invalid forever — a late `captureInto` cannot start feeding
+    //     Gemini again.
+    //   * [ownGen] MOVES with our own invalidation, and is what the `finally`
+    //     uses to decide whether `_voiceStarting` is still ours to clear.
+    //     Comparing the frozen [myOp] there would leave the flag stuck TRUE
+    //     after a timeout — and `startVoice()` early-returns on
+    //     `_voiceStarting`, so the lane would be released but every retry would
+    //     still silently no-op. That is the N2 wedge through a second door.
+    var ownGen = myOp;
+
+    /// Await [op] with a hard bound. On timeout, in this order:
+    ///   1. invalidate this startup SYNCHRONOUSLY, exactly like [stopVoice], so
+    ///      nothing later can publish `_audio` or activate the mic;
+    ///   2. attach [onLate] to the abandoned future, so if the platform ever
+    ///      does answer, the orphan is still torn down rather than left holding
+    ///      a live microphone;
+    ///   3. throw into the catch/finally below, which surfaces the failure,
+    ///      tears down the unpublished instance, and — the whole point —
+    ///      RELEASES the lane for the queued stop/retry.
+    Future<T> bounded<T>(Future<T> op, String what,
+        {void Function()? onLate}) {
+      return op.timeout(startupTimeout, onTimeout: () {
+        if (_voiceOp == ownGen) ownGen = ++_voiceOp;
+        if (onLate != null) {
+          // Fire-and-forget: this must never re-wedge the lane it just freed.
+          unawaited(op.then((_) => onLate(), onError: (_) => onLate()));
+        }
+        throw TimeoutException(
+          'Voice startup timed out waiting for $what',
+          startupTimeout,
+        );
+      });
+    }
+
     try {
-      await ensureConnected();
+      await bounded(ensureConnected(), 'the Gemini Live session');
       if (_voiceOp != myOp) return;
       if (_status != VoiceConnectionStatus.ready) return;
       final session = _session;
@@ -377,10 +493,12 @@ class VoiceAssistantState extends LunaModuleState {
       );
       audio = instance;
 
-      final granted = await instance.ensureMicPermission();
+      final granted = await bounded(
+          instance.ensureMicPermission(), 'the microphone permission');
       if (_voiceOp != myOp) return;
       if (!granted) {
-        final permanent = await instance.isMicPermanentlyDenied();
+        final permanent = await bounded(instance.isMicPermanentlyDenied(),
+            'the microphone permission status');
         if (_voiceOp != myOp) return;
         _addSystem(
           permanent
@@ -391,14 +509,28 @@ class VoiceAssistantState extends LunaModuleState {
         return;
       }
 
-      await instance.startPlayback();
+      // A LATE completion of either of these must not leave a live speaker or
+      // microphone behind on an instance nobody owns, so both carry an onLate
+      // teardown. dispose() is idempotent, and the timeout has already bumped
+      // the generation, so the mic callback below is inert either way.
+      await bounded(
+        instance.startPlayback(),
+        'the speaker',
+        onLate: () => unawaited(
+            _disposeBounded(instance, 'a timed-out voice lane (playback)')),
+      );
       if (_voiceOp != myOp) return;
       // Capture the session locally: _session can be replaced/closed under us,
       // and the mic callback outlives this frame.
-      await instance.captureInto((pcm) {
-        if (_voiceOp != myOp) return; // stale instance: stop feeding Gemini
-        session.sendAudioChunk(pcm);
-      });
+      await bounded(
+        instance.captureInto((pcm) {
+          if (_voiceOp != myOp) return; // stale instance: stop feeding Gemini
+          session.sendAudioChunk(pcm);
+        }),
+        'the microphone',
+        onLate: () => unawaited(
+            _disposeBounded(instance, 'a timed-out voice lane (capture)')),
+      );
       // The mic IS live from here; only the teardown below turns it off again.
       if (_voiceOp != myOp) return;
 
@@ -409,7 +541,7 @@ class VoiceAssistantState extends LunaModuleState {
       _setActivity(VoiceActivity.listening);
       _addSystem('Listening… speak, and tap the mic to stop.');
     } catch (e, st) {
-      LunaLogger().error('Failed to start voice lane', e, st);
+      _logError('Failed to start voice lane', e, st);
       if (_voiceOp == myOp) {
         _addSystem('Could not start the microphone: $e', isError: true);
         _setActivity(VoiceActivity.idle);
@@ -418,14 +550,12 @@ class VoiceAssistantState extends LunaModuleState {
       // Anything not published is ours to tear down — including a startup the
       // user cancelled after the mic was already streaming.
       if (!published) {
-        try {
-          await audio?.dispose();
-        } catch (e, st) {
-          LunaLogger().error('Failed to dispose an aborted voice lane', e, st);
-        }
+        // Bounded: an unbounded dispose here would wedge the lane just as
+        // surely as the hung startup we are unwinding from.
+        await _disposeBounded(audio, 'an aborted voice lane');
       }
       // Op-conditional: a stale body must not clear a NEWER startup's flag.
-      if (_voiceOp == myOp) _voiceStarting = false;
+      if (_voiceOp == ownGen) _voiceStarting = false;
       notifyListeners();
     }
   }
@@ -448,7 +578,8 @@ class VoiceAssistantState extends LunaModuleState {
     final audio = _audio;
     _audio = null;
     // dispose() already calls stop(); calling both just tore it down twice.
-    await audio?.dispose();
+    // Bounded so a wedged platform teardown cannot pin the lane either.
+    await _disposeBounded(audio, 'the voice lane');
     notifyListeners();
   }
 

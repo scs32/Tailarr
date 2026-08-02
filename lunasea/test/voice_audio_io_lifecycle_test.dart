@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:audio_session/audio_session.dart';
+
 import 'package:lunasea/modules/voice/core/voice_audio_io.dart';
 
 /// N1: the player LIFECYCLE must have exactly ONE serialized owner.
@@ -121,6 +123,8 @@ void main() {
     t.failOpen(false);
   }
 
+  interruptionTests();
+
   group('N1: one serialized owner of the player lifecycle', () {
     test('a flush during an in-flight recovery must not double-open the stream',
         () async {
@@ -227,6 +231,126 @@ void main() {
 
       expect(t.io.feedPlayback(pcm(320)), isFalse,
           reason: 'nothing may reopen a terminated instance');
+    });
+  });
+}
+
+/// M6 left the interruption + route-change SUBSCRIPTIONS with no coverage at
+/// all, even though they are the paths that fire `flushPlayback()` concurrently
+/// with everything else — i.e. the exact second actor in the N1 race. These use
+/// injected event streams so the RESPONSE is testable without an AVAudioSession.
+void interruptionTests() {
+  Uint8List pcm(int n) => Uint8List(n);
+
+  Future<void> settle([int turns = 8]) async {
+    for (var i = 0; i < turns; i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+  }
+
+  ({
+    VoiceAudioIO io,
+    List<String> ops,
+    StreamController<AudioInterruptionEvent> interruptions,
+    StreamController<void> noisy,
+  }) makeIO() {
+    final ops = <String>[];
+    final interruptions = StreamController<AudioInterruptionEvent>.broadcast();
+    final noisy = StreamController<void>.broadcast();
+    final io = VoiceAudioIO(
+      openPlayerStream: () async => ops.add('open'),
+      closePlayerStream: () async => ops.add('close'),
+      feedPlayerStream: (f) async {},
+      interruptionEvents: interruptions.stream,
+      becomingNoisyEvents: noisy.stream,
+    );
+    io.teardownTimeout = const Duration(milliseconds: 20);
+    return (io: io, ops: ops, interruptions: interruptions, noisy: noisy);
+  }
+
+  group('M6: interruption + route-change subscriptions', () {
+    test('an interruption BEGIN rebuilds the output stream', () async {
+      final t = makeIO();
+      await t.io.configureSession();
+      await t.io.startPlayback();
+      expect(t.ops, equals(['open']));
+
+      t.interruptions.add(AudioInterruptionEvent(
+          true, AudioInterruptionType.pause)); // incoming phone call
+      await settle();
+
+      expect(t.ops, equals(['open', 'close', 'open']),
+          reason: 'an interruption must rebuild the native stream — merely '
+              'dropping the Dart buffer leaves the drain parked in feed()');
+      expect(t.io.feedPlayback(pcm(320)), isTrue,
+          reason: 'playback is usable again for the NEXT turn');
+    });
+
+    test('an interruption END must NOT resume a stale stream', () async {
+      final t = makeIO();
+      await t.io.configureSession();
+      await t.io.startPlayback();
+
+      t.interruptions
+          .add(AudioInterruptionEvent(false, AudioInterruptionType.pause));
+      await settle();
+
+      expect(t.ops, equals(['open']),
+          reason: "the interrupted turn's audio is gone and Gemini will speak "
+              'again; silently resuming a stale stream is worse than waiting');
+    });
+
+    test('a becoming-noisy route change rebuilds the stream', () async {
+      final t = makeIO();
+      await t.io.configureSession();
+      await t.io.startPlayback();
+
+      t.noisy.add(null); // AirPods yanked; iOS reroutes to the speaker
+      await settle();
+
+      expect(t.ops, equals(['open', 'close', 'open']));
+    });
+
+    test('a burst of interruptions never overlaps the device calls', () async {
+      final t = makeIO();
+      await t.io.configureSession();
+      await t.io.startPlayback();
+
+      // Interruption + route change land together — the real N1 second actor.
+      for (var i = 0; i < 5; i++) {
+        t.interruptions
+            .add(AudioInterruptionEvent(true, AudioInterruptionType.pause));
+        t.noisy.add(null);
+      }
+      await settle(20);
+
+      // Every rebuild is a well-formed close/open pair in order: no interleave.
+      final rest = t.ops.skip(1).toList();
+      expect(rest.length.isEven, isTrue, reason: 'ops=$rest');
+      for (var i = 0; i < rest.length; i += 2) {
+        expect(rest[i], 'close', reason: 'ops=$rest');
+        expect(rest[i + 1], 'open', reason: 'ops=$rest');
+      }
+      expect(t.io.feedPlayback(pcm(320)), isTrue);
+    });
+
+    test('after stop(), a late interruption must not reopen the stream',
+        () async {
+      final t = makeIO();
+      await t.io.configureSession();
+      await t.io.startPlayback();
+      await t.io.stop();
+      final after = t.ops.length;
+
+      t.interruptions
+          .add(AudioInterruptionEvent(true, AudioInterruptionType.pause));
+      t.noisy.add(null);
+      await settle();
+
+      expect(t.ops.length, after,
+          reason: 'stop() cancels the subscriptions, and the lane is terminal: '
+              'a late event must not resurrect the player');
+      expect(t.io.feedPlayback(pcm(320)), isFalse);
     });
   });
 }

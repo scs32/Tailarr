@@ -59,9 +59,19 @@ class VoiceAudioIO {
     @visibleForTesting Future<void> Function()? openPlayerStream,
     @visibleForTesting Future<void> Function()? closePlayerStream,
     @visibleForTesting Future<void> Function(Uint8List frame)? feedPlayerStream,
+    @visibleForTesting Stream<AudioInterruptionEvent>? interruptionEvents,
+    @visibleForTesting Stream<void>? becomingNoisyEvents,
   })  : _openPlayerStream = openPlayerStream,
         _closePlayerStream = closePlayerStream,
-        _feedPlayerStream = feedPlayerStream;
+        _feedPlayerStream = feedPlayerStream,
+        _interruptionEvents = interruptionEvents,
+        _becomingNoisyEvents = becomingNoisyEvents;
+
+  /// Seams for the M6 interruption/route-change subscriptions, so the RESPONSE
+  /// to a phone call or a yanked headset is testable without an AVAudioSession.
+  /// Null in production — see [configureSession].
+  final Stream<AudioInterruptionEvent>? _interruptionEvents;
+  final Stream<void>? _becomingNoisyEvents;
 
   /// Seams so the playback LIFECYCLE (restart-failed recovery in particular) is
   /// testable without an audio device. Null in production — see
@@ -89,6 +99,9 @@ class VoiceAudioIO {
   final FlutterSoundPlayer _player = FlutterSoundPlayer();
 
   bool _sessionConfigured = false;
+  /// True only when a REAL platform AVAudioSession was configured by us, and so
+  /// is ours to deactivate in [stop]. False under the test seams.
+  bool _sessionOwned = false;
   bool _playerReady = false;
 
   /// True when the output stream is DOWN but should be up — a restart failed.
@@ -232,6 +245,16 @@ class VoiceAudioIO {
   /// it. Idempotent.
   Future<void> configureSession() async {
     if (_sessionConfigured) return;
+    // Test seam: injected event streams mean there is no platform session to
+    // configure or own — just wire the handlers.
+    if (_interruptionEvents != null || _becomingNoisyEvents != null) {
+      _sessionConfigured = true;
+      await _subscribeAudioEvents(
+        _interruptionEvents ?? const Stream<AudioInterruptionEvent>.empty(),
+        _becomingNoisyEvents ?? const Stream<void>.empty(),
+      );
+      return;
+    }
     final session = await AudioSession.instance;
     // Not const: the `|` combinator on AVAudioSessionCategoryOptions is a runtime
     // operator, so the configuration cannot be a const expression.
@@ -245,7 +268,19 @@ class VoiceAudioIO {
     ));
     await session.setActive(true);
     _sessionConfigured = true;
+    // Only a REAL platform session is ours to deactivate again in stop().
+    _sessionOwned = true;
+    await _subscribeAudioEvents(
+      session.interruptionEventStream,
+      session.becomingNoisyEventStream,
+    );
+  }
 
+  /// Subscribe to the M6 interruption + route-change signals.
+  Future<void> _subscribeAudioEvents(
+    Stream<AudioInterruptionEvent> interruptions,
+    Stream<void> becomingNoisy,
+  ) async {
     // --- Interruptions and route changes (M6) ---
     // The module previously subscribed to NEITHER, and the jitter buffer made
     // that strictly worse than the old fire-and-forget sink: the drain parks in
@@ -260,7 +295,7 @@ class VoiceAudioIO {
     // interrupted turn's audio is gone and Gemini will speak again; silently
     // resuming a stale stream is worse than waiting for the next turn.
     await _interruptionSub?.cancel();
-    _interruptionSub = session.interruptionEventStream.listen((event) {
+    _interruptionSub = interruptions.listen((event) {
       if (event.begin) {
         _logWarn('Voice audio interrupted (${event.type}); flushing playback');
         unawaited(flushPlayback());
@@ -269,7 +304,7 @@ class VoiceAudioIO {
     await _noisySub?.cancel();
     // Headphones/Bluetooth yanked mid-reply: iOS reroutes to the speaker and the
     // stream can be left in a bad state, so rebuild it rather than play on.
-    _noisySub = session.becomingNoisyEventStream.listen((_) {
+    _noisySub = becomingNoisy.listen((_) {
       _logWarn('Voice audio route became noisy; flushing playback');
       unawaited(flushPlayback());
     });
@@ -551,11 +586,12 @@ class VoiceAudioIO {
       // runs if the platform ever answers; we just stop waiting for it.
       _logWarn('Voice player teardown timed out; abandoning the native close');
     } catch (_) {}
-    if (_sessionConfigured) {
+    if (_sessionOwned) {
       final session = await AudioSession.instance;
       await session.setActive(false);
-      _sessionConfigured = false;
+      _sessionOwned = false;
     }
+    _sessionConfigured = false;
   }
 
   Future<void> dispose() async {
