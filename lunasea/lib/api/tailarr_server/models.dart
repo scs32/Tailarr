@@ -360,27 +360,9 @@ class TailarrServerNotificationCredentials {
   }
 }
 
-/// `POST /api/users/keys` — a single-use, preauthorized, 24h enrollment key.
-class TailarrServerUserKey {
-  final bool ok;
-  final String? error;
-  final String key;
-
-  const TailarrServerUserKey({
-    required this.ok,
-    required this.error,
-    required this.key,
-  });
-
-  factory TailarrServerUserKey.fromJson(Map<String, dynamic> json) {
-    final error = json['error'];
-    return TailarrServerUserKey(
-      ok: _bool(json['ok']),
-      error: error == null ? null : error.toString(),
-      key: _string(json['key']),
-    );
-  }
-}
+// NOTE: `TailarrServerUserKey` (`POST /api/users/keys`) is gone. That route
+// minted a person-less key, which enrolls a device with no badges and no
+// access. `TailarrServerPersonKey` above is the only enrollment-key model.
 
 /// `POST /api/users/adopt`
 class TailarrServerAdoptResult {
