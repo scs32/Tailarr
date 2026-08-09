@@ -178,12 +178,12 @@ class TailarrServerAPI {
         return TailarrServerUsers.fromJson(response.data);
       });
 
-  /// Mint a single-use, preauthorized, 24h enrollment key tagged
-  /// `tag:tailarr-user`.
-  Future<TailarrServerUserKey> createUserKey() async {
-    final response = await httpClient.post('api/users/keys', data: {});
-    return TailarrServerUserKey.fromJson(response.data);
-  }
+  // NOTE: there is deliberately no `createUserKey()`. `POST /api/users/keys`
+  // minted a `tag:tailarr-user`-only key — no `tag:tailarr-u-<uid>`, no
+  // badges — so the device that enrolled with it was invisible to every
+  // badge-propagation path and had zero access. Every enrollment key is now
+  // person-scoped: `addPerson` + `reissuePersonKey` are the only mints. A
+  // shared device is served by creating a person for it.
 
   Future<TailarrServerAdoptResult> adoptUser(String nodeId) async {
     final response = await httpClient.post(
@@ -231,8 +231,9 @@ class TailarrServerAPI {
   // Server v0.19.0+ first-class users. Detect support by
   // TailarrServerUsers.hasPeople, NOT api_version (still 1).
 
-  /// Create a person and mint their first enrollment key — the device that
-  /// enrolls with it is born owned by them.
+  /// Create a person. Does NOT mint a key: newer servers return no `key`, and
+  /// the app never shows one here — enrollment keys come from
+  /// [reissuePersonKey], one per device, from the person's own page.
   Future<TailarrServerPersonKey> addPerson(String name) async {
     final response = await httpClient.post(
       'api/people',

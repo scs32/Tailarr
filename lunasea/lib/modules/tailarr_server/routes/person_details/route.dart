@@ -91,12 +91,10 @@ class _State extends State<PersonDetailsRoute> with LunaScrollControllerMixin {
 
   Widget _bottomActionBar() {
     return LunaBottomActionBar(
+      // Enrollment keys are issued from the Devices section below — a key is
+      // always for THIS person's next device, so it belongs beside their
+      // devices, not in a page-level action bar.
       actions: [
-        LunaButton.text(
-          text: 'Reissue Key',
-          icon: Icons.key_rounded,
-          onTap: _reissueKey,
-        ),
         LunaButton.text(
           text: 'Delete',
           icon: Icons.person_remove_rounded,
@@ -154,10 +152,11 @@ class _State extends State<PersonDetailsRoute> with LunaScrollControllerMixin {
         LunaHeader(
           text: 'Devices',
           subtitle: person.devices.isEmpty
-              ? 'No devices yet — share an enrollment key'
+              ? 'No devices yet — issue an enrollment key'
               : 'Access applies to all of them',
         ),
         for (final device in person.devices) _deviceBlock(device),
+        _issueKeyBlock(person),
       ],
     );
   }
@@ -313,6 +312,23 @@ class _State extends State<PersonDetailsRoute> with LunaScrollControllerMixin {
     );
   }
 
+  /// The one and only place an enrollment key is issued. It sits in the
+  /// Devices section because that is what a key produces: this person's next
+  /// device. There is no person-less key anywhere in the app.
+  Widget _issueKeyBlock(TailarrServerPerson person) {
+    return LunaBlock(
+      title: 'Issue Enrollment Key',
+      body: [
+        TextSpan(text: 'Single-use invite for ${person.name}\'s next device'),
+      ],
+      trailing: const LunaIconButton(
+        icon: Icons.key_rounded,
+        color: LunaColours.accent,
+      ),
+      onTap: _reissueKey,
+    );
+  }
+
   Future<void> _revokeDevice(TailarrServerUserDevice device) async {
     if (_isCurrentDevice(device)) return; // belt-and-suspenders
     final api = context.read<TailarrServerState>().api;
@@ -457,18 +473,35 @@ class _State extends State<PersonDetailsRoute> with LunaScrollControllerMixin {
     final api = context.read<TailarrServerState>().api;
     final confirmed = await TailarrServerDialogs().confirmAction(
       context,
-      title: 'Reissue Enrollment Key',
+      title: 'Issue Enrollment Key',
       message:
-          'Mint a fresh single-use key (24h expiry) for this user? A device that enrolls with it automatically belongs to them and inherits their access.',
-      buttonText: 'Generate Key',
+          'Mint a fresh single-use key (24h expiry) for this user? A device that enrolls with it automatically belongs to them and inherits their access. Any key previously issued to them stops working.',
+      buttonText: 'Issue Key',
       buttonColor: LunaColours.accent,
     );
     if (!confirmed) return;
     // Best-effort: the server's display name, so the joined device names its
     // profile after the server. Empty when the server doesn't provide one.
+    // The same call carries the credential mode — minting a tagged key needs
+    // the tag-owning OAuth client, and this is now the ONLY mint surface, so
+    // the gate that used to live on Add User has to be here too. An
+    // unreachable /api/info stays best-effort: let the mint itself answer.
     String serverName = '';
     try {
-      serverName = (await api!.getInfo()).name;
+      final info = await api!.getInfo();
+      serverName = info.name;
+      if (info.tsapiMode != 'oauth') {
+        await TailarrServerDialogs().confirmAction(
+          context,
+          title: 'OAuth Client Required',
+          message: info.tsapiMode == 'token'
+              ? 'The server is using a static API token, which cannot mint tagged enrollment keys reliably. Open the Tailarr Server web UI > Settings and switch the credential to an OAuth client, then try again.'
+              : 'Enrollment keys are tagged to this user, which requires an OAuth client credential on the server. Open the Tailarr Server web UI > Settings and complete the credential wizard, then try again.',
+          buttonText: 'OK',
+          buttonColor: LunaColours.accent,
+        );
+        return;
+      }
     } catch (_) {}
     await api!.reissuePersonKey(widget.id).then((result) {
       if (result.ok && result.key.isNotEmpty) {

@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lunasea/core.dart';
 import 'package:lunasea/extensions/string/string.dart';
-import 'package:lunasea/modules/settings.dart';
 import 'package:lunasea/modules/tailarr_server.dart';
 import 'package:lunasea/router/routes/tailarr_server.dart';
 
@@ -22,8 +21,9 @@ class _State extends State<UsersRoute> with LunaScrollControllerMixin {
   Future<TailarrServerUsers>? _users;
   Timer? _pollTimer;
 
-  /// Last successful snapshot — decides whether Add User creates a person
-  /// (server v0.19.0+) or mints an anonymous key (older servers).
+  /// Last successful snapshot — proves the server speaks the people model
+  /// (v0.19.0+). Add User is refused on anything older: there is no
+  /// person-less enrollment key any more.
   TailarrServerUsers? _latest;
 
   @override
@@ -363,9 +363,11 @@ class _State extends State<UsersRoute> with LunaScrollControllerMixin {
 
   Future<void> _addUser() async {
     final api = context.read<TailarrServerState>().api;
-    // Minting enrollment keys needs the tag-owning OAuth client — a static
-    // API token acts as a personal credential and can't reliably mint
-    // tagged keys, so the whole path is gated on oauth mode.
+    // A person owns a tailnet tag, and tag ownership belongs to the OAuth
+    // client — a static API token acts as a personal credential and can't
+    // manage them reliably, so the whole path is gated on oauth mode. (The
+    // key itself is minted later, from the person's own page; that surface
+    // carries the same gate.)
     try {
       final info = await api!.getInfo();
       if (info.tsapiMode != 'oauth') {
@@ -373,8 +375,8 @@ class _State extends State<UsersRoute> with LunaScrollControllerMixin {
           context,
           title: 'OAuth Client Required',
           message: info.tsapiMode == 'token'
-              ? 'The server is using a static API token, which cannot mint enrollment keys reliably. Open the Tailarr Server web UI > Settings and switch the credential to an OAuth client, then try again.'
-              : 'Adding users mints tailnet enrollment keys, which requires an OAuth client credential on the server. Open the Tailarr Server web UI > Settings and complete the credential wizard, then try again.',
+              ? 'The server is using a static API token, which cannot manage per-person tailnet tags reliably. Open the Tailarr Server web UI > Settings and switch the credential to an OAuth client, then try again.'
+              : 'Adding users creates per-person tailnet tags, which requires an OAuth client credential on the server. Open the Tailarr Server web UI > Settings and complete the credential wizard, then try again.',
           buttonText: 'OK',
           buttonColor: LunaColours.accent,
         );
@@ -386,42 +388,40 @@ class _State extends State<UsersRoute> with LunaScrollControllerMixin {
       return;
     }
 
-    if (_latest?.hasPeople ?? false) {
-      return _addPerson(api);
+    // Every enrollment key is person-scoped. A server too old for the people
+    // model has no way to mint one, and the anonymous key it *could* mint
+    // enrolls a device with no person and therefore no access at all — so
+    // refuse legibly instead of handing out a dead device. A null snapshot
+    // means "not fetched yet", NOT "legacy" — let the server answer then.
+    if (_latest != null && !_latest!.hasPeople) {
+      await TailarrServerDialogs().confirmAction(
+        context,
+        title: 'Server Update Required',
+        message:
+            'This server predates per-person users. Every enrollment key must belong to a person, so adding users needs a newer Tailarr Server. Update the server, then try again.',
+        buttonText: 'OK',
+        buttonColor: LunaColours.accent,
+      );
+      return;
     }
-    return _addLegacyKey(api);
+    return _addPerson(api);
   }
 
+  /// Creating a person no longer mints a key — keys are issued from the
+  /// person's own page, in their Devices section, one per device.
   Future<void> _addPerson(TailarrServerAPI api) async {
     final values = await LunaDialogs().editText(context, 'User Name');
     if (!values.item1 || values.item2.trim().isEmpty) return;
     final name = values.item2.trim();
-    // Best-effort: the server's display name for the joined device's profile.
-    String serverName = '';
-    try {
-      serverName = (await api.getInfo()).name;
-    } catch (_) {}
     await api.addPerson(name).then((result) {
-      if (result.ok && result.key.isNotEmpty) {
+      // The refresh is deliberately NOT conditional on a key: the response
+      // carries none, and gating the refresh on one left the new person
+      // invisible until something else reloaded the list.
+      if (result.ok) {
         _fetch();
-        final profile = LunaProfile.current;
-        TailarrServerKeySheet.show(
-          context,
-          enrollmentKey: result.key,
-          inviteLink: profile.tailarrServerHost.isEmpty
-              ? null
-              : SharedModuleConfiguration.invite(
-                  serverHost: profile.tailarrServerHost,
-                  enrollKey: result.key,
-                  serverName: serverName,
-                  headers: Map<String, String>.from(
-                    profile.tailarrServerHeaders,
-                  ),
-                ).link,
-          message:
-              'Send this to $name. Their device enrolls already belonging to them, with no access until you grant services. Single-use, expires in 24 hours.',
-          shareMessage:
-              'Your Tailarr invite — open this link on your phone (it walks you through install if needed). Expires in 24h:',
+        showLunaSuccessSnackBar(
+          title: 'User Added',
+          message: 'Open $name to issue an enrollment key for their device',
         );
       } else {
         showLunaErrorSnackBar(
@@ -432,38 +432,6 @@ class _State extends State<UsersRoute> with LunaScrollControllerMixin {
     }).catchError((error, stack) {
       LunaLogger().error('Add person failed', error, stack);
       showLunaErrorSnackBar(title: 'Add User Failed', error: error);
-    });
-  }
-
-  Future<void> _addLegacyKey(TailarrServerAPI api) async {
-    final confirmed = await TailarrServerDialogs().confirmAction(
-      context,
-      title: 'Add User',
-      message:
-          'Generate a one-time enrollment key for a new user device? The key is single-use, expires in 24 hours, and the device starts with no service access.',
-      buttonText: 'Generate Key',
-      buttonColor: LunaColours.accent,
-    );
-    if (!confirmed) return;
-    await api.createUserKey().then((result) {
-      if (result.ok && result.key.isNotEmpty) {
-        TailarrServerKeySheet.show(
-          context,
-          enrollmentKey: result.key,
-          message:
-              'Send this to the new user. They install Tailscale on their device and sign in with this key — the device then appears here with no access until you grant services. Single-use, expires in 24 hours.',
-          shareMessage:
-              'Your Tailarr access key (install Tailscale, then sign in with this key — expires in 24h):',
-        );
-      } else {
-        showLunaErrorSnackBar(
-          title: 'Key Generation Failed',
-          message: result.error ?? 'Unknown error',
-        );
-      }
-    }).catchError((error, stack) {
-      LunaLogger().error('User key generation failed', error, stack);
-      showLunaErrorSnackBar(title: 'Key Generation Failed', error: error);
     });
   }
 
