@@ -674,10 +674,19 @@ void main() {
       expect(userOwn.host, 'https://nas.local');
 
       // Revocation pass: marked, not deleted; user bookmark untouched.
+      // APP-9: driven by a handout that NAMES a service and genuinely omits
+      // jellyfin. This pass used to use `services: []`, which is the defect
+      // input — an empty listing is now (correctly) a no-op, see the APP-9
+      // group. Bookmark revocation itself is unchanged and still asserted.
       reconcile(
         profile: LunaProfile(),
         externals: externals,
-        response: parse('{"ok": true, "kind": "services", "services": []}'),
+        response: parse(
+          '{"ok": true, "kind": "services", "services": ['
+          '{"type": "sonarr", "name": "sonarr", '
+          '"url": "https://sonarr.tailXXXX.ts.net", '
+          '"auth": {"api_key": "abc123"}}]}',
+        ),
       );
       expect(jellyfin.displayName, 'jellyfin (Revoked)');
       expect(jellyfin.host, 'https://jellyfin.tailXXXX.ts.net');
