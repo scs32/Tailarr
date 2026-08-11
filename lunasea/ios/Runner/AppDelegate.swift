@@ -1,11 +1,13 @@
 import UIKit
 import Flutter
+import AVFoundation
 import workmanager_apple
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
     static let appGroupId = "group.com.stephenspeicher.tailarr"
     private static let pushChannelName = "com.stephenspeicher.tailarr/push"
+    private static let voiceAudioChannelName = "com.stephenspeicher.tailarr/voice_audio"
 
     /// Pending Dart request awaiting the APNs token callback.
     private var pushTokenResult: FlutterResult?
@@ -18,6 +20,7 @@ import workmanager_apple
 
         if let controller = window?.rootViewController as? FlutterViewController {
             registerPushChannel(messenger: controller.binaryMessenger, mainEngine: true)
+            registerVoiceAudioChannel(messenger: controller.binaryMessenger)
         }
 
         // ntfy background refresh (BGAppRefreshTask). The identifier must
@@ -67,6 +70,41 @@ import workmanager_apple
                 DispatchQueue.main.async {
                     UIApplication.shared.registerForRemoteNotifications()
                 }
+            default:
+                result(FlutterMethodNotImplemented)
+            }
+        }
+    }
+
+    /// Read-only probe of the shared `AVAudioSession`, used by the voice lane
+    /// immediately BEFORE it starts the flutter_sound stream player.
+    ///
+    /// Build 11.0.0 (48) crashed with `EXC_CRASH (SIGABRT)` inside
+    /// `-[AVAudioEngine connect:to:format:]` reached from `startPlayerFromStream`.
+    /// `connect` raises an Objective-C exception on an invalid format — most
+    /// often a `sampleRate` of 0, which is what the session reports while it is
+    /// not active. An ObjC exception is NOT catchable from Dart, so Dart has to
+    /// be able to look before it leaps. This channel is that look.
+    ///
+    /// Strictly read-only: it mutates nothing about the session.
+    private func registerVoiceAudioChannel(messenger: FlutterBinaryMessenger) {
+        let channel = FlutterMethodChannel(
+            name: AppDelegate.voiceAudioChannelName, binaryMessenger: messenger)
+        channel.setMethodCallHandler { call, result in
+            switch call.method {
+            case "probeSession":
+                let session = AVAudioSession.sharedInstance()
+                result([
+                    "sampleRate": session.sampleRate,
+                    "ioBufferDuration": session.ioBufferDuration,
+                    "outputChannels": session.outputNumberOfChannels,
+                    "inputChannels": session.inputNumberOfChannels,
+                    "category": session.category.rawValue,
+                    "mode": session.mode.rawValue,
+                    "route": session.currentRoute.outputs
+                        .map { $0.portType.rawValue }
+                        .joined(separator: "+"),
+                ])
             default:
                 result(FlutterMethodNotImplemented)
             }

@@ -232,6 +232,9 @@ class VoiceAssistantState extends LunaModuleState {
 
     _subs.add(session.turnComplete.listen((_) {
       _turnInProgress = false;
+      // A turn boundary always clears any barge-in suppression window, so a
+      // fresh reply can never be silenced by a stale one.
+      _audio?.resumePlayback();
       // Model finished speaking: back to listening if the mic is live, else idle.
       if (_voiceActive) _setActivity(VoiceActivity.listening);
       notifyListeners();
@@ -246,8 +249,11 @@ class VoiceAssistantState extends LunaModuleState {
 
     _subs.add(session.interrupted.listen((_) {
       if (!_voiceActive) return;
-      // User spoke over the model — drop the queued TTS and resume listening.
-      _audio?.flushPlayback();
+      // User spoke over the model — stop feeding the abandoned turn and resume
+      // listening. This deliberately does NOT tear down the native player
+      // engine any more; that teardown is what crashed build 48 and what
+      // produced the every-couple-of-seconds stutter. See voice_audio_io.dart.
+      _audio?.flushPlayback(cause: VoiceFlushCause.bargeIn);
       _setActivity(VoiceActivity.listening);
     }));
 
@@ -288,6 +294,26 @@ class VoiceAssistantState extends LunaModuleState {
       _voiceActive = true;
       _setActivity(VoiceActivity.listening);
       _addSystem('Listening… speak, and tap the mic to stop.');
+    } on VoiceAudioUnavailable catch (e, st) {
+      // The player-start guard refused (see voice_audio_probe.dart). Refusing is
+      // correct — starting anyway can abort the process from ObjC — but it MUST
+      // be visible: a silent no-op here is exactly what "voice stopped working
+      // completely" looks like from the outside.
+      LunaLogger().error('Voice playback refused to start', e, st);
+      LunaLogger().warning(
+        'voice/audio: player start REFUSED — ${e.reason} '
+        '(${e.probe?.describe() ?? 'no probe'})',
+        'VoiceAssistantState',
+        'startVoice',
+      );
+      _addSystem(
+        'Audio could not start: ${e.reason}. Close and reopen the assistant to '
+        'try again.',
+        isError: true,
+      );
+      await audio.dispose();
+      _voiceActive = false;
+      _setActivity(VoiceActivity.idle);
     } catch (e, st) {
       LunaLogger().error('Failed to start voice lane', e, st);
       _addSystem('Could not start the microphone: $e', isError: true);
