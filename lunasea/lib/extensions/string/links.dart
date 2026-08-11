@@ -32,6 +32,16 @@ extension StringAsLinksExtension on String {
     return _launchDefault(uri);
   }
 
+  /// ⚠️ Do NOT wrap this in a try/catch "so logging can't break the open".
+  /// It would be cosmetic: `LunaLogger.warning` calls `LunaBox.logs.create`,
+  /// which is `async`, and does not await it — so a Hive failure arrives as a
+  /// REJECTED FUTURE, never as a synchronous throw. A `try/catch` here cannot
+  /// see it, and only hides the fact that nothing is guarding it. (An earlier
+  /// revision of this file had exactly that guard; CI still failed through it.)
+  void _warn(String message) {
+    LunaLogger().warning(message, 'StringAsLinksExtension', 'openLink');
+  }
+
   /// Open this URL.
   ///
   /// A tailnet destination (`*.ts.net`, `100.64/10`, `fd7a:115c:a1e0::/48`)
@@ -41,15 +51,6 @@ extension StringAsLinksExtension on String {
   /// isolate's `HttpOverrides` and has no system-wide MagicDNS — so it
   /// "succeeds" and then shows a DNS error. Everything else keeps opening in
   /// the system browser exactly as before.
-  /// Logging must never be able to stop a link from opening: `LunaLogger`
-  /// writes to a Hive box, and `openLink` runs from surfaces (onboarding,
-  /// import, background handlers) where that box may not be open.
-  void _warn(String message) {
-    try {
-      LunaLogger().warning(message, 'StringAsLinksExtension', 'openLink');
-    } catch (_) {}
-  }
-
   Future<void> openLink() async {
     final scheme = Uri.tryParse(this)?.scheme.toLowerCase() ?? '';
     if (!_allowedLinkSchemes.contains(scheme)) {
@@ -76,11 +77,7 @@ extension StringAsLinksExtension on String {
       // nothing thrown, nothing logged, nothing shown.
       _warn('The platform declined to open this URL');
     } catch (error, stack) {
-      try {
-        LunaLogger().error('Unable to open URL', error, stack);
-      } catch (_) {
-        _warn('Unable to open URL: $error');
-      }
+      LunaLogger().error('Unable to open URL', error, stack);
     }
   }
 
