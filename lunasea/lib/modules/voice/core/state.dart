@@ -93,6 +93,21 @@ class VoiceAssistantState extends LunaModuleState {
   static const bool devDirectKeys =
       bool.fromEnvironment('VOICE_DEV_DIRECT_KEYS', defaultValue: false);
 
+  /// DIAGNOSTIC: run the voice lane **playback-only, with the microphone never
+  /// opened** (`--dart-define=VOICE_PLAYBACK_ONLY=true`).
+  ///
+  /// Why this exists: playback was gated on `_voiceActive`, which required a
+  /// live mic, so there was NO way to hear Gemini without one. That made two
+  /// very different faults inseparable — the mic hearing the speaker (echo →
+  /// false barge-in) and the model simply not delivering audio fast enough.
+  /// With the mic closed, echo is impossible by construction: if the reply
+  /// still stutters, the cause is upstream and no client-side buffering will
+  /// fix it. Drive a turn by typing; the answer still comes back as audio.
+  ///
+  /// False in every shipping build, so it tree-shakes out.
+  static const bool playbackOnly =
+      bool.fromEnvironment('VOICE_PLAYBACK_ONLY', defaultValue: false);
+
   /// DEV-ONLY (see class doc + [devDirectKeys]). Never read on the ship path.
   static const String _devGeminiApiKey =
       String.fromEnvironment('GEMINI_API_KEY');
@@ -167,6 +182,70 @@ class VoiceAssistantState extends LunaModuleState {
   ///
   /// ⚠️ A COUNT, never the text.
   int inputTranscriptCharsWhileSpeaking = 0;
+
+  // ---- Per-reply turn counters. Aggregate only; two lines per reply. ----
+  int _turnCompletes = 0;
+  int _interruptedEvents = 0;
+  int _liveErrors = 0;
+  int _toolCalls = 0;
+
+  /// True once audio for the current reply has started, so the reply window is
+  /// opened exactly once per reply rather than per chunk.
+  bool _replyOpen = false;
+
+  void _beginReply() {
+    if (_replyOpen) return;
+    _replyOpen = true;
+    _turnCompletes = 0;
+    _interruptedEvents = 0;
+    _liveErrors = 0;
+    _toolCalls = 0;
+    inputTranscriptCharsWhileSpeaking = 0;
+    final audio = _audio;
+    if (audio != null) {
+      audio.beginReply();
+      audio.flushes = 0;
+      audio.flushesByCause.clear();
+    }
+  }
+
+  /// Emit the per-reply diagnostic lines.
+  ///
+  /// ⚠️ EXACTLY three lines per reply (plus one per session), because
+  /// `LunaLogger` keeps ~50 entries — anything per chunk would evict the whole
+  /// window before it could be read.
+  ///
+  /// "Drained" on this branch means `turnComplete`: with no client-side queue,
+  /// every chunk received has already been handed to the native sink by then.
+  /// The native player's own residual depth is not observable from Dart, so
+  /// this is the last honest boundary available, not a true drain callback.
+  void _emitReplyTelemetry() {
+    if (!_replyOpen) return;
+    _replyOpen = false;
+    final audio = _audio;
+    int cause(VoiceFlushCause c) => audio?.flushesByCause[c] ?? 0;
+    LunaLogger().debug(
+      'voice/turn events: turnComplete=$_turnCompletes '
+      'interrupted=$_interruptedEvents liveErrors=$_liveErrors '
+      'toolCalls=$_toolCalls flushes=${audio?.flushes ?? 0}('
+      'barge=${cause(VoiceFlushCause.bargeIn)},'
+      'err=${cause(VoiceFlushCause.liveError)},'
+      'intr=${cause(VoiceFlushCause.interruption)},'
+      'noisy=${cause(VoiceFlushCause.becomingNoisy)})',
+    );
+    if (audio != null) {
+      LunaLogger().debug(audio.pcmReport());
+      final session = audio.sessionReportOnce();
+      if (session != null) LunaLogger().debug(session);
+    }
+    // ⚠️ A COUNT of the user's transcribed speech arriving while the model was
+    // speaking. Non-zero while the user is silent is direct evidence the mic is
+    // hearing our own loudspeaker. The TEXT is never logged.
+    LunaLogger().debug(
+      'voice/echo: inputTranscriptCharsWhileSpeaking='
+      '$inputTranscriptCharsWhileSpeaking',
+    );
+  }
 
   /// Serialises lifecycle-driven teardown against start/stop so a resume can
   /// never interleave with a start. (This branch has no `_voiceChain`; that
@@ -372,6 +451,7 @@ class VoiceAssistantState extends LunaModuleState {
         messages.add(VoiceMessage(VoiceRole.tool, label, isError: a.isError));
       }
       // A tool call in-flight during a voice turn = the model is "thinking".
+      if (a.result == null) _toolCalls += 1;
       if (_voiceActive && a.result == null) _setActivity(VoiceActivity.thinking);
       notifyListeners();
     }));
@@ -403,6 +483,9 @@ class VoiceAssistantState extends LunaModuleState {
 
     _subs.add(session.turnComplete.listen((_) {
       _turnInProgress = false;
+      _turnCompletes += 1;
+      // The reply boundary: emit the aggregate lines and close the window.
+      _emitReplyTelemetry();
       // A turn boundary always clears any barge-in suppression window, so a
       // fresh reply can never be silenced by a stale one.
       _audio?.resumePlayback();
@@ -414,11 +497,13 @@ class VoiceAssistantState extends LunaModuleState {
     // --- Voice lane: play Gemini's audio + honour barge-in ---
     _subs.add(session.audio.listen((chunk) {
       if (!_voiceActive) return;
+      _beginReply();
       _audio?.feedPlayback(chunk);
       _setActivity(VoiceActivity.speaking);
     }));
 
     _subs.add(session.interrupted.listen((_) {
+      _interruptedEvents += 1;
       if (!_voiceActive) return;
       // User spoke over the model — stop feeding the abandoned turn and resume
       // listening. This deliberately does NOT tear down the native player
@@ -429,6 +514,7 @@ class VoiceAssistantState extends LunaModuleState {
     }));
 
     _subs.add(session.errors.listen((e) {
+      _liveErrors += 1;
       _addSystem('Live error: $e', isError: true);
       _turnInProgress = false;
       notifyListeners();
@@ -463,18 +549,20 @@ class VoiceAssistantState extends LunaModuleState {
     if (_status != VoiceConnectionStatus.ready) return;
 
     final audio = VoiceAudioIO();
-    final granted = await audio.ensureMicPermission();
-    if (!granted) {
-      final permanent = await audio.isMicPermanentlyDenied();
-      _addSystem(
-        permanent
-            ? 'Microphone access is off. Enable it in Settings to talk.'
-            : 'Microphone permission is needed to talk.',
-        isError: true,
-      );
-      await audio.dispose();
-      notifyListeners();
-      return;
+    if (!playbackOnly) {
+      final granted = await audio.ensureMicPermission();
+      if (!granted) {
+        final permanent = await audio.isMicPermanentlyDenied();
+        _addSystem(
+          permanent
+              ? 'Microphone access is off. Enable it in Settings to talk.'
+              : 'Microphone permission is needed to talk.',
+          isError: true,
+        );
+        await audio.dispose();
+        notifyListeners();
+        return;
+      }
     }
 
     try {
@@ -482,13 +570,18 @@ class VoiceAssistantState extends LunaModuleState {
       // `_session?`, not `_session!`: the session can be dropped underneath the
       // mic (dead socket, lifecycle teardown) and a null-check throwing out of
       // a stream callback is not a recoverable place to find that out.
-      await audio.captureInto((pcm) => _session?.sendAudioChunk(pcm));
+      if (!playbackOnly) {
+        await audio.captureInto((pcm) => _session?.sendAudioChunk(pcm));
+      }
       _audio = audio;
       _voiceActive = true;
       _suspendedWhileActive = false;
       _attachLifecycleObserver();
       _setActivity(VoiceActivity.listening);
-      _addSystem('Listening… speak, and tap the mic to stop.');
+      _addSystem(playbackOnly
+          ? 'Playback-only diagnostic mode: the microphone is NOT open. '
+              'Type to ask; Gemini still answers with audio.'
+          : 'Listening… speak, and tap the mic to stop.');
     } on VoiceAudioUnavailable catch (e, st) {
       // The player-start guard refused (see voice_audio_probe.dart). Refusing is
       // correct — starting anyway can abort the process from ObjC — but it MUST
