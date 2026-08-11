@@ -388,6 +388,22 @@ void main() {
         expect(profile.tailarrServerHost, 'http://tailarr.tailXXXX.ts.net:8443/x');
       });
 
+      // CONTROL — the tolerance the usability check must NOT take away. The
+      // gateway hands out bare `host` / `host:port` values; those name a real
+      // host and stay usable, so an over-strict rewrite of isUsableUrl fails
+      // here rather than silently freezing every install on one.
+      test('CONTROL: a bare host:port with no scheme is still usable', () {
+        final profile = pairedProfile();
+        reconcile(
+          profile: profile,
+          externals: [],
+          response:
+              parse(payload('tailarr', 'server', 'tailarr.tailXXXX.ts.net:8443')),
+        );
+        expect(profile.tailarrServerHost, 'tailarr.tailXXXX.ts.net:8443');
+        expect(profile.serverAdminToken, 'secret-admin-token');
+      });
+
       // SIBLING PATH — module enable. `_setHost` writing a hollow value makes
       // `_host(...).isNotEmpty` true, which is the ONLY gate on lighting a
       // module up. A module enabled against "https:" is a broken module.

@@ -140,8 +140,21 @@ class GatewayServicesReconciler {
     if (trimmed.isEmpty) return false;
     final uri = Uri.tryParse(trimmed);
     // An authority was written ("//"): it must actually name a host, or the
-    // server templated an empty name into it.
+    // server templated an empty name into it ("https://x" vs "http://:8080").
     if (uri != null && uri.hasAuthority) return uri.host.isNotEmpty;
+    // A scheme and NOTHING else. `GatewayService.fromJson` strips trailing
+    // slashes, so the commonest hollow shape — "https://" — arrives here as
+    // "https:". Re-parsed as `http://https:` it yields the host "https",
+    // which is how a non-answer came to look like a server that had moved.
+    // A bare `host:port` ("tailarr.tailXXXX.ts.net:8443") is NOT this: it
+    // carries the port as its path, so it still falls through as usable.
+    if (uri != null &&
+        uri.hasScheme &&
+        uri.path.isEmpty &&
+        uri.query.isEmpty &&
+        uri.fragment.isEmpty) {
+      return false;
+    }
     return _hostOf(trimmed) != null;
   }
 
