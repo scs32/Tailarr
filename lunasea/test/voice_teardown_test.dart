@@ -46,6 +46,16 @@ import 'package:lunasea/modules/voice/core/voice_audio_io.dart';
 /// maintainer's machine, so a local pass or fail here is not evidence either
 /// way.
 void main() {
+  // ⚠️ REQUIRED, and its absence produced a FALSE RED on the first run of this
+  // gate. Without the binding, the plugin calls never happen at all: the test
+  // dies at `ServicesBinding.instance` with "Binding has not yet been
+  // initialized", which fails identically with AND without the fix — a red that
+  // looks like proof and is worth nothing.
+  //
+  // With it initialised, the calls proceed and raise `MissingPluginException`,
+  // which is the hostile condition this gate is actually about.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('VoiceAudioIO teardown is infallible', () {
     test('stop() completes even when every plugin call throws', () async {
       final io = VoiceAudioIO();
