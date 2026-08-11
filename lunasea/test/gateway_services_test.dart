@@ -313,6 +313,125 @@ void main() {
       });
     });
 
+    // APP-550 (app half). The server's `_controller_dns()` returns "" on ANY
+    // transient failure (podman exec, `tailscale status`, a 15s timeout, a JSON
+    // parse error) and the handout is still emitted as a well-formed ok:true
+    // payload. The url that arrives is therefore either empty or HOLLOW — a
+    // scheme with the empty DNS name templated into it ("https://",
+    // "http://:8080"). Both mean "could not look", not "the server moved", and
+    // neither is evidence enough to destroy a credential the owner has to
+    // re-pair by hand. Same shape as the empty-listing bug one field over.
+    group('APP-550: a handout url that could not look', () {
+      String payload(String type, String name, String url) => '''
+{
+  "ok": true, "error": null, "kind": "services",
+  "services": [ {"type": "$type", "name": "$name", "url": "$url", "auth": null} ]
+}
+''';
+
+      LunaProfile pairedProfile() => LunaProfile(
+            tailarrServerEnabled: true,
+            tailarrServerHost: 'https://tailarr.tailXXXX.ts.net',
+            serverAdminToken: 'secret-admin-token',
+            gatewayManagedModules: ['tailarr'],
+          );
+
+      for (final url in ['', 'https://', 'http://', 'http://:8080']) {
+        test('url "$url" does NOT wipe the admin token', () {
+          final profile = pairedProfile();
+          reconcile(
+            profile: profile,
+            externals: [],
+            response: parse(payload('tailarr', 'server', url)),
+          );
+          expect(profile.serverAdminToken, 'secret-admin-token');
+        });
+
+        test('url "$url" does NOT overwrite the stored controller host', () {
+          final profile = pairedProfile();
+          reconcile(
+            profile: profile,
+            externals: [],
+            response: parse(payload('tailarr', 'server', url)),
+          );
+          expect(profile.tailarrServerHost, 'https://tailarr.tailXXXX.ts.net');
+        });
+      }
+
+      // CONTROL — the guard's real purpose. A server that genuinely moved must
+      // still lose the token: a stale admin bearer pointed at a different host
+      // is the security-relevant case APP-1 exists for. Without this, "never
+      // wipe" would pass every test above.
+      test('CONTROL: a genuinely different, non-empty host still wipes', () {
+        final profile = pairedProfile();
+        reconcile(
+          profile: profile,
+          externals: [],
+          response:
+              parse(payload('tailarr', 'server', 'https://evil.attacker.ts.net')),
+        );
+        expect(profile.serverAdminToken, isEmpty);
+        expect(profile.tailarrServerHost, 'https://evil.attacker.ts.net');
+      });
+
+      // CONTROL — the tolerance _sameServerHost already has must not regress.
+      test('CONTROL: the same host in another form still does not wipe', () {
+        final profile = pairedProfile();
+        reconcile(
+          profile: profile,
+          externals: [],
+          response: parse(
+            payload('tailarr', 'server', 'http://tailarr.tailXXXX.ts.net:8443/x'),
+          ),
+        );
+        expect(profile.serverAdminToken, 'secret-admin-token');
+        expect(profile.tailarrServerHost, 'http://tailarr.tailXXXX.ts.net:8443/x');
+      });
+
+      // SIBLING PATH — module enable. `_setHost` writing a hollow value makes
+      // `_host(...).isNotEmpty` true, which is the ONLY gate on lighting a
+      // module up. A module enabled against "https:" is a broken module.
+      test('a hollow url does not light up a never-configured module', () {
+        final profile = LunaProfile();
+        final result = reconcile(
+          profile: profile,
+          externals: [],
+          response: parse(payload('sonarr', 'sonarr', 'https://')),
+        );
+        expect(profile.sonarrHost, isEmpty);
+        expect(profile.sonarrEnabled, isFalse);
+        expect(result.configured, isEmpty);
+      });
+
+      // SIBLING PATH — external bookmarks. Same one-line class: an empty url
+      // is already tolerated, a hollow one is not.
+      test('a hollow url does not clobber an existing bookmark host', () {
+        final existing = LunaExternalModule(
+          displayName: 'jellyfin',
+          host: 'https://jellyfin.tailXXXX.ts.net',
+          gatewayName: 'jellyfin',
+        );
+        reconcile(
+          profile: LunaProfile(),
+          externals: [existing],
+          response: parse(payload('external', 'jellyfin', 'https://')),
+        );
+        expect(existing.host, 'https://jellyfin.tailXXXX.ts.net');
+      });
+
+      test('a hollow url does not create a bookmark pointing nowhere', () {
+        final created = <LunaExternalModule>[];
+        final result = GatewayServicesReconciler.reconcile(
+          profile: LunaProfile(),
+          externalModules: [],
+          services: parse(payload('external', 'jellyfin', 'https://')).services!,
+          createExternal: created.add,
+        );
+        expect(created, isEmpty);
+        expect(result.bookmarked, isEmpty);
+      });
+    });
+
     test('a server-granted service overrides hand-entered config', () {
       // Server-owned means server-owned: a suite server that grants Sonarr
       // takes over even a previously hand-entered config, and locks it.
