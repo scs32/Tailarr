@@ -472,11 +472,13 @@ void main() {
         final result =
             reconcile(profile: profile, externals: [], response: response);
 
-        expect(result.skipped, isTrue);
-        expect(result.disabled, isEmpty);
+        // Behaviour FIRST — the harm this bug caused — so a mutation of the
+        // guard trips on the modules going dark, not merely on a flag.
         expect(profile.sonarrEnabled, isTrue);
         expect(profile.radarrEnabled, isTrue);
         expect(profile.tailarrServerEnabled, isTrue);
+        expect(result.disabled, isEmpty);
+        expect(result.skipped, isTrue);
         // Provenance survives too — dropping it would show "Request Access"
         // on a module the server never revoked.
         expect(profile.gatewayManagedModules,
@@ -496,9 +498,9 @@ void main() {
             '"auth": null}]}',
           ),
         );
-        expect(result.skipped, isTrue);
         expect(profile.sonarrEnabled, isTrue);
         expect(profile.radarrEnabled, isTrue);
+        expect(result.skipped, isTrue);
       });
 
       test('an empty listing does not mark managed bookmarks revoked', () {
@@ -512,8 +514,8 @@ void main() {
           externals: [bookmark],
           response: parse('{"ok": true, "kind": "services", "services": []}'),
         );
-        expect(result.skipped, isTrue);
         expect(bookmark.displayName, 'jellyfin');
+        expect(result.skipped, isTrue);
       });
 
       // THE CONTROL. Without this, "never revoke" would pass every test
