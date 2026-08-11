@@ -10,6 +10,7 @@ import 'package:lunasea/api/ntfy/models.dart';
 import 'package:lunasea/database/box.dart';
 import 'package:lunasea/database/models/external_module.dart';
 import 'package:lunasea/database/models/profile.dart';
+import 'package:lunasea/database/tables/lunasea.dart';
 import 'package:lunasea/database/tables/notifications.dart';
 import 'package:lunasea/system/gateway/gateway_host.dart';
 import 'package:lunasea/system/logger.dart';
@@ -30,11 +31,18 @@ class GatewayServicesResult {
   /// user only has to fill in that one field.
   final List<String> missingAuth;
 
+  /// The handout carried no usable service entries, so the reconcile was a
+  /// NO-OP: nothing configured, nothing revoked, nothing bookmarked. See
+  /// [GatewayServicesReconciler.isUsableListing] for why an empty listing is
+  /// unusable input rather than an authoritative "you have no services".
+  final bool skipped;
+
   const GatewayServicesResult({
     this.configured = const [],
     this.disabled = const [],
     this.bookmarked = const [],
     this.missingAuth = const [],
+    this.skipped = false,
   });
 
   bool get isEmpty =>
@@ -73,13 +81,53 @@ class GatewayServicesReconciler {
 
   static const REVOKED_SUFFIX = ' (Revoked)';
 
+  /// Whether a services listing is authoritative enough to REVOKE from.
+  ///
+  /// APP-9. Revocation below is driven by ABSENCE — a managed native type not
+  /// present in the listing is disabled. That inference is only sound if the
+  /// listing is a real enumeration of the person's grants. An empty listing is
+  /// not: `{"ok":true,"kind":"services","services":[]}` is exactly what a
+  /// gateway that reached a controller it could not read hands back, and it
+  /// renders IDENTICALLY to "you have no services". `isSupported` does not
+  /// catch it (`fromJson` maps `[]` to an empty list, not null), so the old
+  /// guard let it through and every foreground disabled every managed module.
+  ///
+  /// So: an empty listing is treated as UNUSABLE INPUT and the whole reconcile
+  /// is a no-op. Revocation still requires POSITIVE evidence — a listing that
+  /// names at least one service, and genuinely omits the module. That keeps
+  /// real revocation working (the case this fix must not break) while refusing
+  /// to act on a payload that cannot distinguish "none" from "could not look".
+  ///
+  /// Entries with an empty `name` are skipped by the loop below, so a listing
+  /// made only of those degenerates into the same mass-revoke — they do not
+  /// count as evidence either.
+  ///
+  /// Accepted residual: a person whose LAST grant is genuinely removed keeps
+  /// their modules enabled instead of being disabled. That is a stale-enabled
+  /// module (visible, harmless, self-corrects on the next non-empty handout,
+  /// and the server still refuses the calls) versus the app tearing down every
+  /// module on every foreground. The asymmetry is deliberate.
+  static bool isUsableListing(List<GatewayService> services) =>
+      services.any((service) => service.name.isNotEmpty);
+
   static GatewayServicesResult reconcile({
     required LunaProfile profile,
     required List<LunaExternalModule> externalModules,
     required List<GatewayService> services,
     required void Function(LunaExternalModule) createExternal,
     void Function(LunaExternalModule)? deleteExternal,
+    void Function(String message)? log,
   }) {
+    if (!isUsableListing(services)) {
+      log?.call(
+        'gateway reconcile SKIPPED: unusable services listing '
+        '(entries=${services.length}, named=0) — an empty listing cannot '
+        'distinguish "no services" from "could not enumerate", so nothing '
+        'was configured or revoked',
+      );
+      return const GatewayServicesResult(skipped: true);
+    }
+
     final managed = Set<String>.of(profile.gatewayManagedModules);
     final seenNative = <String>{};
     final presentNames = <String>{};
@@ -126,6 +174,12 @@ class GatewayServicesReconciler {
             if (previous.isNotEmpty &&
                 !_sameServerHost(previous, service.url)) {
               profile.serverAdminToken = '';
+              log?.call(
+                'admin token WIPED for service "${service.name}": controller '
+                'host changed ${_hostOf(previous) ?? '<unparseable>'} → '
+                '${_hostOf(service.url) ?? '<unparseable>'} (APP-1) — the next '
+                'call re-verifies the server via Quick Connect',
+              );
             }
           }
           _setHost(profile, service.type, service.url);
@@ -192,6 +246,14 @@ class GatewayServicesReconciler {
       if (_enabled(profile, type)) {
         _setEnabled(profile, type, false);
         disabled.add(type);
+        // The transition that used to happen silently. Record WHICH module
+        // and WHAT the decision was made from, so a recurrence is one log
+        // line instead of an investigation.
+        log?.call(
+          'module DISABLED by gateway reconcile: $type — absent from a '
+          'handout naming ${presentNames.length} service(s) '
+          '[${presentNames.join(', ')}]',
+        );
       }
       managed.remove(type);
     }
@@ -419,6 +481,24 @@ class GatewayServicesSync {
     }
 
     final profile = LunaProfile.current;
+    // `LunaProfile.current` falls back to a DETACHED all-defaults profile when
+    // the box read misses (`LunaBox.profiles.read(enabled) ?? LunaProfile()`).
+    // Every write below is guarded by `if (profile.isInBox)`, so in that window
+    // the whole reconcile would be applied to an object nobody persists and
+    // then silently discarded — and, because a detached profile reads every
+    // module as disabled, it is INDISTINGUISHABLE from the reconciler having
+    // disabled them. Bail loudly instead: nothing is lost (no write could have
+    // landed) and the log now separates the two causes.
+    if (!profile.isInBox) {
+      LunaLogger().warning(
+        'gateway services sync SKIPPED: current profile is not in the box '
+        '(enabled profile key="${LunaSeaDatabase.ENABLED_PROFILE.read()}") — '
+        'writes would be silently discarded',
+        'GatewayServicesSync',
+        'sync',
+      );
+      return GatewayServicesOutcome(response: response);
+    }
     final externals = LunaBox.externalModules.data.toList();
     final result = GatewayServicesReconciler.reconcile(
       profile: profile,
@@ -428,7 +508,19 @@ class GatewayServicesSync {
       deleteExternal: (module) {
         if (module.isInBox) module.delete();
       },
+      log: (message) => LunaLogger().warning(
+        message,
+        'GatewayServicesReconciler',
+        'reconcile',
+      ),
     );
+    // An unusable handout taught us NOTHING — do not let it move the UX
+    // policy, the profile name or the last-sync timestamp either. Those read
+    // from the same payload and carry the same "absence means default" trap
+    // (`ui` missing resolves to `full`, which would flip a Basic person back).
+    if (result.skipped) {
+      return GatewayServicesOutcome(response: response);
+    }
     // Per-person UX policy — resolved and persisted on the profile so the
     // simplified shell applies before the first gateway call each session.
     profile.uiBasic = response.ui.basic;

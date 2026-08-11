@@ -39,14 +39,30 @@ GatewayServicesResult reconcile({
   required LunaProfile profile,
   required List<LunaExternalModule> externals,
   required GatewayServicesResponse response,
+  List<String>? log,
 }) {
   return GatewayServicesReconciler.reconcile(
     profile: profile,
     externalModules: externals,
     services: response.services!,
     createExternal: (_) {},
+    log: log == null ? null : log.add,
   );
 }
+
+/// A profile with every managed native module lit up — the shape a working
+/// install carries, and the thing an empty handout used to wipe.
+LunaProfile fullyManagedProfile() => LunaProfile(
+      sonarrEnabled: true,
+      sonarrHost: 'https://sonarr.x.ts.net',
+      sonarrKey: 'abc123',
+      radarrEnabled: true,
+      radarrHost: 'https://radarr.x.ts.net',
+      radarrKey: 'def456',
+      tailarrServerEnabled: true,
+      tailarrServerHost: 'https://tailarr.x.ts.net',
+      gatewayManagedModules: ['radarr', 'sonarr', 'tailarr'],
+    );
 
 void main() {
   group('contract parsing', () {
@@ -436,6 +452,156 @@ void main() {
       );
       expect(profile.sonarrHost, 'https://my-own.local');
       expect(result.isEmpty, isTrue);
+    });
+
+    group('APP-9: an empty listing is unusable input, not "no services"', () {
+      // The shipped bug. `{"ok":true,"kind":"services","services":[]}` passes
+      // `!response.ok || !response.isSupported` (fromJson maps `[]` to an
+      // EMPTY LIST, not null, so isSupported is true) and then the revocation
+      // loop disabled every managed module — re-armed on every iOS foreground.
+      test('does NOT disable managed modules', () {
+        final profile = fullyManagedProfile();
+        final response =
+            parse('{"ok": true, "kind": "services", "services": []}');
+
+        // The guard the reconciler used to be behind still lets this through —
+        // which is exactly why the reconciler itself has to refuse it.
+        expect(response.ok, isTrue);
+        expect(response.isSupported, isTrue);
+
+        final result =
+            reconcile(profile: profile, externals: [], response: response);
+
+        expect(result.skipped, isTrue);
+        expect(result.disabled, isEmpty);
+        expect(profile.sonarrEnabled, isTrue);
+        expect(profile.radarrEnabled, isTrue);
+        expect(profile.tailarrServerEnabled, isTrue);
+        // Provenance survives too — dropping it would show "Request Access"
+        // on a module the server never revoked.
+        expect(profile.gatewayManagedModules,
+            containsAll(['radarr', 'sonarr', 'tailarr']));
+      });
+
+      test('a listing of only unnamed entries is unusable the same way', () {
+        // Entries with an empty name are skipped by the configure loop, so
+        // such a listing degenerates into the same mass-revoke.
+        final profile = fullyManagedProfile();
+        final result = reconcile(
+          profile: profile,
+          externals: [],
+          response: parse(
+            '{"ok": true, "kind": "services", "services": ['
+            '{"type": "sonarr", "name": "", "url": "https://s.x.ts.net", '
+            '"auth": null}]}',
+          ),
+        );
+        expect(result.skipped, isTrue);
+        expect(profile.sonarrEnabled, isTrue);
+        expect(profile.radarrEnabled, isTrue);
+      });
+
+      test('an empty listing does not mark managed bookmarks revoked', () {
+        final bookmark = LunaExternalModule(
+          displayName: 'jellyfin',
+          host: 'https://jellyfin.x.ts.net',
+          gatewayName: 'jellyfin',
+        );
+        final result = reconcile(
+          profile: fullyManagedProfile(),
+          externals: [bookmark],
+          response: parse('{"ok": true, "kind": "services", "services": []}'),
+        );
+        expect(result.skipped, isTrue);
+        expect(bookmark.displayName, 'jellyfin');
+      });
+
+      // THE CONTROL. Without this, "never revoke" would pass every test
+      // above. A known-good handout that names services and genuinely omits
+      // a managed module must STILL disable it.
+      test('CONTROL: a genuine revocation still disables the module', () {
+        final profile = fullyManagedProfile();
+        final result = reconcile(
+          profile: profile,
+          externals: [],
+          response: parse(
+            '{"ok": true, "kind": "services", "services": ['
+            '{"type": "sonarr", "name": "sonarr", '
+            '"url": "https://sonarr.x.ts.net", "auth": {"api_key": "abc123"}},'
+            '{"type": "tailarr", "name": "server", '
+            '"url": "https://tailarr.x.ts.net", "auth": null}]}',
+          ),
+        );
+        expect(result.skipped, isFalse);
+        expect(result.disabled, ['radarr']);
+        expect(profile.radarrEnabled, isFalse);
+        expect(profile.gatewayManagedModules, isNot(contains('radarr')));
+        // …and the services that ARE present stay up.
+        expect(profile.sonarrEnabled, isTrue);
+        expect(profile.tailarrServerEnabled, isTrue);
+      });
+    });
+
+    group('APP-9: diagnostic logging on the transitions that matter', () {
+      test('logs the skip, naming it as unusable input', () {
+        final log = <String>[];
+        reconcile(
+          profile: fullyManagedProfile(),
+          externals: [],
+          response: parse('{"ok": true, "kind": "services", "services": []}'),
+          log: log,
+        );
+        expect(log, hasLength(1));
+        expect(log.single, contains('SKIPPED'));
+        expect(log.single, contains('unusable'));
+      });
+
+      test('logs WHICH module was disabled and what it decided from', () {
+        final log = <String>[];
+        reconcile(
+          profile: fullyManagedProfile(),
+          externals: [],
+          response: parse(
+            '{"ok": true, "kind": "services", "services": ['
+            '{"type": "sonarr", "name": "sonarr", '
+            '"url": "https://sonarr.x.ts.net", "auth": {"api_key": "abc123"}}]}',
+          ),
+          log: log,
+        );
+        final disabled = log.where((l) => l.contains('DISABLED')).toList();
+        expect(disabled, hasLength(2)); // radarr + tailarr
+        expect(disabled.any((l) => l.contains('radarr')), isTrue);
+        expect(disabled.any((l) => l.contains('tailarr')), isTrue);
+        // The evidence it decided from — the handout it actually saw.
+        expect(disabled.first, contains('sonarr'));
+      });
+
+      test('logs the admin-token wipe with the before/after host', () {
+        final log = <String>[];
+        final profile = LunaProfile(
+          tailarrServerEnabled: true,
+          tailarrServerHost: 'https://old.x.ts.net',
+          serverAdminToken: 'secret-token',
+          gatewayManagedModules: ['tailarr'],
+        );
+        reconcile(
+          profile: profile,
+          externals: [],
+          response: parse(
+            '{"ok": true, "kind": "services", "services": ['
+            '{"type": "tailarr", "name": "server", '
+            '"url": "https://new.x.ts.net", "auth": null}]}',
+          ),
+          log: log,
+        );
+        expect(profile.serverAdminToken, isEmpty);
+        final wipe = log.singleWhere((l) => l.contains('WIPED'));
+        expect(wipe, contains('server'));
+        expect(wipe, contains('old.x.ts.net'));
+        expect(wipe, contains('new.x.ts.net'));
+        // The token itself is never logged.
+        expect(wipe, isNot(contains('secret-token')));
+      });
     });
 
     test('unknown future type falls through to an external bookmark', () {
