@@ -58,6 +58,11 @@ dependencies:
   url_launcher: ^6.1.12
   uuid: ^4.5.1
   wake_on_lan: ^4.1.0
+  # Tailnet hosts (*.ts.net, 100.64/10) resolve ONLY through the embedded
+  # node's local CONNECT proxy. Safari is a different process and never sees
+  # it, so "Open web GUI" must render in-app through a WKWebView pointed at
+  # that proxy (tailscale_embed's `webViewProxy`, iOS 17+).
+  webview_flutter: ^4.9.0
   window_manager: ^0.4.3
   workmanager: ^0.9.0
   xml: ^6.3.0

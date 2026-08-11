@@ -4,7 +4,9 @@ import 'package:lunasea/database/box.dart';
 import 'package:lunasea/database/models/profile.dart';
 import 'package:lunasea/database/tables/lunasea.dart';
 import 'package:lunasea/system/logger.dart';
+import 'package:lunasea/utils/link_dispatch.dart';
 import 'package:lunasea/vendor.dart';
+import 'package:lunasea/widgets/pages/tailnet_browser.dart';
 import 'package:tailscale_embed/tailscale_embed.dart';
 import 'package:tailscale_embed/tailscale_embed_io.dart';
 
@@ -94,6 +96,11 @@ class IO implements LunaNetwork {
   @override
   void initialize() {
     _embed.configure(
+      // Point WKWebView's default data store at the node's local CONNECT
+      // proxy on every start/rebind (iOS 17+). Without this the in-app
+      // browser uses the system network stack and fails on MagicDNS exactly
+      // like Safari does — the whole reason "Open web GUI" was broken.
+      webViewProxy: true,
       config: () {
         final profile = LunaProfile.current;
         final identity = profile.tailscaleIdentity.isEmpty
@@ -128,6 +135,13 @@ class IO implements LunaNetwork {
       },
     );
     TailscaleHttpOverrides.install(configureClient: _configureClient);
+    // Register the seam that `String.openLink()` uses for tailnet URLs.
+    // Only where an embedded node can actually exist — elsewhere the opener
+    // stays null and openLink logs that the link is expected to fail rather
+    // than pretending Safari can reach a MagicDNS name.
+    if (_embed.isSupported) {
+      tailnetLinkOpener = TailnetBrowserPage.open;
+    }
   }
 
   String generateUserAgent(PackageInfo info) {

@@ -1,4 +1,5 @@
 import 'package:lunasea/system/logger.dart';
+import 'package:lunasea/utils/link_dispatch.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
 /// Only these schemes may be launched. A gateway/external-module URL, an
@@ -24,26 +25,59 @@ extension StringAsLinksExtension on String {
     );
   }
 
+  Future<bool> _launchSystem(String uri) async {
+    final override = debugSystemLinkOpener;
+    if (override != null) return override(uri);
+    if (await _launchUniversal(uri)) return true;
+    return _launchDefault(uri);
+  }
+
+  /// ⚠️ Do NOT wrap this in a try/catch "so logging can't break the open".
+  /// It would be cosmetic: `LunaLogger.warning` calls `LunaBox.logs.create`,
+  /// which is `async`, and does not await it — so a Hive failure arrives as a
+  /// REJECTED FUTURE, never as a synchronous throw. A `try/catch` here cannot
+  /// see it, and only hides the fact that nothing is guarding it. (An earlier
+  /// revision of this file had exactly that guard; CI still failed through it.)
+  void _warn(String message) {
+    LunaLogger().warning(message, 'StringAsLinksExtension', 'openLink');
+  }
+
+  /// Open this URL.
+  ///
+  /// A tailnet destination (`*.ts.net`, `100.64/10`, `fd7a:115c:a1e0::/48`)
+  /// is opened IN-APP, through a webview pointed at the embedded node's local
+  /// CONNECT proxy. It cannot be handed to the system: `url_launcher` hands
+  /// the URL to Safari, which is a different process that never sees this
+  /// isolate's `HttpOverrides` and has no system-wide MagicDNS — so it
+  /// "succeeds" and then shows a DNS error. Everything else keeps opening in
+  /// the system browser exactly as before.
   Future<void> openLink() async {
     final scheme = Uri.tryParse(this)?.scheme.toLowerCase() ?? '';
     if (!_allowedLinkSchemes.contains(scheme)) {
-      LunaLogger().warning(
-        'Refused to open a non-http(s) link (scheme: '
-        '${scheme.isEmpty ? '(none)' : scheme})',
-        'StringAsLinksExtension',
-        'openLink',
-      );
+      _warn('Refused to open a non-http(s) link (scheme: '
+          '${scheme.isEmpty ? '(none)' : scheme})');
       return;
     }
     try {
-      if (await _launchUniversal(this)) return;
-      await _launchDefault(this);
+      if (linkDestinationFor(this) == LinkDestination.tailnetBrowser) {
+        final opener = tailnetLinkOpener;
+        if (opener != null) {
+          if (await opener(this)) return;
+          _warn('In-app tailnet browser could not be presented; falling back '
+              'to the system browser, which cannot resolve MagicDNS and is '
+              'expected to fail');
+        } else {
+          _warn('No in-app tailnet browser on this platform; opening a '
+              'tailnet URL in the system browser, which cannot resolve '
+              'MagicDNS and is expected to fail');
+        }
+      }
+      if (await _launchSystem(this)) return;
+      // url_launcher declined outright. Previously this returned silently:
+      // nothing thrown, nothing logged, nothing shown.
+      _warn('The platform declined to open this URL');
     } catch (error, stack) {
-      LunaLogger().error(
-        'Unable to open URL',
-        error,
-        stack,
-      );
+      LunaLogger().error('Unable to open URL', error, stack);
     }
   }
 
