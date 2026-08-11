@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:lunasea/database/box.dart';
@@ -68,6 +69,24 @@ void main() {
 
   group('VoiceAudioIO teardown is infallible', () {
     late Directory dir;
+    late List<String> recordCalls;
+
+    /// The `record` plugin's method channel.
+    ///
+    /// ⚠️ WHY THIS IS STUBBED AT ALL, given the whole point is "no fakes".
+    /// `AudioRecorder()`'s CONSTRUCTOR fires an unawaited `create` through its
+    /// own semaphore. Off-device that rejects with `MissingPluginException`
+    /// LATER, as an unhandled async error, outside any call chain the code
+    /// under test owns — so `_teardownStep` structurally cannot catch it and
+    /// the test dies for a reason that has nothing to do with the guard. That
+    /// was the third false RED this gate produced.
+    ///
+    /// ⚠️ THE STUB IS THE TRANSPORT, NEVER THE LOGIC — and it is deliberately
+    /// DANGEROUS where the kernel is: `create` succeeds so construction works,
+    /// and EVERY other method throws, which is precisely the on-device
+    /// condition (a plugin call against an audio stack iOS has torn down).
+    /// Nothing here re-implements a decision `VoiceAudioIO` makes.
+    const recordChannel = MethodChannel('com.llfbandit.record/messages');
 
     setUp(() async {
       dir = await Directory.systemTemp.createTemp('tailarr_voice_teardown');
@@ -77,9 +96,22 @@ void main() {
         Hive.registerAdapter(LunaLogTypeAdapter());
       }
       await Hive.openBox<LunaLog>(LunaBox.logs.key);
+
+      recordCalls = [];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(recordChannel, (call) async {
+        recordCalls.add(call.method);
+        if (call.method == 'create') return null;
+        throw PlatformException(
+          code: 'AUDIO_STACK_GONE',
+          message: 'the audio stack was torn down underneath us',
+        );
+      });
     });
 
     tearDown(() async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(recordChannel, null);
       await Hive.close();
       if (await dir.exists()) await dir.delete(recursive: true);
     });
@@ -98,14 +130,20 @@ void main() {
     test('stop() completes even when every plugin call throws', () async {
       final io = VoiceAudioIO();
       await expectLater(io.stop(), completes);
-      // ...AND SAYS SO. A teardown that swallows silently is the defect wearing
-      // a different hat.
+
+      // THE CALL WAS ACTUALLY MADE. Without this the test passes just as well
+      // against a stop() that reaches no plugin at all — a guard proven against
+      // a body that never runs is the first defect shape, not a gate.
+      expect(recordCalls, contains('isRecording'),
+          reason: 'stop() never reached the recorder, so nothing was guarded');
+
+      // ...AND THE FAILURE WAS REPORTED. A teardown that swallows silently is
+      // the defect wearing a different hat: "does not throw" is satisfied by a
+      // fix that absorbs everything and tells nobody.
       final logs = await settledLogs();
-      expect(logs, isNotEmpty,
-          reason: 'teardown absorbed a plugin failure without reporting it');
       expect(logs.any((l) => l.message.contains('Voice teardown step failed')),
           isTrue,
-          reason: 'the log does not name the teardown step that failed');
+          reason: 'teardown absorbed a plugin failure without reporting it');
     });
 
     test('stop() is idempotent — a second teardown also cannot throw', () async {
