@@ -86,6 +86,7 @@ import 'package:record/record.dart';
 import 'package:lunasea/modules/voice/core/voice_audio_probe.dart';
 import 'package:lunasea/modules/voice/core/voice_session.dart'
     show kMicSampleRate, kOutputSampleRate;
+import 'package:lunasea/system/logger.dart';
 
 /// Thrown when the audio lane refuses to start rather than risking the native
 /// abort. Carries a message intended for the user-visible transcript: the UI
@@ -342,9 +343,31 @@ class VoiceAudioIO {
   /// what produced the stutter (discard, then re-preroll). It no longer touches
   /// the engine.
   ///
-  /// The cost of the safer behaviour: whatever the native player has ALREADY
-  /// buffered (~170ms) still plays out after a barge-in. Trading ≤170ms of
-  /// stale speech against a process abort is not a close call.
+  /// ⚠️ **The cost is NOT ~170ms, and an earlier version of this comment said
+  /// it was.** That number described the native 8KB buffer and would have been
+  /// right if [feedPlayback] fed the engine directly. It does not: it adds every
+  /// chunk to `_player.uint8ListSink`, and in `flutter_sound` 9.30 that sink is
+  /// a plain **unbounded** `StreamController` (`_pcmUint8Controller =
+  /// StreamController();`) whose subscription pauses itself on each `_feed`,
+  /// i.e. it drains at real-time playback rate. Gemini Live streams TTS FASTER
+  /// than real time, so at any moment the queued backlog is
+  /// *(generated so far − played so far)* — potentially **seconds**.
+  ///
+  /// So a barge-in currently drops almost nothing already queued;
+  /// [kBargeInSuppression] only refuses chunks that arrive AFTER it. The model
+  /// can keep talking over the user for the length of that backlog.
+  ///
+  /// The corroborating detail: the OLD code's comment said flush existed to
+  /// "drop everything still queued for the abandoned model turn". If the buffer
+  /// really were 170ms, that flush would never have been worth writing.
+  ///
+  /// This is still the right trade against a process abort — a stale tail is a
+  /// UX defect, a SIGABRT is a crash — but it is a MUCH bigger stale tail than
+  /// was claimed, and it is a KNOWN, MEASURED cost rather than a rounding error.
+  /// Bounding it needs real backpressure (feed with an awaited
+  /// `feedUint8FromStream`, keeping ≤1 buffer in flight behind an app-side queue
+  /// that CAN be dropped). Tracked separately — do not "fix" it by restoring the
+  /// engine teardown, which is the crash.
   void flushPlayback({VoiceFlushCause cause = VoiceFlushCause.bargeIn}) {
     flushes += 1;
     flushesByCause[cause] = (flushesByCause[cause] ?? 0) + 1;
@@ -397,29 +420,61 @@ class VoiceAudioIO {
     _micSub = stream.listen(onChunk);
   }
 
-  Future<void> stopCapture() async {
-    await _micSub?.cancel();
-    _micSub = null;
-    if (await _recorder.isRecording()) {
-      await _recorder.stop();
+  /// Run one teardown step, absorbing any failure.
+  ///
+  /// ⚠️ **Cleanup must be infallible.** Every call below is a plugin call made
+  /// against an audio stack iOS has just torn down — deactivating a session,
+  /// closing a player, stopping a recorder — which is precisely the state where
+  /// they are most likely to throw. Before this existed, the FIRST such throw
+  /// aborted the rest of `stop()` AND the `_dropSession(...)` that follows it in
+  /// the same queued op, while `_enqueueVoiceOp` swallowed the rejection and
+  /// both call sites discarded the returned future. The failure was therefore
+  /// completely silent, and it left the worst possible state: `_status` still
+  /// `ready` over a dead socket, so `ensureConnected()` early-returns forever
+  /// and the next mic tap captures into a session that is gone.
+  ///
+  /// Absorbing here rather than at the call site is deliberate — it guarantees
+  /// EVERY later step still runs, which per-step try/catch at one outer level
+  /// cannot do.
+  Future<void> _teardownStep(String what, Future<void> Function() step) async {
+    try {
+      await step();
+    } catch (error, stack) {
+      LunaLogger().error('Voice teardown step failed: $what', error, stack);
     }
   }
 
+  Future<void> stopCapture() async {
+    await _teardownStep('cancel mic subscription', () async {
+      await _micSub?.cancel();
+    });
+    _micSub = null;
+    await _teardownStep('stop recorder', () async {
+      if (await _recorder.isRecording()) {
+        await _recorder.stop();
+      }
+    });
+  }
+
   /// Stop everything and release the audio session so other apps regain focus.
+  ///
+  /// Never throws — see [_teardownStep].
   Future<void> stop() async {
     await stopCapture();
     _playerReady = false;
     _suppressFeedUntil = null;
     if (_player.isOpen()) {
-      try {
-        await _player.stopPlayer();
-      } catch (_) {}
-      await _player.closePlayer();
+      await _teardownStep('stop player', () => _player.stopPlayer());
+      await _teardownStep('close player', () => _player.closePlayer());
     }
     if (_sessionConfigured) {
-      final session = await AudioSession.instance;
-      await session.setActive(false);
+      // Cleared BEFORE the await, so a throwing deactivation cannot leave this
+      // true and make a later stop() believe it still owns a live session.
       _sessionConfigured = false;
+      await _teardownStep('deactivate audio session', () async {
+        final session = await AudioSession.instance;
+        await session.setActive(false);
+      });
     }
   }
 

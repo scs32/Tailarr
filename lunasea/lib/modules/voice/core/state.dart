@@ -332,11 +332,21 @@ class VoiceAssistantState extends LunaModuleState {
         // the audio session, the player and usually the socket. Restarting on
         // the next explicit tap is honest and cannot leave a half-live lane.
         _enqueueVoiceOp(() async {
-          await _stopVoice();
-          await _dropSession(
-            'Voice stopped while the app was in the background. '
-            'Tap the mic to start again.',
-          );
+          // ⚠️ `finally`: dropping the session is the step that must NEVER be
+          // skipped. If `_stopVoice()` throws, the lane is MORE broken, not
+          // less — and leaving `_status` at `ready` over a dead socket makes
+          // `ensureConnected()` early-return forever. `_enqueueVoiceOp`
+          // swallows the rejection and this future is discarded, so a skipped
+          // drop is completely silent. Teardown is also infallible per step
+          // (see `VoiceAudioIO._teardownStep`); this is the second belt.
+          try {
+            await _stopVoice();
+          } finally {
+            await _dropSession(
+              'Voice stopped while the app was in the background. '
+              'Tap the mic to start again.',
+            );
+          }
         });
         return;
     }
@@ -530,10 +540,16 @@ class VoiceAssistantState extends LunaModuleState {
         '_wire',
       );
       _enqueueVoiceOp(() async {
-        await _stopVoice();
-        await _dropSession(
-          'The assistant connection dropped. Tap the mic to reconnect.',
-        );
+        // `finally` for the same reason as the lifecycle path above: the socket
+        // is ALREADY dead here, so a throwing teardown must not be what decides
+        // whether the UI finds out.
+        try {
+          await _stopVoice();
+        } finally {
+          await _dropSession(
+            'The assistant connection dropped. Tap the mic to reconnect.',
+          );
+        }
       });
     }));
   }
