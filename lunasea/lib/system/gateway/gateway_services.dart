@@ -118,16 +118,7 @@ class GatewayServicesReconciler {
     void Function(LunaExternalModule)? deleteExternal,
     void Function(String message)? log,
   }) {
-    if (!isUsableListing(services)) {
-      log?.call(
-        'gateway reconcile SKIPPED: unusable services listing '
-        '(entries=${services.length}, named=0) — an empty listing cannot '
-        'distinguish "no services" from "could not enumerate", so nothing '
-        'was configured or revoked',
-      );
-      return const GatewayServicesResult(skipped: true);
-    }
-
+    // MUTANT: guard removed on purpose (RED proof).
     final managed = Set<String>.of(profile.gatewayManagedModules);
     final seenNative = <String>{};
     final presentNames = <String>{};
