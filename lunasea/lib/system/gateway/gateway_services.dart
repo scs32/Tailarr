@@ -110,6 +110,41 @@ class GatewayServicesReconciler {
   static bool isUsableListing(List<GatewayService> services) =>
       services.any((service) => service.name.isNotEmpty);
 
+  /// Whether a handout `url` is authoritative enough to ACT on — store as a
+  /// host, light a module up, point a bookmark at, or judge a controller
+  /// identity by.
+  ///
+  /// APP-550, and the same shape as [isUsableListing] one field over. The
+  /// server's `_controller_dns()` returns `""` on ANY transient failure
+  /// (podman exec, `tailscale status`, a 15s timeout, a JSON parse error), and
+  /// the services handout is still emitted as a well-formed `ok:true` payload.
+  /// The url that arrives is then either empty — already tolerated by the
+  /// `isNotEmpty` checks this replaces — or **hollow**: the empty DNS name
+  /// templated into a scheme, giving `https://`, `http://:8080` and (after the
+  /// model strips trailing slashes) `https:`. Hollow reads as non-empty, so
+  /// every one of those checks let it through: it was stored as the host,
+  /// clobbering a working address, and — because it parses to a host that is
+  /// not the previous one — it made the APP-1 guard below wipe the admin
+  /// token, which the owner can only restore by tapping "Connect This Device"
+  /// again. Re-armed on every iOS foreground, so it recurred forever.
+  ///
+  /// An empty or hollow url is "could not look", not "the server moved".
+  /// Acting needs POSITIVE evidence: a url that carries a real host.
+  ///
+  /// Tolerances kept deliberately: a bare `host` / `host:port` with no scheme
+  /// is usable (the gateway has handed those out), and this is a separate
+  /// check from [_hostOf] precisely so [_sameServerHost]'s scheme/port/path
+  /// tolerance is not disturbed.
+  static bool isUsableUrl(String url) {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return false;
+    final uri = Uri.tryParse(trimmed);
+    // An authority was written ("//"): it must actually name a host, or the
+    // server templated an empty name into it.
+    if (uri != null && uri.hasAuthority) return uri.host.isNotEmpty;
+    return _hostOf(trimmed) != null;
+  }
+
   static GatewayServicesResult reconcile({
     required LunaProfile profile,
     required List<LunaExternalModule> externalModules,
@@ -158,8 +193,10 @@ class GatewayServicesReconciler {
         // truth on a suite). Standalone modules the server doesn't grant
         // are never touched — they never reach this branch.
 
-        // Empty url = service stopped: keep the stored value.
-        if (service.url.isNotEmpty) {
+        // Empty url = service stopped: keep the stored value. A HOLLOW url
+        // ("https://", "http://:8080") is the same non-answer wearing a
+        // scheme — see [isUsableUrl] (APP-550).
+        if (isUsableUrl(service.url)) {
           // APP-1: a server-driven address change must not silently reuse the
           // admin bearer against a NEW controller identity. A hijacked gateway
           // handing a fresh URL would otherwise receive the real admin token.
@@ -168,10 +205,17 @@ class GatewayServicesReconciler {
           // call re-verifies the server via Quick Connect (the identity-proven
           // pairing handshake) before a token is minted again — matching the
           // existing "dropped on a stale 401 and re-minted" policy.
+          //
+          // APP-550: destroying the token needs POSITIVE evidence that the
+          // host is genuinely DIFFERENT — a url that names a real host, and a
+          // different one. "Could not look" is not "it moved". Asserted here
+          // as well as at the `isUsableUrl` gate above so a future edit to
+          // either one cannot quietly re-open the credential loss.
           if (service.type == 'tailarr' &&
               profile.serverAdminToken.isNotEmpty) {
             final previous = _host(profile, service.type);
             if (previous.isNotEmpty &&
+                isUsableUrl(service.url) &&
                 !_sameServerHost(previous, service.url)) {
               profile.serverAdminToken = '';
               log?.call(
@@ -219,11 +263,14 @@ class GatewayServicesReconciler {
           break;
         }
       }
+      // Same rule as the native branch (APP-550): a hollow url must not
+      // clobber a working bookmark, and must not create one that points
+      // nowhere. An empty url was already tolerated here.
       if (existing != null) {
-        if (service.url.isNotEmpty) existing.host = service.url;
+        if (isUsableUrl(service.url)) existing.host = service.url;
         existing.displayName = service.name;
         bookmarked.add(service.name);
-      } else if (service.url.isNotEmpty) {
+      } else if (isUsableUrl(service.url)) {
         final module = LunaExternalModule(
           displayName: service.name,
           host: service.url,
