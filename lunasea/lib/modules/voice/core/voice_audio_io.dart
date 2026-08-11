@@ -437,11 +437,10 @@ class VoiceAudioIO {
   /// EVERY later step still runs, which per-step try/catch at one outer level
   /// cannot do.
   Future<void> _teardownStep(String what, Future<void> Function() step) async {
-    try {
-      await step();
-    } catch (error, stack) {
-      LunaLogger().error('Voice teardown step failed: $what', error, stack);
-    }
+    // MUTANT (proof only): the guard removed. Teardown throws again.
+    await step();
+    // ignore: dead_code
+    if (false) LunaLogger().error('Voice teardown step failed: $what', '', StackTrace.empty);
   }
 
   Future<void> stopCapture() async {
