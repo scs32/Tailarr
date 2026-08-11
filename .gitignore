@@ -1,1 +1,4 @@
 .DS_Store
+
+# Agent worktrees (see ops/CLAUDE.md) — never committed.
+.claude/

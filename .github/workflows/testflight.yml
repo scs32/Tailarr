@@ -83,6 +83,33 @@ jobs:
           dart run build_runner build --delete-conflicting-outputs
           dart scripts/generate_localization.dart
 
+      # ⚠️ THE UPLOAD GATE. Until 2026-08-11 this workflow built and uploaded
+      # without running a single test, and `ci.yml` only fires on pull_request
+      # and pushes to master — so a build cut from a bare integration branch
+      # with no PR open shipped to real testers COMPLETELY UNTESTED. Three
+      # builds went out that way in one day.
+      #
+      # The old mitigation was procedural ("open a PR for any integration
+      # branch"). This makes the pipeline defend itself instead, so the
+      # guarantee does not depend on anyone remembering.
+      #
+      # Placed AFTER "Generate Dart code" (the suite does not compile without
+      # it) and BEFORE "Pod install", so a red suite costs ~2 minutes and stops
+      # the build rather than being discovered after an upload.
+      #
+      # Flags and reasoning are deliberately IDENTICAL to ci.yml's analyze-test
+      # job — the fork carries ~435 inherited info/warning-level issues and zero
+      # errors, and `flutter analyze` exits non-zero on ANY issue, so both flags
+      # are required for "errors stay at zero" to be the actual gate. If you
+      # change them in one file, change them in the other.
+      - name: Analyze (upload gate)
+        working-directory: lunasea
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Test (upload gate)
+        working-directory: lunasea
+        run: flutter test
+
       - name: Pod install
         working-directory: lunasea/ios
         run: pod install
