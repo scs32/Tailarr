@@ -10,6 +10,7 @@ import 'package:lunasea/api/ntfy/models.dart';
 import 'package:lunasea/database/box.dart';
 import 'package:lunasea/database/models/external_module.dart';
 import 'package:lunasea/database/models/profile.dart';
+import 'package:lunasea/database/tables/lunasea.dart';
 import 'package:lunasea/database/tables/notifications.dart';
 import 'package:lunasea/system/gateway/gateway_host.dart';
 import 'package:lunasea/system/logger.dart';
@@ -30,11 +31,18 @@ class GatewayServicesResult {
   /// user only has to fill in that one field.
   final List<String> missingAuth;
 
+  /// The handout carried no usable service entries, so the reconcile was a
+  /// NO-OP: nothing configured, nothing revoked, nothing bookmarked. See
+  /// [GatewayServicesReconciler.isUsableListing] for why an empty listing is
+  /// unusable input rather than an authoritative "you have no services".
+  final bool skipped;
+
   const GatewayServicesResult({
     this.configured = const [],
     this.disabled = const [],
     this.bookmarked = const [],
     this.missingAuth = const [],
+    this.skipped = false,
   });
 
   bool get isEmpty =>
@@ -73,13 +81,101 @@ class GatewayServicesReconciler {
 
   static const REVOKED_SUFFIX = ' (Revoked)';
 
+  /// Whether a services listing is authoritative enough to REVOKE from.
+  ///
+  /// APP-9. Revocation below is driven by ABSENCE — a managed native type not
+  /// present in the listing is disabled. That inference is only sound if the
+  /// listing is a real enumeration of the person's grants. An empty listing is
+  /// not: `{"ok":true,"kind":"services","services":[]}` is exactly what a
+  /// gateway that reached a controller it could not read hands back, and it
+  /// renders IDENTICALLY to "you have no services". `isSupported` does not
+  /// catch it (`fromJson` maps `[]` to an empty list, not null), so the old
+  /// guard let it through and every foreground disabled every managed module.
+  ///
+  /// So: an empty listing is treated as UNUSABLE INPUT and the whole reconcile
+  /// is a no-op. Revocation still requires POSITIVE evidence — a listing that
+  /// names at least one service, and genuinely omits the module. That keeps
+  /// real revocation working (the case this fix must not break) while refusing
+  /// to act on a payload that cannot distinguish "none" from "could not look".
+  ///
+  /// Entries with an empty `name` are skipped by the loop below, so a listing
+  /// made only of those degenerates into the same mass-revoke — they do not
+  /// count as evidence either.
+  ///
+  /// Accepted residual: a person whose LAST grant is genuinely removed keeps
+  /// their modules enabled instead of being disabled. That is a stale-enabled
+  /// module (visible, harmless, self-corrects on the next non-empty handout,
+  /// and the server still refuses the calls) versus the app tearing down every
+  /// module on every foreground. The asymmetry is deliberate.
+  static bool isUsableListing(List<GatewayService> services) =>
+      services.any((service) => service.name.isNotEmpty);
+
+  /// Whether a handout `url` is authoritative enough to ACT on — store as a
+  /// host, light a module up, point a bookmark at, or judge a controller
+  /// identity by.
+  ///
+  /// APP-550, and the same shape as [isUsableListing] one field over. The
+  /// server's `_controller_dns()` returns `""` on ANY transient failure
+  /// (podman exec, `tailscale status`, a 15s timeout, a JSON parse error), and
+  /// the services handout is still emitted as a well-formed `ok:true` payload.
+  /// The url that arrives is then either empty — already tolerated by the
+  /// `isNotEmpty` checks this replaces — or **hollow**: the empty DNS name
+  /// templated into a scheme, giving `https://`, `http://:8080` and (after the
+  /// model strips trailing slashes) `https:`. Hollow reads as non-empty, so
+  /// every one of those checks let it through: it was stored as the host,
+  /// clobbering a working address, and — because it parses to a host that is
+  /// not the previous one — it made the APP-1 guard below wipe the admin
+  /// token, which the owner can only restore by tapping "Connect This Device"
+  /// again. Re-armed on every iOS foreground, so it recurred forever.
+  ///
+  /// An empty or hollow url is "could not look", not "the server moved".
+  /// Acting needs POSITIVE evidence: a url that carries a real host.
+  ///
+  /// Tolerances kept deliberately: a bare `host` / `host:port` with no scheme
+  /// is usable (the gateway has handed those out), and this is a separate
+  /// check from [_hostOf] precisely so [_sameServerHost]'s scheme/port/path
+  /// tolerance is not disturbed.
+  static bool isUsableUrl(String url) {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return false;
+    final uri = Uri.tryParse(trimmed);
+    // An authority was written ("//"): it must actually name a host, or the
+    // server templated an empty name into it ("https://x" vs "http://:8080").
+    if (uri != null && uri.hasAuthority) return uri.host.isNotEmpty;
+    // A scheme and NOTHING else. `GatewayService.fromJson` strips trailing
+    // slashes, so the commonest hollow shape — "https://" — arrives here as
+    // "https:". Re-parsed as `http://https:` it yields the host "https",
+    // which is how a non-answer came to look like a server that had moved.
+    // A bare `host:port` ("tailarr.tailXXXX.ts.net:8443") is NOT this: it
+    // carries the port as its path, so it still falls through as usable.
+    if (uri != null &&
+        uri.hasScheme &&
+        uri.path.isEmpty &&
+        uri.query.isEmpty &&
+        uri.fragment.isEmpty) {
+      return false;
+    }
+    return _hostOf(trimmed) != null;
+  }
+
   static GatewayServicesResult reconcile({
     required LunaProfile profile,
     required List<LunaExternalModule> externalModules,
     required List<GatewayService> services,
     required void Function(LunaExternalModule) createExternal,
     void Function(LunaExternalModule)? deleteExternal,
+    void Function(String message)? log,
   }) {
+    if (!isUsableListing(services)) {
+      log?.call(
+        'gateway reconcile SKIPPED: unusable services listing '
+        '(entries=${services.length}, named=0) — an empty listing cannot '
+        'distinguish "no services" from "could not enumerate", so nothing '
+        'was configured or revoked',
+      );
+      return const GatewayServicesResult(skipped: true);
+    }
+
     final managed = Set<String>.of(profile.gatewayManagedModules);
     final seenNative = <String>{};
     final presentNames = <String>{};
@@ -110,8 +206,10 @@ class GatewayServicesReconciler {
         // truth on a suite). Standalone modules the server doesn't grant
         // are never touched — they never reach this branch.
 
-        // Empty url = service stopped: keep the stored value.
-        if (service.url.isNotEmpty) {
+        // Empty url = service stopped: keep the stored value. A HOLLOW url
+        // ("https://", "http://:8080") is the same non-answer wearing a
+        // scheme — see [isUsableUrl] (APP-550).
+        if (isUsableUrl(service.url)) {
           // APP-1: a server-driven address change must not silently reuse the
           // admin bearer against a NEW controller identity. A hijacked gateway
           // handing a fresh URL would otherwise receive the real admin token.
@@ -120,12 +218,25 @@ class GatewayServicesReconciler {
           // call re-verifies the server via Quick Connect (the identity-proven
           // pairing handshake) before a token is minted again — matching the
           // existing "dropped on a stale 401 and re-minted" policy.
+          //
+          // APP-550: destroying the token needs POSITIVE evidence that the
+          // host is genuinely DIFFERENT — a url that names a real host, and a
+          // different one. "Could not look" is not "it moved". Asserted here
+          // as well as at the `isUsableUrl` gate above so a future edit to
+          // either one cannot quietly re-open the credential loss.
           if (service.type == 'tailarr' &&
               profile.serverAdminToken.isNotEmpty) {
             final previous = _host(profile, service.type);
             if (previous.isNotEmpty &&
+                isUsableUrl(service.url) &&
                 !_sameServerHost(previous, service.url)) {
               profile.serverAdminToken = '';
+              log?.call(
+                'admin token WIPED for service "${service.name}": controller '
+                'host changed ${_hostOf(previous) ?? '<unparseable>'} → '
+                '${_hostOf(service.url) ?? '<unparseable>'} (APP-1) — the next '
+                'call re-verifies the server via Quick Connect',
+              );
             }
           }
           _setHost(profile, service.type, service.url);
@@ -165,11 +276,14 @@ class GatewayServicesReconciler {
           break;
         }
       }
+      // Same rule as the native branch (APP-550): a hollow url must not
+      // clobber a working bookmark, and must not create one that points
+      // nowhere. An empty url was already tolerated here.
       if (existing != null) {
-        if (service.url.isNotEmpty) existing.host = service.url;
+        if (isUsableUrl(service.url)) existing.host = service.url;
         existing.displayName = service.name;
         bookmarked.add(service.name);
-      } else if (service.url.isNotEmpty) {
+      } else if (isUsableUrl(service.url)) {
         final module = LunaExternalModule(
           displayName: service.name,
           host: service.url,
@@ -192,6 +306,14 @@ class GatewayServicesReconciler {
       if (_enabled(profile, type)) {
         _setEnabled(profile, type, false);
         disabled.add(type);
+        // The transition that used to happen silently. Record WHICH module
+        // and WHAT the decision was made from, so a recurrence is one log
+        // line instead of an investigation.
+        log?.call(
+          'module DISABLED by gateway reconcile: $type — absent from a '
+          'handout naming ${presentNames.length} service(s) '
+          '[${presentNames.join(', ')}]',
+        );
       }
       managed.remove(type);
     }
@@ -419,6 +541,24 @@ class GatewayServicesSync {
     }
 
     final profile = LunaProfile.current;
+    // `LunaProfile.current` falls back to a DETACHED all-defaults profile when
+    // the box read misses (`LunaBox.profiles.read(enabled) ?? LunaProfile()`).
+    // Every write below is guarded by `if (profile.isInBox)`, so in that window
+    // the whole reconcile would be applied to an object nobody persists and
+    // then silently discarded — and, because a detached profile reads every
+    // module as disabled, it is INDISTINGUISHABLE from the reconciler having
+    // disabled them. Bail loudly instead: nothing is lost (no write could have
+    // landed) and the log now separates the two causes.
+    if (!profile.isInBox) {
+      LunaLogger().warning(
+        'gateway services sync SKIPPED: current profile is not in the box '
+        '(enabled profile key="${LunaSeaDatabase.ENABLED_PROFILE.read()}") — '
+        'writes would be silently discarded',
+        'GatewayServicesSync',
+        'sync',
+      );
+      return GatewayServicesOutcome(response: response);
+    }
     final externals = LunaBox.externalModules.data.toList();
     final result = GatewayServicesReconciler.reconcile(
       profile: profile,
@@ -428,7 +568,19 @@ class GatewayServicesSync {
       deleteExternal: (module) {
         if (module.isInBox) module.delete();
       },
+      log: (message) => LunaLogger().warning(
+        message,
+        'GatewayServicesReconciler',
+        'reconcile',
+      ),
     );
+    // An unusable handout taught us NOTHING — do not let it move the UX
+    // policy, the profile name or the last-sync timestamp either. Those read
+    // from the same payload and carry the same "absence means default" trap
+    // (`ui` missing resolves to `full`, which would flip a Basic person back).
+    if (result.skipped) {
+      return GatewayServicesOutcome(response: response);
+    }
     // Per-person UX policy — resolved and persisted on the profile so the
     // simplified shell applies before the first gateway call each session.
     profile.uiBasic = response.ui.basic;

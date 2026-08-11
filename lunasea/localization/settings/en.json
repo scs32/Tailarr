@@ -176,7 +176,7 @@
   "settings.HostHint1": "This is the URL in which you access the web GUI for the service",
   "settings.HostHint2": "You must include either http:// or https://",
   "settings.HostHint3": "Do not use localhost or 127.0.0.1",
-  "settings.HostHint4": "When not using a reverse proxy, please include the port",
+  "settings.HostHint4": "Include the port only if the service needs one — a Tailscale (*.ts.net) address does not",
   "settings.HostHint5": "To add basic authentication, please use the custom headers feature",
   "settings.HostRequired": "Host Required",
   "settings.HostRequiredMessage": "Host is required to connect to {}",
