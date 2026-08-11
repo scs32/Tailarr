@@ -256,11 +256,10 @@ class VoiceAudioIO {
   /// fresh reply is never silenced by a stale window.
   void resumePlayback() => _suppressFeedUntil = null;
 
-  /// Start mic capture. Emits 16kHz mono s16le PCM chunks. `manageAudioSession`
-  /// is OFF so `record` uses our shared session and never touches the category.
-  Future<Stream<Uint8List>> startCapture() async {
-    await configureSession();
-    final stream = await _recorder.startStream(const RecordConfig(
+  /// The mic configuration, hoisted to a named constant so the two flags that
+  /// are load-bearing and invisible (`echoCancel`, `audioInterruption`) can be
+  /// asserted by a unit test instead of merely being written down once.
+  static const RecordConfig micConfig = RecordConfig(
       encoder: AudioEncoder.pcm16bits,
       sampleRate: kMicSampleRate,
       numChannels: 1,
@@ -271,12 +270,25 @@ class VoiceAudioIO {
       // loudspeaker output and Gemini's server VAD fires a false barge-in every
       // couple of seconds.
       echoCancel: true,
+      // ⚠️ REQUIRED for the mic to survive an interruption. `record_ios`
+      // registers its own AVAudioSession.interruptionNotification observer;
+      // on `.began` it calls pause(), and it resumes on `.ended` ONLY when the
+      // mode is pauseResume (RecorderSessionExtension.swift:79-92). The default
+      // is `pause` — "pauses automatically, resumes MANUALLY" — and nothing in
+      // this app ever resumed it. iOS suspension delivers exactly that
+      // interruption, so with the default the mic went dead on the first
+      // background and never came back.
+      audioInterruption: AudioInterruptionMode.pauseResume,
       // Keep record from re-managing the session (we own it via audio_session).
       // ignore: deprecated_member_use
       iosConfig: IosRecordConfig(manageAudioSession: false),
-      androidConfig: AndroidRecordConfig(useLegacy: false),
-    ));
-    return stream;
+      androidConfig: AndroidRecordConfig(useLegacy: false));
+
+  /// Start mic capture. Emits 16kHz mono s16le PCM chunks. `manageAudioSession`
+  /// is OFF so `record` uses our shared session and never touches the category.
+  Future<Stream<Uint8List>> startCapture() async {
+    await configureSession();
+    return _recorder.startStream(micConfig);
   }
 
   /// Convenience: pipe mic PCM straight into a sink (e.g. session.sendAudioChunk).

@@ -111,6 +111,11 @@ class GeminiLiveClient {
   final _turnComplete = StreamController<void>.broadcast();
   final _interrupted = StreamController<void>.broadcast();
   final _errors = StreamController<Object>.broadcast();
+  final _closed = StreamController<String>.broadcast();
+
+  /// True once [close] has been called, so an expected teardown is not reported
+  /// as an unexpected disconnect.
+  bool _closing = false;
 
   /// Text of what Gemini is speaking (streamed in fragments).
   Stream<String> get outputTranscript => _outputTranscript.stream;
@@ -130,6 +135,21 @@ class GeminiLiveClient {
   Stream<void> get interrupted => _interrupted.stream;
 
   Stream<Object> get errors => _errors.stream;
+
+  /// Fires once when the socket closes AFTER a successful setup, i.e. an
+  /// UNEXPECTED disconnect, carrying the close code/reason.
+  ///
+  /// ⚠️ Before this existed, a post-setup close was completely silent: [_onDone]
+  /// only acted when `_setupComplete` had not yet completed, so a socket that
+  /// died after connecting emitted nothing and changed no state. The state layer
+  /// stayed `ready` over a dead socket — `ensureConnected()` then early-returns
+  /// forever, and the mic callback keeps calling `ws.add` on a closed socket,
+  /// throwing out of a stream callback. That is the "voice stops working
+  /// COMPLETELY after an app resume" symptom, and no amount of lifecycle
+  /// handling can fix it while the disconnect is invisible.
+  ///
+  /// An intentional [close] does NOT fire this.
+  Stream<String> get closed => _closed.stream;
 
   Uri get _uri {
     if (ephemeralToken != null) {
@@ -353,10 +373,18 @@ class GeminiLiveClient {
         StateError('WebSocket closed before setupComplete '
             '(code=${_ws?.closeCode} reason=${_ws?.closeReason})'),
       );
+      return;
     }
+    // Post-setup close. Silence here is what left the UI claiming "ready" over a
+    // dead socket — see the [closed] doc. An intentional teardown is expected
+    // and stays quiet.
+    if (_closing) return;
+    final detail = 'code=${_ws?.closeCode} reason=${_ws?.closeReason}';
+    if (!_closed.isClosed) _closed.add(detail);
   }
 
   Future<void> close() async {
+    _closing = true;
     await _ws?.close();
     await _outputTranscript.close();
     await _inputTranscript.close();
@@ -364,5 +392,10 @@ class GeminiLiveClient {
     await _turnComplete.close();
     await _interrupted.close();
     await _errors.close();
+    await _closed.close();
   }
+
+  /// TEST-ONLY: drive the post-setup close path without a socket, so the
+  /// "silent dead socket" regression is lockable in a unit test.
+  void simulateDoneForTest() => _onDone();
 }

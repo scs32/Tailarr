@@ -72,6 +72,11 @@ class VoiceSession {
 
   Stream<Object> get errors => _client!.errors;
 
+  /// Fires when the Live socket drops AFTER a successful setup — an unexpected
+  /// disconnect. The state layer must leave `ready` when this fires; see
+  /// [GeminiLiveClient.closed].
+  Stream<String> get closed => _client!.closed;
+
   List<String> get exposedTools => [for (final t in _tools) t.name];
 
   /// Connect the MCP + open the Live session. Returns the whoami summary as a
